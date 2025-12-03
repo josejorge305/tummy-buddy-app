@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   primaryButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.3,
     color: "#020617",
@@ -722,7 +722,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   secondaryButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.3,
     color: TEAL,
