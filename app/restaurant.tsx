@@ -6,12 +6,13 @@ import {
   ActivityIndicator,
   StyleSheet,
   Image,
+  ImageBackground,
   TouchableOpacity,
   SafeAreaView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { API_BASE_URL } from "../api/api";
+import { API_BASE_URL, AnalyzeDishResponse, analyzeDish } from "../api/api";
 import GutIcon from "../assets/images/Gut_icon.png";
 import HeartIcon from "../assets/images/heart_icon.png";
 import ImmuneIcon from "../assets/images/Inmune_Icon.png";
@@ -19,9 +20,13 @@ import LiverIcon from "../assets/images/Liver_icon.png";
 import MetabolicIcon from "../assets/images/Metabolic_Icon.png";
 import BrainIcon from "../assets/images/brain_icon.png";
 import KidneyIcon from "../assets/images/kidney_icon.png";
+import { buildDishViewModel } from "./utils/dishViewModel";
+import { useUserPrefs } from "../context/UserPrefsContext";
 
 const BG = "#020617";
 const TEAL = "#14b8a6";
+const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
+const USER_SELECTED_ALLERGENS: string[] = []; // TODO: wire from user profile/preferences
 
 const getSeverityChipStyle = (severity: string) => {
   const s = (severity || "").toLowerCase();
@@ -38,7 +43,13 @@ const getSeverityChipStyle = (severity: string) => {
 };
 
 type MenuResponse = {
-  restaurant?: { name?: string; address?: string };
+  restaurant?: {
+    id?: string | number;
+    name?: string;
+    address?: string;
+    imageUrl?: string | null;
+    imageRef?: string | null;
+  };
   sections?: Array<{
     id?: string | number;
     name?: string;
@@ -46,36 +57,88 @@ type MenuResponse = {
   }>;
 };
 
+function buildPhotoUrl(photoRef?: string | null) {
+  if (!photoRef) return null;
+  const params = new URLSearchParams({
+    maxwidth: "1200",
+    photoreference: photoRef,
+    key: GOOGLE_API_KEY || "",
+  });
+  return `https://maps.googleapis.com/maps/api/place/photo?${params.toString()}`;
+}
+
 export default function RestaurantScreen() {
   const router = useRouter();
-  const { placeId, restaurantName, address } = useLocalSearchParams();
+  const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
+  const { selectedAllergens } = useUserPrefs();
   const [menu, setMenu] = useState<MenuResponse | null>(null);
+  const [restaurant, setRestaurant] = useState<MenuResponse["restaurant"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [likedItemIds, setLikedItemIds] = useState<Set<string>>(new Set());
-  // Placeholder: per-item analysis; will be filled from /pipeline/analyze-dish later
-  const [analysisByItemId, setAnalysisByItemId] = useState<Record<string, any>>({});
-  const [analyzingItemId, setAnalyzingItemId] = useState<string | null>(null);
+  const [analysisByItemId, setAnalysisByItemId] = useState<
+    Record<string, AnalyzeDishResponse | null>
+  >({});
+  const [analysisLoadingByItemId, setAnalysisLoadingByItemId] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
   const addressValue = Array.isArray(address) ? address[0] : address;
+  const latValueRaw = Array.isArray(lat) ? lat[0] : lat;
+  const lngValueRaw = Array.isArray(lng) ? lng[0] : lng;
+
+  // keep as strings for now (backend will parse to numbers)
+  const latValue = latValueRaw ?? undefined;
+  const lngValue = lngValueRaw ?? undefined;
+
+  const organSeverityLabel = (severity: "low" | "medium" | "high" | "neutral") => severity;
+  const organSeverityStyle = (severity: "low" | "medium" | "high" | "neutral") => {
+    switch (severity) {
+      case "high":
+        return styles.organBadgeHigh;
+      case "medium":
+        return styles.organBadgeMedium;
+      case "low":
+        return styles.organBadgeLow;
+      default:
+        return styles.organBadgeNeutral;
+    }
+  };
 
   useEffect(() => {
     async function loadMenu() {
       setError(null);
       setLoading(true);
       try {
-        const url = `${API_BASE_URL}/menu/extract?placeId=${encodeURIComponent(
-          placeIdValue as string
-        )}`;
+        const params = new URLSearchParams();
+
+        if (placeIdValue) {
+          params.append("placeId", String(placeIdValue));
+        }
+        if (restaurantNameValue) {
+          params.append("restaurantName", String(restaurantNameValue));
+        }
+        if (addressValue) {
+          params.append("address", String(addressValue));
+        }
+        if (latValue) {
+          params.append("lat", String(latValue));
+        }
+        if (lngValue) {
+          params.append("lng", String(lngValue));
+        }
+
+        const url = `${API_BASE_URL}/menu/extract?${params.toString()}`;
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error(`Request failed with status ${res.status}`);
         }
         const data = await res.json();
         setMenu(data);
+        setRestaurant((data as any)?.restaurant ?? null);
       } catch (e: any) {
         console.log("MENU ERROR:", e);
         setError("We couldn’t load this menu right now. Please try again.");
@@ -89,10 +152,9 @@ export default function RestaurantScreen() {
       setError("We couldn’t load this menu right now. Please try again.");
       setLoading(false);
     }
-  }, [placeIdValue]);
+  }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue]);
 
-  const handleToggleAnalysis = async (item: any, sectionName?: string) => {
-    const itemId = String(item?.id ?? item?.name ?? "");
+  const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
     if (!itemId) return;
 
     // Collapse if tapping the same expanded item
@@ -101,56 +163,42 @@ export default function RestaurantScreen() {
       return;
     }
 
-    // Expand the tapped item
-    setExpandedItemId(itemId);
-
-    // If analysis already loaded, no need to refetch
+    // If analysis already loaded, just expand
     if (analysisByItemId[itemId]) {
+      setExpandedItemId(itemId);
       return;
     }
 
-    try {
-      setAnalyzingItemId(itemId);
+    setExpandedItemId(itemId);
+    setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
-      const body = {
+    try {
+      const result = await analyzeDish({
         dishName: item?.name,
-        restaurantName: restaurantNameValue || restaurantName || null,
+        restaurantName: restaurant?.name || restaurantNameValue || restaurantName || null,
         description: item?.description || "",
         menuSection: sectionName || "",
         priceText: item?.priceText || "",
         placeId: placeIdValue || placeId || null,
-      };
-
-      const resp = await fetch(`${API_BASE_URL}/pipeline/analyze-dish`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
       });
-
-      const json = await resp.json();
-      console.log("analyze-dish response (trimmed):", JSON.stringify(json).slice(0, 300));
-
-      if (!resp.ok || !json || json.ok === false) {
-        console.warn("Analysis failed for item", itemId, json);
-        return;
-      }
 
       setAnalysisByItemId((prev) => ({
         ...prev,
-        [itemId]: json,
+        [itemId]: result,
       }));
     } catch (err) {
-      console.error("Error calling /pipeline/analyze-dish", err);
+      console.error("Error calling analyzeDish", err);
+      setAnalysisByItemId((prev) => ({
+        ...prev,
+        [itemId]: {
+          ok: false,
+          error: "Analysis failed",
+        } as AnalyzeDishResponse,
+      }));
     } finally {
-      setAnalyzingItemId(null);
+      setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
     }
   };
-
-  const ORGAN_ORDER: Array<
-    "gut" | "liver" | "heart" | "metabolic" | "immune" | "brain" | "kidney"
-  > = ["gut", "liver", "heart", "metabolic", "immune", "brain", "kidney"];
 
   const ORGAN_ICONS: Record<string, any> = {
     gut: GutIcon,
@@ -172,25 +220,7 @@ export default function RestaurantScreen() {
     kidney: "Kidney",
   };
 
-  // TODO: replace with real user prefs from backend
-  const USER_ALLERGENS = ["gluten", "shellfish", "wheat", "dairy"];
-
-  const mapOrganLevelToDelta = (level: string | undefined): number => {
-    if (!level) return 0;
-    const l = level.toLowerCase();
-    if (l.includes("high_negative")) return -2;
-    if (l.includes("mild_negative")) return -1;
-    if (l.includes("neutral")) return 0;
-    if (l.includes("mild_positive")) return 1;
-    if (l.includes("high_positive")) return 2;
-    return 0;
-  };
-
-  const trimSentence = (text: string, maxLen = 160): string => {
-    if (!text) return "";
-    if (text.length <= maxLen) return text;
-    return text.slice(0, maxLen - 1).trimEnd() + "…";
-  };
+  const heroUrl = buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
 
   if (loading) {
     return (
@@ -228,8 +258,59 @@ export default function RestaurantScreen() {
             <Text style={styles.backText}>← Back to home</Text>
           </TouchableOpacity>
 
-          <Text style={styles.headerName}>{restaurantNameValue || menu.restaurant?.name}</Text>
-          <Text style={styles.headerAddress}>{addressValue || menu.restaurant?.address}</Text>
+          {restaurant && (
+            <View style={{ marginTop: 12, marginBottom: 8, marginHorizontal: -16 }}>
+              <View
+                style={{
+                  overflow: "hidden",
+                }}
+              >
+                {heroUrl ? (
+                  <ImageBackground
+                    source={{ uri: heroUrl }}
+                    style={{ height: 220, justifyContent: "flex-end" }}
+                  >
+                    <View
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 16,
+                        backgroundColor: "rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "white",
+                          fontSize: 24,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {restaurant.name || restaurantNameValue || menu.restaurant?.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: "#f0f0f0",
+                          fontSize: 14,
+                          marginTop: 4,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {restaurant.address || addressValue || menu.restaurant?.address}
+                      </Text>
+                    </View>
+                  </ImageBackground>
+                ) : (
+                  <View style={{ padding: 16 }}>
+                    <Text style={{ fontSize: 24, fontWeight: "700", color: "#ffffff" }}>
+                      {restaurant.name || restaurantNameValue || menu.restaurant?.name}
+                    </Text>
+                    <Text style={{ fontSize: 14, color: "#666", marginTop: 4 }}>
+                      {restaurant.address || addressValue || menu.restaurant?.address}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
 
           {menu.sections.map((section) => (
             <View key={section.id || section.name} style={{ marginTop: 16 }}>
@@ -240,100 +321,11 @@ export default function RestaurantScreen() {
                 const isExpanded = expandedItemId === itemId;
 
                 const analysis = analysisByItemId[itemId];
-
-                const organsBlock = analysis?.organs || {};
-                const flags = organsBlock.flags || {};
-                const insightLines: string[] = organsBlock.insight_lines || [];
-
-                // --- Nutrition from recipe-core ---
-                const recipeBlock = analysis?.recipe?.recipe || {};
-                const nutrition = {
-                  calories: typeof recipeBlock.calories === "number" ? recipeBlock.calories : null,
-                  protein:
-                    typeof recipeBlock.macros?.protein === "number"
-                      ? recipeBlock.macros.protein
-                      : null,
-                  carbs:
-                    typeof recipeBlock.macros?.carbs === "number"
-                      ? recipeBlock.macros.carbs
-                      : null,
-                  fat:
-                    typeof recipeBlock.macros?.fat === "number" ? recipeBlock.macros.fat : null,
-                };
-
-                // --- Allergen safety (string[] OR objects) ---
-                const rawAllergens: any[] = Array.isArray(flags.allergens)
-                  ? flags.allergens
-                  : [];
-
-                const allergenKinds: string[] = rawAllergens
-                  .map((a) => {
-                    if (!a) return "";
-                    if (typeof a === "string") return a;
-                    if (typeof a.kind === "string") return a.kind;
-                    if (typeof a.message === "string") return a.message;
-                    return "";
-                  })
-                  .filter(Boolean);
-
-                const allergenInsight =
-                  insightLines.find((l) => l.toLowerCase().includes("allergen")) || "";
-
-                const derivedAllergenDetail =
-                  allergenInsight ||
-                  (allergenKinds.length > 0
-                    ? `Contains: ${allergenKinds.join(", ")}.`
-                    : "No common allergens detected from our data.");
-
-                // --- FODMAP / IBS safety ---
-                const fodmapLevelRaw: string = flags.fodmap?.level || "unknown";
-                const fodmapLevel = fodmapLevelRaw.toLowerCase();
-                const fodmapSeverityMap: Record<string, string> = {
-                  low: "Safe",
-                  moderate: "Caution",
-                  high: "Avoid",
-                  unknown: "Unknown",
-                };
-                const derivedFodmapSeverity = fodmapSeverityMap[fodmapLevel] || "Unknown";
-
-                const fodmapInsightLine =
-                  insightLines.find((l) => l.toLowerCase().includes("fodmap")) ||
-                  flags.fodmap?.reason ||
-                  "";
-
-                const derivedFodmapDetail = trimSentence(
-                  fodmapInsightLine ||
-                    (fodmapLevel === "unknown"
-                      ? "FODMAP level is unclear from ingredients."
-                      : `FODMAP level: ${fodmapLevelRaw}.`),
-                  160
-                );
-
-                // --- Organ impact ordered list ---
-                const organEntries: any[] = Array.isArray(organsBlock.organs)
-                  ? organsBlock.organs
-                  : [];
-
-                const orderedOrgans = ORGAN_ORDER.map((key) => {
-                  const match = organEntries.find((o) => o.organ === key) || {};
-                  const level: string = match.level || "neutral";
-                  const delta = mapOrganLevelToDelta(level);
-                  const firstReason =
-                    Array.isArray(match.reasons) && match.reasons.length > 0
-                      ? match.reasons[0]
-                      : "";
-                  return {
-                    key,
-                    level,
-                    delta,
-                    reason: firstReason,
-                  };
-                });
-
-                const firstOrganWithReason = orderedOrgans.find((o) => !!o.reason);
-                const organImpactSummary =
-                  firstOrganWithReason?.reason ||
-                  "Organ impact details will appear here as we expand the model.";
+                const isAnalysisLoading = !!analysisLoadingByItemId[itemId];
+                const viewModel =
+                  analysis && analysis.ok
+                    ? buildDishViewModel(analysis, selectedAllergens)
+                    : null;
 
                 return (
                   <View key={itemId} style={styles.card}>
@@ -375,7 +367,11 @@ export default function RestaurantScreen() {
                       </Text>
                     )}
 
-                    <TouchableOpacity onPress={() => handleToggleAnalysis(item, section.name)}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        handleToggleAnalysis(String(itemId), item, section.name || "")
+                      }
+                    >
                       <Text style={styles.showMoreText}>
                         {isExpanded ? "Hide analysis…" : "Show analysis…"}
                       </Text>
@@ -383,150 +379,179 @@ export default function RestaurantScreen() {
 
                     {isExpanded && (
                       <View style={styles.expandedVerdictContainer}>
-                        {/* Simple message if we have no analysis yet */}
-                        {!analysis && (
+                        {isAnalysisLoading && (
                           <Text style={styles.verdictBodyText}>
-                            {analyzingItemId === itemId
-                              ? "Analyzing this dish with Tummy Buddy…"
-                              : "Analysis not available yet. Tap “Show analysis…” to try again."}
+                            Analyzing this dish with Tummy Buddy…
                           </Text>
                         )}
 
-                        {/* Only render sections when we have analysis */}
-                    {analysis && (
-                      <>
-                        {/* 1) Allergens row */}
-                        <View style={styles.sectionBlock}>
-                          <Text style={styles.sectionTitle}>Allergens</Text>
-                          <View style={styles.allergenPillRow}>
-                            {allergenKinds.length === 0 && (
-                              <View style={[styles.allergenPill, styles.allergenPillNeutral]}>
-                                <Text style={styles.allergenPillText}>None detected</Text>
-                              </View>
-                            )}
-                            {allergenKinds.map((name) => {
-                              const lower = name.toLowerCase();
-                              const isUserAllergen = USER_ALLERGENS.some((u) => lower.includes(u));
-                              return (
-                                <View
-                                  key={name}
-                                  style={[
-                                    styles.allergenPill,
-                                    isUserAllergen
-                                      ? styles.allergenPillUser
-                                      : styles.allergenPillOther,
-                                  ]}
-                                >
-                                  <Text style={styles.allergenPillText}>{name}</Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                          <Text style={styles.sectionBody}>{derivedAllergenDetail}</Text>
-                        </View>
+                        {!isAnalysisLoading && !analysis && (
+                          <Text style={styles.verdictBodyText}>
+                            Analysis not available yet. Tap “Show analysis…” to try again.
+                          </Text>
+                        )}
 
-                        {/* 2) FODMAP row */}
-                        <View style={styles.sectionBlock}>
-                          <View style={styles.sectionHeaderRow}>
-                            <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
-                            <View style={styles.chipContainer}>
-                              <Text
-                                style={[styles.chipSmall, getSeverityChipStyle(derivedFodmapSeverity)]}
-                              >
-                                {derivedFodmapSeverity}
-                              </Text>
-                            </View>
-                          </View>
-                          <Text style={styles.sectionBody}>{derivedFodmapDetail}</Text>
-                        </View>
+                        {!isAnalysisLoading && analysis && !analysis.ok && (
+                          <Text style={styles.verdictBodyText}>
+                            Analysis failed or is unavailable for this dish.
+                          </Text>
+                        )}
 
-                        {/* 3) Organ impact grid with icons */}
-                        <View style={styles.organSection}>
-                          <Text style={styles.sectionTitle}>Organ impact</Text>
-                          {(() => {
-                            const firstRow = orderedOrgans.slice(0, 4);
-                            const secondRow = orderedOrgans.slice(4);
-                            return (
-                              <View style={styles.organGrid}>
-                                <View style={styles.organRow}>
-                                  {firstRow.map((o) => {
-                                    const iconSource = ORGAN_ICONS[o.key];
-                                    const deltaText = o.delta > 0 ? `+${o.delta}` : `${o.delta}`;
-                                    return (
-                                <View key={o.key} style={styles.organItem}>
-                                  {iconSource && (
-                                    <View style={styles.organIconWrapper}>
-                                      <Image source={iconSource} style={styles.organIcon} />
+                        {!isAnalysisLoading && viewModel && (
+                          <>
+                            {/* 1) Allergens row */}
+                            <View style={styles.sectionBlock}>
+                              <Text style={styles.sectionTitle}>Allergens</Text>
+                              <View style={styles.pillRow}>
+                                {viewModel.allergens.length === 0 && (
+                                  <View style={[styles.allergenPill, styles.allergenPillNeutral]}>
+                                    <Text style={styles.allergenPillText}>None detected</Text>
+                                  </View>
+                                )}
+                                {viewModel.allergens.map((pill) => {
+                                  const isSelected = pill.isUserAllergen;
+                                  return (
+                                    <View
+                                      key={pill.name}
+                                      style={[
+                                        styles.allergenPill,
+                                        isSelected && styles.allergenPillSelected,
+                                      ]}
+                                    >
+                                      <Text
+                                        style={
+                                          isSelected
+                                            ? styles.allergenPillTextSelected
+                                            : styles.allergenPillText
+                                        }
+                                      >
+                                        {pill.name}
+                                      </Text>
                                     </View>
-                                  )}
-                                  <Text style={styles.organDeltaText}>{deltaText}</Text>
-                                  <Text style={styles.organLabel} numberOfLines={1}>
-                                    {ORGAN_LABELS[o.key] ??
-                                      o.key.charAt(0).toUpperCase() + o.key.slice(1)}
+                                  );
+                                })}
+                              </View>
+                              {viewModel.allergenSentence ? (
+                                <Text style={styles.sectionBody}>{viewModel.allergenSentence}</Text>
+                              ) : null}
+                            </View>
+
+                            {/* 2) FODMAP row */}
+                            <View style={styles.sectionBlock}>
+                              <View style={styles.sectionHeaderRow}>
+                                <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
+                              </View>
+                              {viewModel?.fodmapLevel ? (
+                                <View style={styles.fodmapLevelBadge}>
+                                  <Text style={styles.fodmapLevelText}>
+                                    {viewModel.fodmapLevel.toLowerCase()}
                                   </Text>
                                 </View>
-                              );
-                                  })}
-                                </View>
-
-                                <View style={styles.organRow}>
-                                  {secondRow.map((o) => {
-                                    const iconSource = ORGAN_ICONS[o.key];
-                                    const deltaText = o.delta > 0 ? `+${o.delta}` : `${o.delta}`;
-                                    return (
-                                <View key={o.key} style={styles.organItem}>
-                                  {iconSource && (
-                                    <View style={styles.organIconWrapper}>
-                                      <Image source={iconSource} style={styles.organIcon} />
+                              ) : null}
+                              {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
+                                <View style={styles.pillRow}>
+                                  {viewModel.fodmapPills.map((name) => (
+                                    <View key={name} style={styles.fodmapPill}>
+                                      <Text style={styles.fodmapPillText}>{name}</Text>
                                     </View>
-                                  )}
-                                  <Text style={styles.organDeltaText}>{deltaText}</Text>
-                                  <Text style={styles.organLabel} numberOfLines={1}>
-                                    {ORGAN_LABELS[o.key] ??
-                                      o.key.charAt(0).toUpperCase() + o.key.slice(1)}
-                                  </Text>
+                                  ))}
                                 </View>
-                              );
-                                  })}
-                                </View>
-                              </View>
-                            );
-                          })()}
-                          <Text style={styles.organDescription}>{organImpactSummary}</Text>
-                        </View>
+                              ) : null}
+                              {viewModel?.fodmapSentence ? (
+                                <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
+                              ) : null}
+                            </View>
 
-                        {/* 4) Nutrition facts */}
-                        <View style={styles.nutritionSection}>
-                          <Text style={styles.sectionTitle}>Nutrition facts (estimate)</Text>
-                          <View style={styles.nutritionGrid}>
-                            <View style={styles.nutritionTile}>
-                              <Text style={styles.nutritionLabel}>Calories</Text>
-                              <Text style={styles.nutritionValue}>
-                                {nutrition.calories != null ? Math.round(nutrition.calories) : "--"}
-                              </Text>
-                            </View>
-                            <View style={styles.nutritionTile}>
-                              <Text style={styles.nutritionLabel}>Protein</Text>
-                              <Text style={styles.nutritionValue}>
-                                {nutrition.protein != null ? `${nutrition.protein} g` : "--"}
-                              </Text>
-                            </View>
-                            <View style={styles.nutritionTile}>
-                              <Text style={styles.nutritionLabel}>Carbs</Text>
-                              <Text style={styles.nutritionValue}>
-                                {nutrition.carbs != null ? `${nutrition.carbs} g` : "--"}
-                              </Text>
-                            </View>
-                            <View style={styles.nutritionTile}>
-                              <Text style={styles.nutritionLabel}>Fat</Text>
-                              <Text style={styles.nutritionValue}>
-                                {nutrition.fat != null ? `${nutrition.fat} g` : "--"}
-                              </Text>
+                          {/* 3) Organ impact list */}
+                          <View style={styles.organSection}>
+                            <Text style={styles.sectionTitle}>Organ impact</Text>
+                            <View style={styles.organListCard}>
+                              {viewModel.organLines.map((line, idx) => {
+                                const organKey = line.organKey.toLowerCase();
+                                const iconSource =
+                                  ORGAN_ICONS[organKey as keyof typeof ORGAN_ICONS];
+                                const isLast = idx === viewModel.organLines.length - 1;
+                                return (
+                                  <View
+                                    key={line.organKey}
+                                    style={[
+                                      styles.organImpactRow,
+                                      !isLast && styles.organRowDividerCompact,
+                                    ]}
+                                  >
+                                    <View style={styles.organIconBox}>
+                                      {iconSource ? (
+                                        <Image source={iconSource} style={styles.organImpactIcon} />
+                                      ) : (
+                                        <Text style={{ color: "#fff" }}>
+                                          {line.organLabel?.[0] || "O"}
+                                        </Text>
+                                      )}
+                                    </View>
+                                    <View style={styles.organImpactContent}>
+                                      <View style={styles.organHeaderLine}>
+                                        <Text style={styles.organName}>{line.organLabel}</Text>
+                                        <View
+                                          style={[
+                                            styles.organBadge,
+                                            organSeverityStyle(line.severity),
+                                          ]}
+                                        >
+                                          <Text style={styles.organBadgeText}>
+                                            {organSeverityLabel(line.severity)}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                      <Text style={styles.organEffect} numberOfLines={2}>
+                                        {line.sentence || "Organ impact details to follow."}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
                             </View>
                           </View>
-                        </View>
-                      </>
-                    )}
+
+                            {/* 4) Nutrition facts */}
+                            <View style={styles.nutritionSection}>
+                              <Text style={styles.sectionTitle}>Nutrition facts (estimate)</Text>
+                              <View style={styles.nutritionGrid}>
+                                <View style={styles.nutritionTile}>
+                                  <Text style={styles.nutritionLabel}>Calories</Text>
+                                  <Text style={styles.nutritionValue}>
+                                    {viewModel.nutrition.calories != null
+                                      ? Math.round(viewModel.nutrition.calories)
+                                      : "--"}
+                                  </Text>
+                                </View>
+                                <View style={styles.nutritionTile}>
+                                  <Text style={styles.nutritionLabel}>Protein</Text>
+                                  <Text style={styles.nutritionValue}>
+                                    {viewModel.nutrition.protein != null
+                                      ? `${Math.round(viewModel.nutrition.protein)} g`
+                                      : "--"}
+                                  </Text>
+                                </View>
+                                <View style={styles.nutritionTile}>
+                                  <Text style={styles.nutritionLabel}>Carbs</Text>
+                                  <Text style={styles.nutritionValue}>
+                                    {viewModel.nutrition.carbs != null
+                                      ? `${Math.round(viewModel.nutrition.carbs)} g`
+                                      : "--"}
+                                  </Text>
+                                </View>
+                                <View style={styles.nutritionTile}>
+                                  <Text style={styles.nutritionLabel}>Fat</Text>
+                                  <Text style={styles.nutritionValue}>
+                                    {viewModel.nutrition.fat != null
+                                      ? `${Math.round(viewModel.nutrition.fat)} g`
+                                      : "--"}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                          </>
+                        )}
 
                     {/* Buttons */}
                     <View style={styles.buttonRow}>
@@ -667,7 +692,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     fontWeight: "600",
-    color: "#9ca3af",
+    color: TEAL,
   },
   verdictTitle: {
     marginTop: 14,
@@ -810,6 +835,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginRight: 4,
     marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "#4b5563",
   },
   allergenPillText: {
     fontSize: 11,
@@ -817,13 +844,56 @@ const styles = StyleSheet.create({
     color: "#020617",
   },
   allergenPillUser: {
-    backgroundColor: "#ef4444",
+    backgroundColor: "#F97373",
+    borderColor: "#F97373",
   },
   allergenPillOther: {
     backgroundColor: "#4b5563",
   },
   allergenPillNeutral: {
     backgroundColor: "#374151",
+  },
+  allergenPillSelected: {
+    backgroundColor: "#F97373",
+    borderColor: "#F97373",
+  },
+  allergenPillTextSelected: {
+    color: "#0B1120",
+    fontWeight: "600",
+  },
+  pillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  fodmapLevelBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#6B7280",
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  fodmapLevelText: {
+    color: "#F9FAFB",
+    fontWeight: "600",
+    fontSize: 12,
+    textTransform: "capitalize",
+  },
+  fodmapPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#4B5563",
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  fodmapPillText: {
+    color: "#E5E7EB",
+    fontSize: 13,
   },
   chipSmall: {
     paddingHorizontal: 8,
@@ -836,50 +906,80 @@ const styles = StyleSheet.create({
   organSection: {
     marginTop: 10,
   },
-  organGrid: {
+  organListCard: {
     marginTop: 8,
+    backgroundColor: "#0f172a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1f2937",
   },
-  organRow: {
+  organImpactRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148,163,184,0.3)",
+  },
+  organRowDividerCompact: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+  },
+  organIconBox: {
+    marginRight: 12,
+    marginTop: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  organImpactIcon: {
+    width: 32,
+    height: 32,
+    resizeMode: "contain",
+  },
+  organImpactContent: {
+    flex: 1,
+  },
+  organHeaderLine: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 2,
   },
-  organItem: {
-    width: "23%",
-    alignItems: "center",
-  },
-  organIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  organIcon: {
-    width: 36,
-    height: 36,
-    resizeMode: "contain",
-  },
-  organDeltaText: {
-    marginTop: 2,
-    fontSize: 10,
+  organName: {
+    color: "#fefefe",
     fontWeight: "700",
-    color: "#ffffff",
-    textAlign: "center",
+    fontSize: 16,
   },
-  organLabel: {
-    marginTop: 1,
-    fontSize: 11,
-    color: "#9ca3af",
-    textAlign: "center",
+  organBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
   },
-  organDescription: {
-    marginTop: 4,
+  organBadgeText: {
+    color: "#0B1120",
+    fontWeight: "600",
+    fontSize: 12,
+    textTransform: "lowercase",
+  },
+  organBadgeLow: {
+    backgroundColor: "#14B8A6",
+  },
+  organBadgeMedium: {
+    backgroundColor: "#F97316",
+  },
+  organBadgeHigh: {
+    backgroundColor: "#EF4444",
+  },
+  organBadgeNeutral: {
+    backgroundColor: "#6B7280",
+  },
+  organEffect: {
+    color: "#cbd5e1",
     fontSize: 13,
-    color: "#9ca3af",
+    lineHeight: 17,
   },
   nutritionSection: {
     marginTop: 10,

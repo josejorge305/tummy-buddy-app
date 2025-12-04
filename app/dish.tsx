@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { analyzeDish } from '../api/api';
+import { analyzeDish, AnalyzeDishResponse } from '../api/api';
 import BrainIcon from '../assets/images/brain_icon.png';
 import GutIcon from '../assets/images/Gut_icon.png';
 import HeartIcon from '../assets/images/heart_icon.png';
@@ -17,6 +17,8 @@ import ImmuneIcon from '../assets/images/Inmune_Icon.png';
 import KidneyIcon from '../assets/images/kidney_icon.png';
 import LiverIcon from '../assets/images/Liver_icon.png';
 import MetabolicIcon from '../assets/images/Metabolic_Icon.png';
+import { buildDishViewModel } from './utils/dishViewModel';
+import { useUserPrefs } from '../context/UserPrefsContext';
 
 const TB_SAFE_BG = 'rgba(0, 200, 160, 0.16)';
 const TB_SAFE_BORDER = '#00C8A0';
@@ -263,8 +265,9 @@ export default function DishScreen() {
 
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const { selectedAllergens } = useUserPrefs();
   const [analysisDebug, setAnalysisDebug] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<any | null>(null);
+  const [analysis, setAnalysis] = useState<AnalyzeDishResponse | null>(null);
 
   useEffect(() => {
     const runAnalysis = async () => {
@@ -278,6 +281,9 @@ export default function DishScreen() {
         const res = await analyzeDish({
           dishName,
           restaurantName,
+          description: dishDescription,
+          menuSection: dishSection,
+          priceText: dishPrice,
           imageUrl: dishImageUrl,
         });
 
@@ -294,164 +300,42 @@ export default function DishScreen() {
     runAnalysis();
   }, [dishName, restaurantName]);
 
-  // ---- derived fields from pipeline analysis ----
-  const organsBlock = analysis?.organs;
+  const analysisViewModel =
+    analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
 
-  // Insight lines (we'll use these as human-readable explanations)
-  const organNarrative = organsBlock?.insight_lines || [];
-  const organDetails: any[] = Array.isArray(organsBlock?.organs)
-    ? (organsBlock?.organs as any[])
-    : [];
-
-  // Flags contain allergen + FODMAP hints.
-  const flags = organsBlock?.flags || {};
-
-  // Allergens: from flags.allergens (array of strings like ["milk"])
-  const allergenTypes: string[] = Array.isArray(flags.allergens) ? flags.allergens : [];
-
-  const allergensDetected = allergenTypes.map((type) => ({
-    type,
-    displayName: type.charAt(0).toUpperCase() + type.slice(1),
-    ingredients: [] as string[],
-    matchesProfile: true,
-  }));
-
-  const isUserAllergen = (allergen: any) => {
-    if (!allergen) return false;
-    if (
-      allergen.matchesProfile ||
-      allergen.matchedUserProfile ||
-      allergen.isUserAllergen ||
-      allergen.userFlagged
-    ) {
-      return true;
+  const iconForOrgan = (key: string) => {
+    switch (key) {
+      case 'gut':
+        return GutIcon;
+      case 'liver':
+        return LiverIcon;
+      case 'heart':
+        return HeartIcon;
+      case 'metabolic':
+        return MetabolicIcon;
+      case 'immune':
+        return ImmuneIcon;
+      case 'brain':
+        return BrainIcon;
+      case 'kidney':
+        return KidneyIcon;
+      default:
+        return GutIcon;
     }
-    const type = allergen.type || allergen.displayName;
-    return !!type && allergenTypes.includes(type);
   };
 
-  // FODMAP info: build a small object from flags + insight lines.
-  const fodmapTriggers: { ingredient: string }[] = [];
-  if (flags.onion) fodmapTriggers.push({ ingredient: 'onion' });
-  if (flags.garlic) fodmapTriggers.push({ ingredient: 'garlic' });
-
-  const fodmapExplanation =
-    organNarrative.find((line: string) => line.toLowerCase().includes('fodmap')) || null;
-
-  const fodmapInfo = {
-    score: null as number | null, // no numeric score yet
-    label: flags.fodmap
-      ? flags.fodmap === 'low'
-        ? 'Low IBS stress'
-        : flags.fodmap === 'high'
-        ? 'High IBS stress'
-        : 'FODMAP level unclear'
-      : 'FODMAP level unknown',
-    triggers: fodmapTriggers,
-    explanation: fodmapExplanation,
-  };
-
-  // Nutrition: prefer normalized.nutrition if present, else fall back
-  // to recipe.recipe calories/macros.
-  const toNumber = (value: any) => {
-    if (value == null || value === '') return null;
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-  };
-
-  const pickNumber = (...values: any[]) => {
-    for (const val of values) {
-      const num = toNumber(val);
-      if (num != null) return num;
+  const organSeverityStyle = (severity: 'low' | 'medium' | 'high' | 'neutral') => {
+    switch (severity) {
+      case 'high':
+        return styles.organBadgeHigh;
+      case 'medium':
+        return styles.organBadgeMedium;
+      case 'low':
+        return styles.organBadgeLow;
+      default:
+        return styles.organBadgeNeutral;
     }
-    return null;
   };
-
-  const extractNutritionFromAnalysis = (analysisData: any) => {
-    if (!analysisData) return null;
-
-    // Normalize possible nutrition shapes coming from the pipeline.
-    const normalized =
-      (analysisData as any)?.normalized?.nutrition ||
-      (analysisData as any)?.normalized?.macro_nutrients ||
-      (analysisData as any)?.nutrition ||
-      null;
-
-    const recipeBlock = (analysisData as any)?.recipe;
-    const recipeData = (recipeBlock as any)?.recipe || recipeBlock || {};
-    const totalNutrients =
-      (recipeData as any)?.totalNutrients || (recipeBlock as any)?.totalNutrients;
-    const macros = (recipeData as any)?.macros || (recipeBlock as any)?.macros;
-
-    const macroFromNormalized = (key: string) =>
-      pickNumber(
-        normalized?.[key],
-        normalized?.[`${key}_g`],
-        normalized?.macros?.[key],
-        normalized?.macros?.[`${key}_g`],
-        normalized?.per_serving?.[key],
-        normalized?.per_serving?.[`${key}_g`],
-        normalized?.nutrients?.[key],
-        normalized?.nutrients?.[`${key}_g`]
-      );
-
-    const fromTotal = (code: string) =>
-      pickNumber(
-        (totalNutrients as any)?.[code]?.perServing,
-        (totalNutrients as any)?.[code]?.quantity
-      );
-
-    const result = {
-      calories: pickNumber(
-        macroFromNormalized('calories'),
-        macroFromNormalized('energy'),
-        (analysisData as any)?.calories,
-        (recipeData as any)?.calories,
-        macros?.calories,
-        fromTotal('ENERC_KCAL')
-      ),
-      protein_g: pickNumber(
-        macroFromNormalized('protein'),
-        macroFromNormalized('protein_g'),
-        (analysisData as any)?.protein,
-        macros?.protein,
-        fromTotal('PROCNT')
-      ),
-      carbs_g: pickNumber(
-        macroFromNormalized('carbs'),
-        macroFromNormalized('carbohydrates'),
-        (analysisData as any)?.carbs,
-        macros?.carbs,
-        fromTotal('CHOCDF')
-      ),
-      fat_g: pickNumber(
-        macroFromNormalized('fat'),
-        macroFromNormalized('fat_g'),
-        (analysisData as any)?.fat,
-        macros?.fat,
-        fromTotal('FAT')
-      ),
-      fiber_g: pickNumber(
-        macroFromNormalized('fiber'),
-        macroFromNormalized('fiber_g'),
-        macros?.fiber,
-        fromTotal('FIBTG')
-      ),
-      sugar_g: pickNumber(
-        macroFromNormalized('sugar'),
-        macroFromNormalized('sugars'),
-        macroFromNormalized('sugar_g'),
-        macroFromNormalized('sugars_g'),
-        macros?.sugar,
-        macros?.sugars,
-        fromTotal('SUGAR')
-      ),
-    };
-
-    return Object.values(result).some((v) => v != null) ? result : null;
-  };
-
-  const nutrition = extractNutritionFromAnalysis(analysis);
 
   // Likely recipe: inner recipe object from analysis.recipe or
   // analysis.likely_recipe.
@@ -941,41 +825,70 @@ export default function DishScreen() {
       {/* Organ impact */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Organ impact</Text>
-        {organRows.map((row, idx) => {
-          const { badge, effect, tone } = getOrganTexts(row);
-          const isLast = idx === organRows.length - 1;
-          return (
-            <View key={row.key} style={[styles.organImpactRow, !isLast && styles.organRowDivider]}>
-              <View style={styles.organIconBox}>
-                <Image source={row.icon} style={styles.organImpactIcon} />
-              </View>
-              <View style={styles.organImpactContent}>
-                <View style={styles.organHeaderLine}>
-                  <Text style={styles.organName}>{row.label}</Text>
-                  <View
-                    style={[
-                      styles.organBadge,
-                      badge === 'No data'
-                        ? styles.organBadgeNoData
-                        : { backgroundColor: toneColors[tone] || toneColors.neutral },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.organBadgeText,
-                        tone === 'unsafe' && styles.verdictPillTextOnDark,
-                        badge === 'No data' && styles.organBadgeTextNoData,
-                      ]}
-                    >
-                      {badge}
+        {analysisViewModel
+          ? analysisViewModel.organLines.map((line, idx) => {
+              const iconSource = iconForOrgan(line.organKey);
+              const isLast = idx === analysisViewModel.organLines.length - 1;
+              return (
+                <View
+                  key={line.organKey}
+                  style={[styles.organImpactRow, !isLast && styles.organRowDivider]}
+                >
+                  <View style={styles.organIconBox}>
+                    <Image source={iconSource} style={styles.organImpactIcon} />
+                  </View>
+                  <View style={styles.organImpactContent}>
+                    <View style={styles.organHeaderLine}>
+                      <Text style={styles.organName}>{line.organLabel}</Text>
+                      <View style={[styles.organBadge, organSeverityStyle(line.severity)]}>
+                        <Text style={styles.organBadgeText}>{line.severity}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.organEffect}>
+                      {line.sentence || 'Organ impact details to follow.'}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.organEffect}>{effect}</Text>
-              </View>
-            </View>
-          );
-        })}
+              );
+            })
+          : organRows.map((row, idx) => {
+              const { badge, effect, tone } = getOrganTexts(row);
+              const isLast = idx === organRows.length - 1;
+              return (
+                <View
+                  key={row.key}
+                  style={[styles.organImpactRow, !isLast && styles.organRowDivider]}
+                >
+                  <View style={styles.organIconBox}>
+                    <Image source={row.icon} style={styles.organImpactIcon} />
+                  </View>
+                  <View style={styles.organImpactContent}>
+                    <View style={styles.organHeaderLine}>
+                      <Text style={styles.organName}>{row.label}</Text>
+                      <View
+                        style={[
+                          styles.organBadge,
+                          badge === 'No data'
+                            ? styles.organBadgeNoData
+                            : { backgroundColor: toneColors[tone] || toneColors.neutral },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.organBadgeText,
+                            tone === 'unsafe' && styles.verdictPillTextOnDark,
+                            badge === 'No data' && styles.organBadgeTextNoData,
+                          ]}
+                        >
+                          {badge}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.organEffect}>{effect}</Text>
+                  </View>
+                </View>
+              );
+            })}
       </View>
 
       {/* Nutrition facts */}
@@ -987,39 +900,49 @@ export default function DishScreen() {
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Calories</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.calories != null ? Math.round(nutrition.calories) : '—'}
+              {analysisViewModel?.nutrition.calories != null
+                ? Math.round(analysisViewModel.nutrition.calories)
+                : '—'}
             </Text>
           </View>
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Protein</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.protein_g != null
-                ? `${Math.round(nutrition.protein_g)} g`
+              {analysisViewModel?.nutrition.protein != null
+                ? `${Math.round(analysisViewModel.nutrition.protein)} g`
                 : '—'}
             </Text>
           </View>
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Carbs</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.carbs_g != null ? `${Math.round(nutrition.carbs_g)} g` : '—'}
+              {analysisViewModel?.nutrition.carbs != null
+                ? `${Math.round(analysisViewModel.nutrition.carbs)} g`
+                : '—'}
             </Text>
           </View>
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Fat</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.fat_g != null ? `${Math.round(nutrition.fat_g)} g` : '—'}
+              {analysisViewModel?.nutrition.fat != null
+                ? `${Math.round(analysisViewModel.nutrition.fat)} g`
+                : '—'}
             </Text>
           </View>
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Fiber</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.fiber_g != null ? `${Math.round(nutrition.fiber_g)} g` : '—'}
+              {analysisViewModel?.nutrition.fiber != null
+                ? `${Math.round(analysisViewModel.nutrition.fiber)} g`
+                : '—'}
             </Text>
           </View>
           <View style={styles.nutritionTile}>
             <Text style={styles.nutritionLabel}>Sugar</Text>
             <Text style={styles.nutritionValue}>
-              {nutrition && nutrition.sugar_g != null ? `${Math.round(nutrition.sugar_g)} g` : '—'}
+              {analysisViewModel?.nutrition.sugar != null
+                ? `${Math.round(analysisViewModel.nutrition.sugar)} g`
+                : '—'}
             </Text>
           </View>
         </View>
@@ -1031,39 +954,54 @@ export default function DishScreen() {
 
         <Text style={styles.subheading}>Allergens</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
-          {allergensDetected.length === 0 ? (
-            <Text style={styles.infoText}>No common allergens detected.</Text>
+          {analysisViewModel ? (
+            analysisViewModel.allergens.length === 0 ? (
+              <Text style={styles.infoText}>No common allergens detected.</Text>
+            ) : (
+              analysisViewModel.allergens.map((pill) => {
+                const isSelected = pill.isUserAllergen;
+                return (
+                  <View
+                    key={pill.name}
+                    style={[styles.allergenChip, isSelected && styles.allergenChipAlert]}
+                  >
+                    <Text
+                      style={[
+                        styles.allergenChipText,
+                        isSelected && styles.allergenChipTextAlert,
+                      ]}
+                    >
+                      {pill.name}
+                    </Text>
+                  </View>
+                );
+              })
+            )
           ) : (
-            allergensDetected.map((allergen: any, idx: number) => (
-              <View
-                key={allergen.type || allergen.displayName || idx}
-                style={[styles.allergenChip, isUserAllergen(allergen) && styles.allergenChipAlert]}
-              >
-                <Text
-                  style={[
-                    styles.allergenChipText,
-                    isUserAllergen(allergen) && styles.allergenChipTextAlert,
-                  ]}
-                >
-                  {allergen.displayName || allergen.type}
-                </Text>
-              </View>
-            ))
+            <Text style={styles.infoText}>No common allergens detected.</Text>
           )}
         </View>
-
-        {allergensDetected.some(
-          (a: any) => Array.isArray(a.ingredients) && a.ingredients.length > 0
-        ) && (
-          <Text style={[styles.infoText, { marginTop: 8 }]}>
-            Ingredients: {allergensDetected.flatMap((a: any) => a.ingredients || []).join(', ')}
-          </Text>
-        )}
 
         <View style={[styles.divider, { marginVertical: 12 }]} />
 
         <Text style={styles.subheading}>FODMAP / IBS Impact</Text>
-        <Text style={[styles.infoText, { marginTop: 6 }]}>{fodmapVerdict.description}</Text>
+        {analysisViewModel?.fodmapLevel ? (
+          <Text style={[styles.infoText, { marginTop: 4 }]}>
+            Level: {analysisViewModel.fodmapLevel}
+          </Text>
+        ) : null}
+        {analysisViewModel?.fodmapPills && analysisViewModel.fodmapPills.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
+            {analysisViewModel.fodmapPills.map((pill) => (
+              <View key={pill} style={[styles.allergenChip, styles.allergenChip]}>
+                <Text style={styles.allergenChipText}>{pill}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <Text style={[styles.infoText, { marginTop: 6 }]}>
+          {analysisViewModel?.fodmapSentence || fodmapVerdict.description}
+        </Text>
       </View>
 
       {/* Likely recipe */}
@@ -1419,6 +1357,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 999,
+  },
+  organBadgeLow: {
+    backgroundColor: '#10B981',
+  },
+  organBadgeMedium: {
+    backgroundColor: '#F97316',
+  },
+  organBadgeHigh: {
+    backgroundColor: '#EF4444',
+  },
+  organBadgeNeutral: {
+    backgroundColor: '#6B7280',
   },
   organBadgeNoData: {
     paddingHorizontal: 7,

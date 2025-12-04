@@ -25,6 +25,7 @@ import {
   PlaceSuggestion,
 } from '../../api/places';
 import { API_BASE_URL } from '../../api/api';
+import { useUserPrefs } from '../../context/UserPrefsContext';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -98,7 +99,7 @@ export default function HomeScreen() {
   const router = useRouter();
 
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
+  const { selectedAllergens, setSelectedAllergens } = useUserPrefs();
   const [selectedOrgans, setSelectedOrgans] = useState<string[]>(['Gut']);
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('restaurant');
@@ -126,11 +127,14 @@ export default function HomeScreen() {
     selectedList: string[],
     setSelected: (value: string[]) => void
   ) => {
-    setSelected(
-      selectedList.includes(pill)
-        ? selectedList.filter((p) => p !== pill)
-        : [...selectedList, pill]
-    );
+    setSelected((prev) => {
+      const lower = prev.map((p) => p.toLowerCase());
+      const exists = lower.includes(pill.toLowerCase());
+      if (exists) {
+        return prev.filter((p) => p.toLowerCase() !== pill.toLowerCase());
+      }
+      return [...prev, pill];
+    });
   };
 
   const handleSearchSubmit = async () => {
@@ -302,11 +306,32 @@ export default function HomeScreen() {
 
   const openRestaurant = () => {
     if (selectedPlace) {
+      const address =
+        (selectedPlace as any).address ||
+        (selectedPlace as any).formatted_address ||
+        selectedPlace.description ||
+        '';
+
+      const lat =
+        (selectedPlace as any).lat ??
+        (selectedPlace as any).latitude ??
+        (selectedPlace as any).location?.lat ??
+        (selectedPlace as any).geometry?.location?.lat;
+
+      const lng =
+        (selectedPlace as any).lng ??
+        (selectedPlace as any).longitude ??
+        (selectedPlace as any).location?.lng ??
+        (selectedPlace as any).geometry?.location?.lng;
+
       router.push({
         pathname: '/restaurant',
         params: {
           placeId: selectedPlace.placeId,
           restaurantName: selectedPlace.description,
+          address,
+          ...(lat != null ? { lat: String(lat) } : {}),
+          ...(lng != null ? { lng: String(lng) } : {}),
         },
       });
     } else {
@@ -637,7 +662,9 @@ export default function HomeScreen() {
             <Text style={styles.subSectionTitle}>Allergens & FODMAP</Text>
             <View style={styles.pillsRow}>
               {ALLERGEN_PILLS.map((pill) => {
-                const isSelected = selectedAllergens.includes(pill);
+                const isSelected = selectedAllergens
+                  .map((a) => a.toLowerCase())
+                  .includes(pill.toLowerCase());
                 return (
                   <TouchableOpacity
                     key={pill}
@@ -838,9 +865,33 @@ export default function HomeScreen() {
                         <Pressable
                           style={styles.viewRestaurantButton}
                           onPress={() => {
+                            const address =
+                              (item as any).address ||
+                              (item as any).formattedAddress ||
+                              (item as any).vicinity ||
+                              '';
+
+                            const lat =
+                              (item as any).lat ??
+                              (item as any).latitude ??
+                              (item as any).location?.lat ??
+                              (item as any).geometry?.location?.lat;
+
+                            const lng =
+                              (item as any).lng ??
+                              (item as any).longitude ??
+                              (item as any).location?.lng ??
+                              (item as any).geometry?.location?.lng;
+
                             router.push({
                               pathname: '/restaurant',
-                              params: { placeId: item.placeId, restaurantName: item.name },
+                              params: {
+                                placeId: item.placeId,
+                                restaurantName: item.name,
+                                address,
+                                ...(lat != null ? { lat: String(lat) } : {}),
+                                ...(lng != null ? { lng: String(lng) } : {}),
+                              },
                             });
                           }}
                         >

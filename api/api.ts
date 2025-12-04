@@ -6,6 +6,79 @@ const DISH_API_BASE = API_BASE_URL;
 
 const GATEWAY_BASE_URL = API_BASE_URL;
 
+export interface DishTummyBarometer {
+  score: number | null | undefined;
+  label: string | null | undefined;
+}
+
+export interface DishKeyFlags {
+  allergens: string[];
+  fodmapLevel: string | null;
+  lactoseLevel: string | null;
+  onionGarlic: boolean;
+  spicy: boolean;
+  alcohol: boolean;
+}
+
+export interface DishOrganSummaryEntry {
+  organ: string | null;
+  score: number | null;
+  level: string | null;
+}
+
+export interface DishSummary {
+  tummyBarometer: DishTummyBarometer;
+  organs: DishOrganSummaryEntry[];
+  keyFlags: DishKeyFlags;
+}
+
+export interface DishOrganFlags {
+  allergens?: { kind?: string; message?: string; source?: string }[];
+  fodmap?: { level?: string; reason?: string; source?: string };
+  lactose?: { level?: string; reason?: string; milk_source?: string | null };
+  onion_garlic?: boolean;
+  spicy?: boolean;
+  alcohol?: boolean;
+}
+
+export interface DishOrgansBlock {
+  ok?: boolean;
+  tummy_barometer?: DishTummyBarometer;
+  organs?: { organ?: string; score?: number; level?: string }[];
+  flags?: DishOrganFlags;
+  debug?: any;
+}
+
+export interface DishNormalizedBlock {
+  ok: boolean;
+  source: string | null;
+  cache: boolean;
+  items: any[];
+  ingredients_lines: string[];
+  ingredients_parsed: any | null;
+}
+
+export interface AnalyzeDishResponse {
+  ok: boolean;
+  apiVersion?: string;
+  source?: string;
+  dishName?: string;
+  restaurantName?: string;
+  summary?: DishSummary | null;
+  recipe?: any;
+  normalized?: DishNormalizedBlock;
+  organs?: DishOrgansBlock;
+  debug?: any;
+  error?: string;
+}
+
+export interface AnalyzeDishCardResponse {
+  apiVersion: string;
+  dishName: string | null;
+  restaurantName: string | null;
+  summary: DishSummary | null;
+}
+
 async function apiGet(fullUrl: string) {
   console.log("Calling API GET:", fullUrl);
 
@@ -94,11 +167,7 @@ export async function fetchMenu(placeId: string) {
 }
 
 // NEW: dish analysis from dish-processor
-export async function analyzeDish(payload: {
-  dishName: string;
-  restaurantName?: string;
-  userFlags?: any;
-}) {
+export async function analyzeDish(payload: any): Promise<AnalyzeDishResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish`;
   console.log("TB analyzeDish calling:", url, "with", payload);
 
@@ -123,7 +192,7 @@ export async function analyzeDish(payload: {
       fodmap: {},
       insights: ["Analysis temporarily unavailable."],
       _raw: raw,
-    };
+    } as unknown as AnalyzeDishResponse;
   }
 
   try {
@@ -132,7 +201,7 @@ export async function analyzeDish(payload: {
       "TB analyzeDish JSON keys:",
       data && typeof data === "object" ? Object.keys(data) : typeof data,
     );
-    return data;
+    return data as AnalyzeDishResponse;
   } catch (e: any) {
     console.error(
       "TB analyzeDish JSON.parse failed:",
@@ -146,6 +215,34 @@ export async function analyzeDish(payload: {
       fodmap: {},
       insights: ["Analysis response was not valid JSON."],
       _raw: raw,
-    };
+    } as unknown as AnalyzeDishResponse;
+  }
+}
+
+export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResponse> {
+  const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish/card`;
+  console.log("TB analyzeDishCard calling:", url, "with", payload);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const raw = await res.text();
+  console.log("TB analyzeDishCard raw snippet:", raw.slice(0, 200));
+
+  if (!res.ok) {
+    throw new Error(`analyzeDishCard HTTP error: ${res.status} ${raw.slice(0, 120)}`);
+  }
+
+  try {
+    const data = JSON.parse(raw);
+    return data as AnalyzeDishCardResponse;
+  } catch (e: any) {
+    console.error("TB analyzeDishCard JSON.parse failed:", e?.message || String(e));
+    throw e;
   }
 }

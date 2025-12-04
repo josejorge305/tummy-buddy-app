@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Switch,
 } from 'react-native';
+import { useUserPrefs } from '../../context/UserPrefsContext';
 
 const ALLERGEN_PILLS = [
   'Gluten',
@@ -27,23 +28,19 @@ const ALLERGEN_PILLS = [
 const ORGAN_PILLS = ['Gut', 'Liver', 'Heart', 'Brain', 'Kidney', 'Immune'];
 
 export default function ProfileScreen() {
-  const [selectedAllergens, setSelectedAllergens] = useState<string[]>([
-    'Gluten',
-    'High FODMAP',
-  ]);
-  const [selectedOrgans, setSelectedOrgans] = useState<string[]>(['Gut', 'Heart']);
-  const [isPro, setIsPro] = useState(true);
+  const { selectedAllergens, setSelectedAllergens } = useUserPrefs();
+  const [selectedOrgans, setSelectedOrgans] = React.useState<string[]>(['Gut', 'Heart']);
+  const [isPro, setIsPro] = React.useState(true);
 
-  const togglePill = (
-    pill: string,
-    selectedList: string[],
-    setSelected: (v: string[]) => void
-  ) => {
-    setSelected(
-      selectedList.includes(pill)
-        ? selectedList.filter((p) => p !== pill)
-        : [...selectedList, pill]
-    );
+  const toggleAllergen = (name: string) => {
+    setSelectedAllergens((prev) => {
+      const lower = prev.map((p) => p.toLowerCase());
+      const exists = lower.includes(name.toLowerCase());
+      if (exists) {
+        return prev.filter((a) => a.toLowerCase() !== name.toLowerCase());
+      }
+      return [...prev, name];
+    });
   };
 
   return (
@@ -74,14 +71,14 @@ export default function ProfileScreen() {
         <Text style={styles.subSectionTitle}>Allergens & FODMAP</Text>
         <View style={styles.pillsRow}>
           {ALLERGEN_PILLS.map((pill) => {
-            const selected = selectedAllergens.includes(pill);
+            const selected = selectedAllergens
+              .map((a) => a.toLowerCase())
+              .includes(pill.toLowerCase());
             return (
               <TouchableOpacity
                 key={pill}
                 style={[styles.pill, selected && styles.pillSelected]}
-                onPress={() =>
-                  togglePill(pill, selectedAllergens, setSelectedAllergens)
-                }
+                onPress={() => toggleAllergen(pill)}
               >
                 <Text
                   style={[
