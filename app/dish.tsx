@@ -248,26 +248,51 @@ export default function DishScreen() {
   const params = useLocalSearchParams<{
     dishId?: string;
     dishName?: string;
+    itemName?: string;
     dishDescription?: string;
+    description?: string;
+    menuDescription?: string;
     dishSection?: string;
+    sectionName?: string;
     dishPrice?: string;
+    price?: string;
     restaurantName?: string;
     dishImageUrl?: string;
   }>();
 
-  const dishName = (params.dishName as string) || 'Dish';
-  const restaurantName = (params.restaurantName as string) || 'Restaurant';
-  const dishSection = (params.dishSection as string) || '';
-  const dishPrice = (params.dishPrice as string) || '';
-  const dishDescriptionRaw = (params.dishDescription as string) || '';
-  const dishDescription = stripCalories(dishDescriptionRaw);
-  const dishImageUrl = params.dishImageUrl as string | undefined;
+  const {
+    dishName: dishNameParam,
+    itemName,
+    dishDescription: dishDescriptionParam,
+    description: descriptionParam,
+    menuDescription,
+    dishSection: dishSectionParam,
+    sectionName,
+    dishPrice: dishPriceParam,
+    price,
+    restaurantName: restaurantNameParam,
+    dishImageUrl,
+  } = params;
+
+  const dishName = (dishNameParam as string) || (itemName as string) || 'Dish';
+  const restaurantName = (restaurantNameParam as string) || 'Restaurant';
+  const dishSection = (dishSectionParam as string) || (sectionName as string) || '';
+  const dishPrice = (dishPriceParam as string) || (price as string) || '';
 
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const { selectedAllergens } = useUserPrefs();
   const [analysisDebug, setAnalysisDebug] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalyzeDishResponse | null>(null);
+
+  const dishDescriptionRaw =
+    (menuDescription as string) ||
+    (dishDescriptionParam as string) ||
+    (descriptionParam as string) ||
+    ((analysis as any)?.recipe as any)?.description ||
+    (analysis as any)?.description ||
+    '';
+  const dishDescription = stripCalories(dishDescriptionRaw);
 
   useEffect(() => {
     const runAnalysis = async () => {
@@ -652,6 +677,7 @@ export default function DishScreen() {
   const preparationText = preparationSteps.length
     ? cleanText(preparationSteps.join(' '))
     : 'We estimate this dish is prepared by combining the main ingredients with a dressing, then serving it with greens or a base of your choice.';
+  const descriptionText = dishDescription;
 
   const heroImageUrl =
     // Tier 1: backend final image (Uber > restaurant > recipe)
@@ -693,18 +719,14 @@ export default function DishScreen() {
       <View style={styles.titleBlock}>
         <Text style={styles.dishName}>{dishName}</Text>
         {restaurantName ? <Text style={styles.restaurantName}>{restaurantName}</Text> : null}
+        {descriptionText ? (
+          <Text style={styles.dishDescription}>{descriptionText}</Text>
+        ) : null}
       </View>
 
       {/* Hero image */}
       <View className="heroImageWrapper" style={styles.heroImageWrapper}>
         <Image style={styles.heroImage} source={{ uri: heroImageUrl }} resizeMode="cover" />
-      </View>
-
-      {/* Description and quick actions */}
-      <View style={[styles.titleBlock, { marginTop: 12 }]}>
-        {dishDescription ? (
-          <Text style={[styles.subMetaText, { marginTop: 0 }]}>{dishDescription}</Text>
-        ) : null}
       </View>
 
       {/* Safety Verdict */}
@@ -798,14 +820,34 @@ export default function DishScreen() {
                 Overall
               </Text>
             </View>
-          </View>
-          <Text style={styles.infoText}>{overallVerdictText}</Text>
         </View>
+        <Text style={styles.infoText}>{overallVerdictText}</Text>
       </View>
 
-      <TouchableOpacity style={[styles.swapButton, { marginTop: 16, marginBottom: 12 }]}>
-        <Text style={styles.swapButtonText}>Suggest safer swaps</Text>
-      </TouchableOpacity>
+      {analysisViewModel && (
+        <View style={styles.dietTagsSection}>
+          <Text style={styles.dietTagsTitle}>Diet & lifestyle</Text>
+
+          {analysisViewModel.dietTags && analysisViewModel.dietTags.length > 0 ? (
+            <View style={styles.dietTagsRow}>
+              {analysisViewModel.dietTags.map((label) => (
+                <View key={label} style={styles.dietTagChip}>
+                  <Text style={styles.dietTagText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.dietTagsEmptyText}>
+              No specific diet or lifestyle tags available for this dish yet.
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+
+    <TouchableOpacity style={[styles.swapButton, { marginTop: 16, marginBottom: 12 }]}>
+      <Text style={styles.swapButtonText}>Suggest safer swaps</Text>
+    </TouchableOpacity>
 
       <View style={[styles.titleBlock, { marginTop: 8, marginBottom: 12 }]}>
         <View style={styles.headerActionsRow}>
@@ -1135,6 +1177,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fefefe',
   },
+  dishDescription: {
+    marginTop: 6,
+    fontSize: 16,
+    lineHeight: 22,
+    color: 'rgba(255,255,255,0.75)',
+  },
   restaurantName: {
     fontSize: 14,
     color: '#aaa',
@@ -1412,6 +1460,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fefefe',
+  },
+  dietTagsSection: {
+    marginTop: 12,
+  },
+  dietTagsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fefefe',
+    marginBottom: 4,
+  },
+  dietTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dietTagChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  dietTagText: {
+    fontSize: 12,
+    color: '#ffffff',
+  },
+  dietTagsEmptyText: {
+    fontSize: 12,
+    color: '#ffffff',
+    marginTop: 4,
   },
   actionsRow: {
     flexDirection: 'row',

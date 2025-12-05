@@ -17,6 +17,7 @@ export interface DishViewModel {
   fodmapSentence: string | null;
   organLines: DishOrganLine[];
   nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number };
+  dietTags?: string[];
 }
 
 type OrganSeverity = "low" | "medium" | "high" | "neutral";
@@ -104,6 +105,7 @@ export function buildDishViewModel(
   const flags: DishOrganFlags | undefined = organsBlock?.flags;
   const lexDebug = (analysis.debug as any)?.lex_per_ingredient;
   const perIngredients = Array.isArray(lexDebug?.perIngredient) ? lexDebug.perIngredient : [];
+  const dietTags = Array.isArray(summary?.edamamLabels) ? summary?.edamamLabels : [];
 
   const fodmapTriggerSet = new Set<string>();
   for (const entry of perIngredients) {
@@ -151,6 +153,16 @@ export function buildDishViewModel(
     if (!key) continue;
     summaryOrganMap.set(key, { score: o.score ?? null, levelRaw: o.level ?? null });
   }
+  const rawOrgansArray = Array.isArray(analysis.organs?.organs)
+    ? analysis.organs!.organs
+    : [];
+  const rawOrganMap = new Map<string, { reasons: string[] }>();
+  for (const o of rawOrgansArray) {
+    const key = (o as any).organ ? String((o as any).organ).toLowerCase() : "";
+    if (!key) continue;
+    const reasons = Array.isArray((o as any).reasons) ? (o as any).reasons : [];
+    rawOrganMap.set(key, { reasons });
+  }
 
   // 3. Organ lines - always return all canonical organs
   const organLines: DishOrganLine[] = CANONICAL_ORGANS.map(({ key, label }) => {
@@ -158,7 +170,12 @@ export function buildDishViewModel(
     const score = entry.score;
     const levelRaw = entry.levelRaw;
     const severity = severityFromLevel(levelRaw);
-    const sentence = organSentence(label.toLowerCase(), score, severity);
+
+    const llmReasons = rawOrganMap.get(key)?.reasons ?? [];
+    const llmSentence = llmReasons.length ? llmReasons.join(" ") : null;
+    const fallbackSentence = organSentence(label.toLowerCase(), score, severity);
+    const sentence = llmSentence || fallbackSentence;
+
     return {
       organKey: key,
       organLabel: label,
@@ -169,8 +186,13 @@ export function buildDishViewModel(
     };
   });
 
-  // 4. Nutrition from recipe.nutrition_summary if present
-  const ns = (analysis.recipe as any)?.nutrition_summary ?? {};
+  // 4. Nutrition – prefer top-level analysis.nutrition_summary,
+  // then recipe.nutrition_summary, then recipe.out.nutrition_summary.
+  const ns =
+    (analysis as any)?.nutrition_summary ||
+    (analysis.recipe as any)?.nutrition_summary ||
+    (analysis.recipe as any)?.out?.nutrition_summary ||
+    {};
   const nutrition = {
     calories: ns.energyKcal,
     protein: ns.protein_g,
@@ -186,5 +208,6 @@ export function buildDishViewModel(
     fodmapSentence,
     organLines,
     nutrition,
+    dietTags,
   };
 }

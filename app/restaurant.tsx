@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -71,6 +71,8 @@ export default function RestaurantScreen() {
   const router = useRouter();
   const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
   const { selectedAllergens } = useUserPrefs();
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const itemLayouts = useRef<Record<string, number>>({});
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [restaurant, setRestaurant] = useState<MenuResponse["restaurant"] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,7 +139,23 @@ export default function RestaurantScreen() {
           throw new Error(`Request failed with status ${res.status}`);
         }
         const data = await res.json();
-        setMenu(data);
+        const normalizedSections = Array.isArray((data as any)?.sections)
+          ? (data as any).sections.map((section: any) => ({
+              ...section,
+              items: Array.isArray(section?.items)
+                ? section.items.map((item: any) => ({
+                    ...item,
+                    description: item?.description ?? item?.menuDescription ?? "",
+                    menuDescription: item?.menuDescription ?? item?.description ?? "",
+                  }))
+                : [],
+            }))
+          : [];
+
+        setMenu({
+          ...(data as any),
+          sections: normalizedSections,
+        });
         setRestaurant((data as any)?.restaurant ?? null);
       } catch (e: any) {
         console.log("MENU ERROR:", e);
@@ -157,6 +175,21 @@ export default function RestaurantScreen() {
   const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
     if (!itemId) return;
 
+    const scrollToItem = () => {
+      const y = itemLayouts.current[itemId];
+      if (y != null) {
+        scrollViewRef.current?.scrollTo({ y: Math.max(y - 12, 0), animated: true });
+      }
+    };
+
+    const descriptionText =
+      item?.menuDescription ??
+      item?.description ??
+      item?.subtitle ??
+      item?.shortDescription ??
+      item?.rawDescription ??
+      "";
+
     // Collapse if tapping the same expanded item
     if (expandedItemId === itemId) {
       setExpandedItemId(null);
@@ -166,17 +199,19 @@ export default function RestaurantScreen() {
     // If analysis already loaded, just expand
     if (analysisByItemId[itemId]) {
       setExpandedItemId(itemId);
+      scrollToItem();
       return;
     }
 
     setExpandedItemId(itemId);
+    scrollToItem();
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
     try {
       const result = await analyzeDish({
         dishName: item?.name,
         restaurantName: restaurant?.name || restaurantNameValue || restaurantName || null,
-        description: item?.description || "",
+        description: descriptionText,
         menuSection: sectionName || "",
         priceText: item?.priceText || "",
         placeId: placeIdValue || placeId || null,
@@ -253,7 +288,7 @@ export default function RestaurantScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.content}>
           <TouchableOpacity style={styles.backRow} onPress={() => router.push("/")}>
             <Text style={styles.backText}>← Back to home</Text>
           </TouchableOpacity>
@@ -326,9 +361,26 @@ export default function RestaurantScreen() {
                   analysis && analysis.ok
                     ? buildDishViewModel(analysis, selectedAllergens)
                     : null;
+                const descriptionText =
+                  item?.menuDescription ??
+                  item?.description ??
+                  item?.subtitle ??
+                  item?.shortDescription ??
+                  item?.rawDescription ??
+                  "";
+
+                if (item?.name && item.name.toLowerCase().includes("egg mcmuffin")) {
+                  console.log("DEBUG MENU ITEM – Egg McMuffin", item, Object.keys(item || {}));
+                }
 
                 return (
-                  <View key={itemId} style={styles.card}>
+                  <View
+                    key={itemId}
+                    style={styles.card}
+                    onLayout={(e) => {
+                      itemLayouts.current[itemId] = e.nativeEvent.layout.y;
+                    }}
+                  >
                     {item?.imageUrl ? (
                       <View style={styles.imageWrapper}>
                         <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
@@ -359,13 +411,13 @@ export default function RestaurantScreen() {
                       {item?.name}
                     </Text>
 
-                    {!!item?.priceText && <Text style={styles.itemPrice}>{item.priceText}</Text>}
-
-                    {!!item?.description && (
-                      <Text style={styles.itemDescription} numberOfLines={isExpanded ? 0 : 2}>
-                        {item.description}
+                    {descriptionText ? (
+                      <Text style={styles.dishDescription} numberOfLines={isExpanded ? 0 : 3}>
+                        {descriptionText}
                       </Text>
-                    )}
+                    ) : null}
+
+                    {!!item?.priceText && <Text style={styles.itemPrice}>{item.priceText}</Text>}
 
                     <TouchableOpacity
                       onPress={() =>
@@ -457,10 +509,29 @@ export default function RestaurantScreen() {
                                   ))}
                                 </View>
                               ) : null}
-                              {viewModel?.fodmapSentence ? (
-                                <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
-                              ) : null}
-                            </View>
+                            {viewModel?.fodmapSentence ? (
+                              <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
+                            ) : null}
+                          </View>
+
+                          {/* 2.5) Diet & lifestyle */}
+                          <View style={styles.dietTagsSection}>
+                            <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
+
+                            {viewModel.dietTags && viewModel.dietTags.length > 0 ? (
+                              <View style={styles.dietTagsRow}>
+                                {viewModel.dietTags.map((label) => (
+                                  <View key={label} style={styles.dietTagChip}>
+                                    <Text style={styles.dietTagText}>{label}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            ) : (
+                              <Text style={styles.dietTagsEmptyText}>
+                                No specific diet or lifestyle tags available for this dish yet.
+                              </Text>
+                            )}
+                          </View>
 
                           {/* 3) Organ impact list */}
                           <View style={styles.organSection}>
@@ -502,7 +573,7 @@ export default function RestaurantScreen() {
                                           </Text>
                                         </View>
                                       </View>
-                                      <Text style={styles.organEffect} numberOfLines={2}>
+                                      <Text style={styles.organEffect}>
                                         {line.sentence || "Organ impact details to follow."}
                                       </Text>
                                     </View>
@@ -574,11 +645,13 @@ export default function RestaurantScreen() {
                           router.push({
                             pathname: "/dish",
                             params: {
-                              itemName: item?.name,
-                              placeId: placeIdValue,
+                              dishName: item?.name ?? "",
+                              dishDescription: descriptionText,
+                              dishPrice: item?.priceText ?? "",
+                              dishSection: section.name ?? "",
+                              dishImageUrl: item?.imageUrl ?? "",
                               restaurantName: restaurantNameValue,
-                              description: item?.description ?? "",
-                              price: item?.priceText ?? "",
+                              placeId: placeIdValue,
                               mode: "likely_recipe",
                             },
                           });
@@ -595,6 +668,17 @@ export default function RestaurantScreen() {
             </View>
           ))}
         </ScrollView>
+
+        <View style={styles.bottomNav}>
+          <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/")}>
+            <Ionicons name="home" size={22} color="#ffffff" />
+            <Text style={styles.bottomNavText}>Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/profile")}>
+            <Ionicons name="person-circle" size={22} color="#ffffff" />
+            <Text style={styles.bottomNavText}>Profile</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -612,7 +696,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 24,
-    paddingBottom: 32,
+    paddingBottom: 140,
   },
   backRow: {
     marginBottom: 12,
@@ -683,10 +767,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#d1d5db",
   },
-  itemDescription: {
-    marginTop: 4,
-    fontSize: 13,
-    color: "#9ca3af",
+  dishDescription: {
+    marginTop: 6,
+    fontSize: 16,
+    lineHeight: 22,
+    color: "rgba(255,255,255,0.75)",
   },
   showMoreText: {
     marginTop: 8,
@@ -1007,5 +1092,56 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: "#ffffff",
+  },
+  dietTagsSection: {
+    marginTop: 12,
+  },
+  dietTagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  dietTagChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#eee",
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  dietTagText: {
+    fontSize: 12,
+    color: "#ffffff",
+  },
+  dietTagsEmptyText: {
+    fontSize: 12,
+    color: "#ffffff",
+    marginTop: 4,
+  },
+  bottomNav: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    backgroundColor: "#050509",
+    borderTopWidth: 1,
+    borderTopColor: "#1f2230",
+  },
+  bottomNavItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  bottomNavText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 13,
   },
 });

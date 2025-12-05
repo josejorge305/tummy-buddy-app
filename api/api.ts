@@ -30,6 +30,7 @@ export interface DishSummary {
   tummyBarometer: DishTummyBarometer;
   organs: DishOrganSummaryEntry[];
   keyFlags: DishKeyFlags;
+  edamamLabels?: string[];
 }
 
 export interface DishOrganFlags {

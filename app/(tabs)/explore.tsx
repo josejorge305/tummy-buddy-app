@@ -1,81 +1,167 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function TrackerScreen() {
+type Meal = {
+  id: string;
+  name: string;
+  time: string;
+  gut: number;
+  heart: number;
+};
+
+type WeeklyPoint = {
+  label: string;
+  score: number;
+};
+
+type Pillar = {
+  label: string;
+  score: number;
+};
+
+function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  return <View style={[styles.card, style]}>{children}</View>;
+}
+
+function CircleProgress({ percent, size = 56 }: { percent: number; size?: number }) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const ringColor =
+    clamped >= 85 ? '#22c55e' : clamped >= 65 ? '#fbbf24' : clamped >= 45 ? '#f97316' : '#ef4444';
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Tummy Tracker Pro</Text>
-      <Text style={styles.subtitle}>
-        Daily summary based on your logged meals and organ sensitivities.
-      </Text>
+    <View
+      style={[
+        styles.circle,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderColor: ringColor,
+        },
+      ]}
+    >
+      <Text style={styles.circleText}>{clamped}</Text>
+    </View>
+  );
+}
 
-      {/* Today summary */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Today&apos;s overview</Text>
-        <Text style={styles.bigScore}>74</Text>
-        <Text style={styles.scoreLabel}>Average Tummy Barometer</Text>
-
-        <View style={styles.row}>
-          <View style={styles.chipBlock}>
-            <Text style={styles.chipLabel}>Calories</Text>
-            <Text style={styles.chipValue}>1,620 / 2,100</Text>
+function BarChart({ data }: { data: WeeklyPoint[] }) {
+  const max = Math.max(...data.map((d) => d.score), 100);
+  return (
+    <View style={styles.barChart}>
+      {data.map((d) => {
+        const heightPct = Math.max(8, (d.score / max) * 100);
+        const barColor = d.score >= 80 ? '#22c55e' : d.score >= 60 ? '#fbbf24' : '#f97316';
+        return (
+          <View key={d.label} style={styles.barItem}>
+            <View style={[styles.bar, { height: `${heightPct}%`, backgroundColor: barColor }]} />
+            <Text style={styles.barLabel}>{d.label}</Text>
           </View>
-          <View style={styles.chipBlock}>
-            <Text style={styles.chipLabel}>Meals logged</Text>
-            <Text style={styles.chipValue}>3</Text>
+        );
+      })}
+    </View>
+  );
+}
+
+const mealsToday: Meal[] = [
+  { id: '1', name: 'Mediterranean Salmon Bowl', time: '12:30 pm', gut: 9, heart: 8 },
+  { id: '2', name: 'Overnight Oats + Berries', time: '8:00 am', gut: 8, heart: 9 },
+  { id: '3', name: 'Roasted Veggie Wrap', time: '6:45 pm', gut: 7, heart: 7 },
+];
+
+const weeklyScores: WeeklyPoint[] = [
+  { label: 'M', score: 72 },
+  { label: 'T', score: 75 },
+  { label: 'W', score: 78 },
+  { label: 'T', score: 80 },
+  { label: 'F', score: 82 },
+  { label: 'S', score: 70 },
+  { label: 'S', score: 76 },
+];
+
+const healthPillars: Pillar[] = [
+  { label: 'Gut', score: 90 },
+  { label: 'Heart', score: 70 },
+  { label: 'Liver', score: 85 },
+];
+
+export default function TummyTracker() {
+  return (
+    <View style={styles.container}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>Tummy Tracker</Text>
+            <Text style={styles.subtitle}>Daily check-in for your gut and organ health.</Text>
+          </View>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>PRO</Text>
           </View>
         </View>
 
-        <View style={styles.row}>
-          <View style={styles.chipBlock}>
-            <Text style={styles.chipLabel}>Gut</Text>
-            <Text style={styles.chipValue}>Mostly stable</Text>
+        <Card>
+          <Text style={styles.sectionTitle}>Today’s Overview</Text>
+          <View style={styles.rowBetween}>
+            <View style={styles.centered}>
+              <Text style={styles.tummyScore}>74</Text>
+              <Text style={styles.subtle}>Tummy Score</Text>
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={styles.subtle}>Calories: 1,620 / 2,100</Text>
+              <Text style={styles.subtle}>Meals: 3</Text>
+              <Text style={styles.subtle}>Streak: 🔥 4 days</Text>
+            </View>
           </View>
-          <View style={styles.chipBlock}>
-            <Text style={styles.chipLabel}>Heart</Text>
-            <Text style={styles.chipValue}>Safe choices</Text>
-          </View>
-        </View>
-      </View>
+        </Card>
 
-      {/* Recent meals list */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Recent meals</Text>
-
-        <View style={styles.mealRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mealName}>Mediterranean Salmon Bowl</Text>
-            <Text style={styles.mealMeta}>Green Bowl Kitchen • 12:30 pm</Text>
-          </View>
-          <View style={styles.mealScoreBlock}>
-            <Text style={styles.mealScore}>76</Text>
-            <Text style={styles.mealScoreLabel}>Gut friendly</Text>
-          </View>
+        <View style={[styles.rowBetween, { marginTop: 12 }]}>
+          {healthPillars.map((pillar) => (
+            <View key={pillar.label} style={styles.centered}>
+              <CircleProgress percent={pillar.score} />
+              <Text style={[styles.subtle, { marginTop: 6 }]}>{pillar.label}</Text>
+            </View>
+          ))}
         </View>
 
-        <View style={styles.mealRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mealName}>Creamy Alfredo Pasta</Text>
-            <Text style={styles.mealMeta}>Casa Firenze • Yesterday</Text>
-          </View>
-          <View style={styles.mealScoreBlock}>
-            <Text style={styles.mealScoreBad}>42</Text>
-            <Text style={styles.mealScoreLabel}>Dairy + FODMAP</Text>
-          </View>
-        </View>
+        <Card style={{ marginTop: 16 }}>
+          <Text style={styles.sectionTitle}>💡 Insight</Text>
+          <Text style={[styles.subtle, { fontStyle: 'italic', marginTop: 4 }]}>
+            High fiber lunch kept your gut score stable. Nice work!
+          </Text>
+        </Card>
 
-        <Text style={styles.linkText}>View full meal log (coming soon)</Text>
-      </View>
+        <Card style={{ marginTop: 16 }}>
+          <Text style={styles.sectionTitle}>Meals Today</Text>
+          <View style={{ marginTop: 10, gap: 10 }}>
+            {mealsToday.map((meal) => (
+              <View key={meal.id} style={styles.mealCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mealName}>{meal.name}</Text>
+                  <Text style={styles.mealMeta}>
+                    {meal.time} · Gut {meal.gut}/10 · Heart {meal.heart}/10
+                  </Text>
+                </View>
+                <Text style={styles.mealTag}>✓ Gut friendly</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
 
-      {/* Organ trends stub */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Organ trends (7 days)</Text>
-        <Text style={styles.infoText}>
-          Simple graph-style summary will go here. For now, this is a placeholder
-          to show where Gut / Heart / Liver trend charts will live.
-        </Text>
-      </View>
-    </ScrollView>
+        <Card style={{ marginTop: 16, marginBottom: 24 }}>
+          <Text style={styles.sectionTitle}>This Week</Text>
+          <Text style={[styles.subtle, { marginTop: 4 }]}>Avg Tummy Score: 76 ↑ (+5)</Text>
+          <BarChart data={weeklyScores} />
+          <Text style={[styles.subtle, { marginTop: 8 }]}>
+            ✔️ 5 gut-stable days · 🔥 4-day logging streak
+          </Text>
+        </Card>
+      </ScrollView>
+
+      <TouchableOpacity style={styles.fab} activeOpacity={0.9}>
+        <Ionicons name="add" size={22} color="#ffffff" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -85,102 +171,140 @@ const styles = StyleSheet.create({
     backgroundColor: '#0b0b0f',
   },
   content: {
-    paddingTop: 50,
     paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingTop: 32,
+    paddingBottom: 120,
+    gap: 0,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   title: {
     fontSize: 24,
     fontWeight: '800',
     color: '#fefefe',
-    marginBottom: 6,
   },
   subtitle: {
     fontSize: 13,
-    color: '#aaa',
-    marginBottom: 16,
+    color: '#9ca3af',
+    marginTop: 4,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#22c55e33',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+  },
+  badgeText: {
+    color: '#22c55e',
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 0.4,
   },
   card: {
     borderRadius: 16,
-    backgroundColor: '#15151b',
+    backgroundColor: '#111219',
     borderWidth: 1,
-    borderColor: '#2a2a33',
+    borderColor: '#1f2230',
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#fefefe',
-    marginBottom: 8,
   },
-  bigScore: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#2ecc71',
-  },
-  scoreLabel: {
-    fontSize: 13,
-    color: '#ccc',
-    marginBottom: 10,
-  },
-  row: {
+  rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  chipBlock: {
-    width: '48%',
-    marginBottom: 8,
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipLabel: {
-    fontSize: 12,
-    color: '#aaa',
-    marginBottom: 2,
+  tummyScore: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#22c55e',
   },
-  chipValue: {
-    fontSize: 14,
-    fontWeight: '600',
+  subtle: {
+    color: '#e5e7eb',
+    opacity: 0.7,
+    fontSize: 13,
+  },
+  circle: {
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0b0b0f',
+  },
+  circleText: {
     color: '#fefefe',
+    fontWeight: '700',
   },
-  mealRow: {
+  mealCard: {
+    backgroundColor: '#1a1c25',
+    borderRadius: 12,
+    padding: 12,
     flexDirection: 'row',
-    marginBottom: 10,
+    alignItems: 'center',
+    gap: 8,
   },
   mealName: {
-    fontSize: 14,
-    fontWeight: '600',
     color: '#fefefe',
+    fontWeight: '600',
+    fontSize: 14,
   },
   mealMeta: {
+    color: '#9ca3af',
     fontSize: 12,
-    color: '#888',
+    marginTop: 2,
   },
-  mealScoreBlock: {
+  mealTag: {
+    color: '#34d399',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  barChart: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
-    justifyContent: 'center',
-    width: 80,
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 6,
+    height: 120,
   },
-  mealScore: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2ecc71',
+  barItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  mealScoreBad: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#e74c3c',
+  bar: {
+    width: '70%',
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
   },
-  mealScoreLabel: {
-    fontSize: 11,
-    color: '#aaa',
-  },
-  linkText: {
+  barLabel: {
+    color: '#9ca3af',
     fontSize: 12,
-    color: '#3498db',
-    marginTop: 4,
+    marginTop: 6,
   },
-  infoText: {
-    fontSize: 13,
-    color: '#ccc',
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    backgroundColor: '#22c55e',
+    borderRadius: 999,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 });
