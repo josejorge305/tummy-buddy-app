@@ -175,13 +175,6 @@ export default function RestaurantScreen() {
   const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
     if (!itemId) return;
 
-    const scrollToItem = () => {
-      const y = itemLayouts.current[itemId];
-      if (y != null) {
-        scrollViewRef.current?.scrollTo({ y: Math.max(y - 12, 0), animated: true });
-      }
-    };
-
     const descriptionText =
       item?.menuDescription ??
       item?.description ??
@@ -199,12 +192,10 @@ export default function RestaurantScreen() {
     // If analysis already loaded, just expand
     if (analysisByItemId[itemId]) {
       setExpandedItemId(itemId);
-      scrollToItem();
       return;
     }
 
     setExpandedItemId(itemId);
-    scrollToItem();
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
     try {
@@ -215,6 +206,7 @@ export default function RestaurantScreen() {
         menuSection: sectionName || "",
         priceText: item?.priceText || "",
         placeId: placeIdValue || placeId || null,
+        source: "edamam_recipe_card",
       });
 
       setAnalysisByItemId((prev) => ({
@@ -586,11 +578,11 @@ export default function RestaurantScreen() {
                             {/* 4) Nutrition facts */}
                             <View style={styles.nutritionSection}>
                               <Text style={styles.sectionTitle}>Nutrition facts (estimate)</Text>
-                              <View style={styles.nutritionGrid}>
-                                <View style={styles.nutritionTile}>
-                                  <Text style={styles.nutritionLabel}>Calories</Text>
-                                  <Text style={styles.nutritionValue}>
-                                    {viewModel.nutrition.calories != null
+                            <View style={styles.nutritionGrid}>
+                              <View style={styles.nutritionTile}>
+                                <Text style={styles.nutritionLabel}>Calories</Text>
+                                <Text style={styles.nutritionValue}>
+                                  {viewModel.nutrition.calories != null
                                       ? Math.round(viewModel.nutrition.calories)
                                       : "--"}
                                   </Text>
@@ -611,16 +603,40 @@ export default function RestaurantScreen() {
                                       : "--"}
                                   </Text>
                                 </View>
-                                <View style={styles.nutritionTile}>
-                                  <Text style={styles.nutritionLabel}>Fat</Text>
-                                  <Text style={styles.nutritionValue}>
-                                    {viewModel.nutrition.fat != null
-                                      ? `${Math.round(viewModel.nutrition.fat)} g`
-                                      : "--"}
-                                  </Text>
-                                </View>
+                              <View style={styles.nutritionTile}>
+                                <Text style={styles.nutritionLabel}>Fat</Text>
+                                <Text style={styles.nutritionValue}>
+                                  {viewModel.nutrition.fat != null
+                                    ? `${Math.round(viewModel.nutrition.fat)} g`
+                                    : "--"}
+                                </Text>
+                              </View>
+                              <View style={styles.nutritionTile}>
+                                <Text style={styles.nutritionLabel}>Sugar</Text>
+                                <Text style={styles.nutritionValue}>
+                                  {viewModel.nutrition.sugar != null
+                                    ? `${Math.round(viewModel.nutrition.sugar)} g`
+                                    : "--"}
+                                </Text>
+                              </View>
+                              <View style={styles.nutritionTile}>
+                                <Text style={styles.nutritionLabel}>Fiber</Text>
+                                <Text style={styles.nutritionValue}>
+                                  {viewModel.nutrition.fiber != null
+                                    ? `${Math.round(viewModel.nutrition.fiber)} g`
+                                    : "--"}
+                                </Text>
+                              </View>
+                              <View style={styles.nutritionTile}>
+                                <Text style={styles.nutritionLabel}>Sodium</Text>
+                                <Text style={styles.nutritionValue}>
+                                  {viewModel.nutrition.sodium != null
+                                    ? `${Math.round(viewModel.nutrition.sodium)} mg`
+                                    : "--"}
+                                </Text>
                               </View>
                             </View>
+                          </View>
                           </>
                         )}
 
@@ -926,7 +942,7 @@ const styles = StyleSheet.create({
   allergenPillText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#020617",
+    color: "#ffffff",
   },
   allergenPillUser: {
     backgroundColor: "#F97373",

@@ -16,7 +16,15 @@ export interface DishViewModel {
   fodmapLevel: string | null;
   fodmapSentence: string | null;
   organLines: DishOrganLine[];
-  nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number };
+  nutrition: {
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    sugar?: number;
+    fiber?: number;
+    sodium?: number;
+  };
   dietTags?: string[];
 }
 
@@ -198,6 +206,9 @@ export function buildDishViewModel(
     protein: ns.protein_g,
     carbs: ns.carbs_g,
     fat: ns.fat_g,
+    sugar: ns.sugar_g,
+    fiber: ns.fiber_g,
+    sodium: ns.sodium_mg,
   };
 
   return {

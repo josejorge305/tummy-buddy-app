@@ -987,6 +987,14 @@ export default function DishScreen() {
                 : '—'}
             </Text>
           </View>
+          <View style={styles.nutritionTile}>
+            <Text style={styles.nutritionLabel}>Sodium</Text>
+            <Text style={styles.nutritionValue}>
+              {analysisViewModel?.nutrition.sodium != null
+                ? `${Math.round(analysisViewModel.nutrition.sodium)} mg`
+                : '—'}
+            </Text>
+          </View>
         </View>
       </View>
 
