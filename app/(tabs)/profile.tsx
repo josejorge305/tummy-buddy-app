@@ -32,6 +32,21 @@ export default function ProfileScreen() {
   const [selectedOrgans, setSelectedOrgans] = React.useState<string[]>(['Gut', 'Heart']);
   const [isPro, setIsPro] = React.useState(true);
 
+  const togglePill = (
+    pill: string,
+    selectedList: string[],
+    setSelected: (value: string[]) => void
+  ) => {
+    setSelected((prev) => {
+      const lower = prev.map((p) => p.toLowerCase());
+      const exists = lower.includes(pill.toLowerCase());
+      if (exists) {
+        return prev.filter((p) => p.toLowerCase() !== pill.toLowerCase());
+      }
+      return [...prev, pill];
+    });
+  };
+
   const toggleAllergen = (name: string) => {
     setSelectedAllergens((prev) => {
       const lower = prev.map((p) => p.toLowerCase());
@@ -49,16 +64,6 @@ export default function ProfileScreen() {
       <Text style={styles.subtitle}>
         Tell Tummy Buddy how to personalize restaurant and dish scores for you.
       </Text>
-
-      {/* Personal section stub */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Basic info</Text>
-        <Text style={styles.infoText}>Age, height, weight, and goals will go here.</Text>
-        <Text style={styles.infoText}>
-          For now this is a placeholder. Later this will connect to calorie and
-          macro targets.
-        </Text>
-      </View>
 
       {/* Dietary restrictions */}
       <View style={styles.card}>
@@ -119,6 +124,16 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+      </View>
+
+      {/* Personal section stub */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Basic info</Text>
+        <Text style={styles.infoText}>Age, height, weight, and goals will go here.</Text>
+        <Text style={styles.infoText}>
+          For now this is a placeholder. Later this will connect to calorie and
+          macro targets.
+        </Text>
       </View>
 
       {/* Subscription */}

@@ -25,7 +25,6 @@ import {
   PlaceSuggestion,
 } from '../../api/places';
 import { API_BASE_URL } from '../../api/api';
-import { useUserPrefs } from '../../context/UserPrefsContext';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -70,24 +69,6 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 
 type SearchMode = 'restaurant' | 'dish';
 
-const ALLERGEN_PILLS = [
-  'Gluten',
-  'Dairy',
-  'Eggs',
-  'Soy',
-  'Peanuts',
-  'Tree nuts',
-  'Shellfish',
-  'Fish',
-  'Sesame',
-  'High FODMAP',
-  'Onion',
-  'Garlic',
-  'Other',
-];
-
-const ORGAN_PILLS = ['Gut', 'Liver', 'Heart', 'Brain', 'Kidney', 'Immune'];
-
 const DUMMY_DISH = {
   id: 'dish-1',
   name: 'Mediterranean Salmon Bowl',
@@ -97,10 +78,6 @@ const DUMMY_DISH = {
 
 export default function HomeScreen() {
   const router = useRouter();
-
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const { selectedAllergens, setSelectedAllergens } = useUserPrefs();
-  const [selectedOrgans, setSelectedOrgans] = useState<string[]>(['Gut']);
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('restaurant');
 
@@ -121,21 +98,6 @@ export default function HomeScreen() {
   const [etaCache, setEtaCache] = useState<
     Record<string, { driving?: string; walking?: string } | null>
   >({});
-
-  const togglePill = (
-    pill: string,
-    selectedList: string[],
-    setSelected: (value: string[]) => void
-  ) => {
-    setSelected((prev) => {
-      const lower = prev.map((p) => p.toLowerCase());
-      const exists = lower.includes(pill.toLowerCase());
-      if (exists) {
-        return prev.filter((p) => p.toLowerCase() !== pill.toLowerCase());
-      }
-      return [...prev, pill];
-    });
-  };
 
   const handleSearchSubmit = async () => {
     const trimmed = query.trim();
@@ -507,11 +469,6 @@ export default function HomeScreen() {
     });
   }, [selectedRestaurant]);
 
-  const filtersSummary =
-    selectedAllergens.length || selectedOrgans.length
-      ? `${selectedAllergens.length} allergens • ${selectedOrgans.length} organs`
-      : 'Tap to choose allergens & organs';
-
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -641,79 +598,10 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* Collapsed filters summary row */}
-        <Pressable onPress={toggleFiltersExpanded} style={styles.filtersRow}>
-          <View>
-            <Text style={styles.filtersTitle}>My dietary filters</Text>
-            <Text style={styles.filtersSummary}>{filtersSummary}</Text>
-          </View>
-          <Ionicons
-            name={
-              filtersExpanded ? 'chevron-up-outline' : 'chevron-down-outline'
-            }
-            size={18}
-            style={styles.filtersChevron}
-          />
+        {/* Premium CTA row – navigates to Profile */}
+        <Pressable onPress={() => router.push('/profile')} style={styles.premiumRow}>
+          <Text style={styles.premiumTitle}>Upgrade for Premium features & analytics</Text>
         </Pressable>
-
-        {/* Expanded filters */}
-        {filtersExpanded && (
-          <View style={styles.filtersExpandedSection}>
-            <Text style={styles.subSectionTitle}>Allergens & FODMAP</Text>
-            <View style={styles.pillsRow}>
-              {ALLERGEN_PILLS.map((pill) => {
-                const isSelected = selectedAllergens
-                  .map((a) => a.toLowerCase())
-                  .includes(pill.toLowerCase());
-                return (
-                  <TouchableOpacity
-                    key={pill}
-                    style={[styles.pill, isSelected && styles.pillSelected]}
-                    onPress={() =>
-                      togglePill(pill, selectedAllergens, setSelectedAllergens)
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.pillText,
-                        isSelected && styles.pillTextSelected,
-                      ]}
-                    >
-                      {pill}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={[styles.subSectionTitle, { marginTop: 16 }]}>
-              Organ Sensitivities
-            </Text>
-            <View style={styles.pillsRow}>
-              {ORGAN_PILLS.map((pill) => {
-                const isSelected = selectedOrgans.includes(pill);
-                return (
-                  <TouchableOpacity
-                    key={pill}
-                    style={[styles.pill, isSelected && styles.pillSelected]}
-                    onPress={() =>
-                      togglePill(pill, selectedOrgans, setSelectedOrgans)
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.pillText,
-                        isSelected && styles.pillTextSelected,
-                      ]}
-                    >
-                      {pill}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
 
         {/* Nearby restaurants header */}
         <View style={styles.sectionHeader}>
@@ -1110,60 +998,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fefefe',
   },
-  filtersRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#111827',
-  },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#f9fafb',
-  },
-  filtersSummary: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-  filtersChevron: {
-    color: '#9ca3af',
-  },
-  filtersExpandedSection: {
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  subSectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ddd',
-    marginBottom: 6,
-  },
-  pillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#3a3b4c',
-    marginRight: 8,
+  premiumRow: {
+    marginTop: 12,
     marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: '#0b1220',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
-  pillSelected: {
-    backgroundColor: TEAL,
-    borderColor: TEAL,
-  },
-  pillText: {
-    color: '#fefefe',
-    fontSize: 13,
-  },
-  pillTextSelected: {
-    color: BG,
+  premiumTitle: {
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: '600',
   },
   sectionHeader: {
