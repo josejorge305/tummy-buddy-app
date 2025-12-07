@@ -1,4 +1,10 @@
-import { AnalyzeDishResponse, DishOrganFlags, DishSummary } from "../../api/api";
+import {
+  AnalyzeDishResponse,
+  DishOrganFlags,
+  DishSummary,
+  NutritionInsights,
+} from "../../api/api";
+import type { AllergenFlag, FodmapFlag } from "../../api/api";
 
 export interface DishOrganLine {
   organKey: string;
@@ -26,6 +32,7 @@ export interface DishViewModel {
     sodium?: number;
   };
   dietTags?: string[];
+  nutritionInsights?: NutritionInsights | null;
 }
 
 type OrganSeverity = "low" | "medium" | "high" | "neutral";
@@ -104,6 +111,52 @@ function organSentence(organ: string, score: number | null, severity: OrganSever
   return `Neutral impact on your ${o}.`;
 }
 
+function legacyAllergenFlags(
+  summary: DishSummary | null | undefined,
+  flags: DishOrganFlags | undefined
+): AllergenFlag[] {
+  const allergenNames = summary?.keyFlags?.allergens ?? [];
+  const msgs =
+    flags?.allergens && flags.allergens.length > 0
+      ? (flags.allergens.map((a) => a?.message).filter(Boolean) as string[])
+      : [];
+
+  return allergenNames.map((name) => ({
+    kind: name,
+    present: "yes",
+    message: msgs.join(" ") || "",
+    source: "legacy",
+  }));
+}
+
+function chooseAllergenFlags(
+  analysis: AnalyzeDishResponse,
+  summary: DishSummary | null | undefined,
+  flags: DishOrganFlags | undefined
+): AllergenFlag[] {
+  if (analysis.allergen_flags && analysis.allergen_flags.length > 0) {
+    return analysis.allergen_flags;
+  }
+  return legacyAllergenFlags(summary, flags);
+}
+
+function chooseFodmapFlag(
+  analysis: AnalyzeDishResponse,
+  flags: DishOrganFlags | undefined,
+  summary: DishSummary | null | undefined
+): FodmapFlag | undefined {
+  if (analysis.fodmap_flags) return analysis.fodmap_flags;
+  if (flags?.fodmap) return flags.fodmap as FodmapFlag;
+  if (summary?.keyFlags?.fodmapLevel) {
+    return {
+      level: summary.keyFlags.fodmapLevel as FodmapFlag["level"],
+      reason: "",
+      source: "legacy",
+    };
+  }
+  return undefined;
+}
+
 export function buildDishViewModel(
   analysis: AnalyzeDishResponse,
   userAllergens: string[]
@@ -127,13 +180,25 @@ export function buildDishViewModel(
   }
   const fodmapPills = Array.from(fodmapTriggerSet);
 
-  // 1. Allergens list from summary.keyFlags.allergens
-  const allergenNames = summary?.keyFlags?.allergens ?? [];
+  // 1. Allergens: prefer LLM flags, fallback to legacy
+  const allergenFlags = chooseAllergenFlags(analysis, summary, flags);
   const matchesUserAllergen = buildUserAllergenMatcher(userAllergens);
-  const allergens = allergenNames.map((name) => ({
-    name,
-    isUserAllergen: matchesUserAllergen(name),
-  }));
+  const allergens = allergenFlags
+    .filter((flag) => (flag.present || "").toLowerCase() === "yes")
+    .map((flag) => ({
+      name: flag.kind,
+      isUserAllergen: matchesUserAllergen(flag.kind),
+    }));
+
+  // Lactose pill when high and user cares about milk/dairy
+  const lactose = analysis.lactose_flags;
+  const caresAboutMilk = userAllergens.map((a) => a.toLowerCase()).includes("milk");
+  if (lactose && lactose.level === "high" && caresAboutMilk) {
+    allergens.push({
+      name: "High lactose",
+      isUserAllergen: true,
+    });
+  }
 
   // Allergen smart sentence from organs.flags.allergens if present
   let allergenSentence: string | null = null;
@@ -147,9 +212,10 @@ export function buildDishViewModel(
     allergenSentence = `Contains ${allergens.map((a) => a.name).join(", ")}.`;
   }
 
-  // 2. FODMAP
-  const fodmapLevel = flags?.fodmap?.level ?? summary?.keyFlags?.fodmapLevel ?? null;
-  let fodmapSentence: string | null = flags?.fodmap?.reason ?? null;
+  // 2. FODMAP (prefer LLM flag, fallback to legacy)
+  const fodmapFlag = chooseFodmapFlag(analysis, flags, summary);
+  const fodmapLevel = fodmapFlag?.level ?? null;
+  let fodmapSentence: string | null = fodmapFlag?.reason ?? null;
   if (!fodmapSentence && fodmapLevel) {
     fodmapSentence = `FODMAP level ${fodmapLevel.toLowerCase()}.`;
   }
@@ -220,5 +286,6 @@ export function buildDishViewModel(
     organLines,
     nutrition,
     dietTags,
+    nutritionInsights: analysis.nutrition_insights || null,
   };
 }

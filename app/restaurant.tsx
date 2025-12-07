@@ -636,6 +636,29 @@ export default function RestaurantScreen() {
                                 </Text>
                               </View>
                             </View>
+                            {viewModel.nutritionInsights ? (
+                              <View style={styles.nutritionInsightsBox}>
+                                {!!viewModel.nutritionInsights.summary && (
+                                  <Text style={styles.nutritionInsightsSummary}>
+                                    {viewModel.nutritionInsights.summary}
+                                  </Text>
+                                )}
+                                {viewModel.nutritionInsights.highlights
+                                  ?.slice(0, 2)
+                                  .map((line: string, idx: number) => (
+                                    <Text key={`ni-hi-${idx}`} style={styles.nutritionInsightsHighlight}>
+                                      • {line}
+                                    </Text>
+                                  ))}
+                                {viewModel.nutritionInsights.cautions
+                                  ?.slice(0, 1)
+                                  .map((line: string, idx: number) => (
+                                    <Text key={`ni-c-${idx}`} style={styles.nutritionInsightsCaution}>
+                                      ⚠ {line}
+                                    </Text>
+                                  ))}
+                              </View>
+                            ) : null}
                           </View>
                           </>
                         )}
@@ -658,19 +681,7 @@ export default function RestaurantScreen() {
                       <TouchableOpacity
                         style={styles.secondaryButton}
                         onPress={() => {
-                          router.push({
-                            pathname: "/dish",
-                            params: {
-                              dishName: item?.name ?? "",
-                              dishDescription: descriptionText,
-                              dishPrice: item?.priceText ?? "",
-                              dishSection: section.name ?? "",
-                              dishImageUrl: item?.imageUrl ?? "",
-                              restaurantName: restaurantNameValue,
-                              placeId: placeIdValue,
-                              mode: "likely_recipe",
-                            },
-                          });
+                          console.log("Likely recipe coming soon for dish:", item?.name);
                         }}
                       >
                         <Text style={styles.secondaryButtonText}>Likely recipe</Text>
@@ -1134,6 +1145,27 @@ const styles = StyleSheet.create({
   dietTagsEmptyText: {
     fontSize: 12,
     color: "#ffffff",
+    marginTop: 4,
+  },
+  nutritionInsightsBox: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#1f2937",
+  },
+  nutritionInsightsSummary: {
+    color: "#e5e7eb",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  nutritionInsightsHighlight: {
+    color: "#cbd5e1",
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  nutritionInsightsCaution: {
+    color: "#fbbf24",
+    fontSize: 12,
     marginTop: 4,
   },
   bottomNav: {

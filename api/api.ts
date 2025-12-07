@@ -33,6 +33,40 @@ export interface DishSummary {
   edamamLabels?: string[];
 }
 
+export interface NutritionInsights {
+  summary: string;
+  highlights: string[];
+  cautions: string[];
+  classifications: {
+    calories: "low" | "medium" | "high";
+    protein: "low" | "medium" | "high";
+    carbs: "low" | "medium" | "high";
+    sugar: "low" | "medium" | "high";
+    fiber: "low" | "medium" | "high";
+    fat: "low" | "medium" | "high";
+    sodium: "low" | "medium" | "high";
+  };
+}
+
+export interface AllergenFlag {
+  kind: string;
+  present: "yes" | "no" | "maybe";
+  message: string;
+  source: string;
+}
+
+export interface FodmapFlag {
+  level: "low" | "medium" | "high";
+  reason: string;
+  source: string;
+}
+
+export interface LactoseFlag {
+  level: "none" | "trace" | "low" | "medium" | "high";
+  reason: string;
+  source: string;
+}
+
 export interface DishOrganFlags {
   allergens?: { kind?: string; message?: string; source?: string }[];
   fodmap?: { level?: string; reason?: string; source?: string };
@@ -71,6 +105,10 @@ export interface AnalyzeDishResponse {
   organs?: DishOrgansBlock;
   debug?: any;
   error?: string;
+  allergen_flags?: AllergenFlag[];
+  fodmap_flags?: FodmapFlag | null;
+  lactose_flags?: LactoseFlag | null;
+  nutrition_insights?: NutritionInsights | null;
 }
 
 export interface AnalyzeDishCardResponse {

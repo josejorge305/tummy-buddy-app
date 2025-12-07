@@ -302,7 +302,7 @@ export default function HomeScreen() {
   };
 
   const openDish = () => {
-    router.push('/dish');
+    console.log('Dish screen is deprecated; likely recipe view coming soon.');
   };
 
   const setMode = (mode: SearchMode) => {
