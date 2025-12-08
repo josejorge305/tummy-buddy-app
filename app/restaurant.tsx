@@ -53,8 +53,22 @@ type MenuResponse = {
   sections?: Array<{
     id?: string | number;
     name?: string;
-    items?: Array<any>;
+    items?: Array<MenuItem>;
   }>;
+};
+
+type MenuItem = {
+  id?: string | number;
+  name?: string;
+  description?: string;
+  menuDescription?: string;
+  subtitle?: string;
+  shortDescription?: string;
+  rawDescription?: string;
+  priceText?: string;
+  restaurantCalories?: number | null;
+  imageUrl?: string | null;
+  [key: string]: any;
 };
 
 function buildPhotoUrl(photoRef?: string | null) {
@@ -85,6 +99,7 @@ export default function RestaurantScreen() {
   const [analysisLoadingByItemId, setAnalysisLoadingByItemId] = useState<Record<string, boolean>>(
     {},
   );
+  const [portionFactorByItemId, setPortionFactorByItemId] = useState<Record<string, number>>({});
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -147,6 +162,7 @@ export default function RestaurantScreen() {
                     ...item,
                     description: item?.description ?? item?.menuDescription ?? "",
                     menuDescription: item?.menuDescription ?? item?.description ?? "",
+                    imageUrl: item?.imageUrl ?? null,
                   }))
                 : [],
             }))
@@ -172,30 +188,19 @@ export default function RestaurantScreen() {
     }
   }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue]);
 
-  const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
-    if (!itemId) return;
-
-    const descriptionText =
-      item?.menuDescription ??
-      item?.description ??
-      item?.subtitle ??
-      item?.shortDescription ??
-      item?.rawDescription ??
-      "";
-
-    // Collapse if tapping the same expanded item
-    if (expandedItemId === itemId) {
-      setExpandedItemId(null);
-      return;
-    }
-
-    // If analysis already loaded, just expand
-    if (analysisByItemId[itemId]) {
-      setExpandedItemId(itemId);
-      return;
-    }
-
-    setExpandedItemId(itemId);
+  const runAnalysisForItem = async ({
+    itemId,
+    item,
+    sectionName,
+    descriptionText,
+    portionFactor,
+  }: {
+    itemId: string;
+    item: any;
+    sectionName?: string;
+    descriptionText: string;
+    portionFactor: number;
+  }) => {
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
     try {
@@ -207,6 +212,9 @@ export default function RestaurantScreen() {
         priceText: item?.priceText || "",
         placeId: placeIdValue || placeId || null,
         source: "edamam_recipe_card",
+        restaurantCalories: item?.restaurantCalories,
+        imageUrl: item?.imageUrl ?? null,
+        portionFactor,
       });
 
       setAnalysisByItemId((prev) => ({
@@ -225,6 +233,41 @@ export default function RestaurantScreen() {
     } finally {
       setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
     }
+  };
+
+  const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
+    if (!itemId) return;
+
+    const descriptionText =
+      item?.menuDescription ??
+      item?.description ??
+      item?.subtitle ??
+      item?.shortDescription ??
+      item?.rawDescription ??
+      "";
+
+    const portionFactor = portionFactorByItemId[itemId] ?? 1;
+
+    // Collapse if tapping the same expanded item
+    if (expandedItemId === itemId) {
+      setExpandedItemId(null);
+      return;
+    }
+
+    // If analysis already loaded, just expand
+    if (analysisByItemId[itemId]) {
+      setExpandedItemId(itemId);
+      return;
+    }
+
+    setExpandedItemId(itemId);
+    await runAnalysisForItem({
+      itemId,
+      item,
+      sectionName,
+      descriptionText,
+      portionFactor,
+    });
   };
 
   const ORGAN_ICONS: Record<string, any> = {
@@ -360,6 +403,7 @@ export default function RestaurantScreen() {
                   item?.shortDescription ??
                   item?.rawDescription ??
                   "";
+                const portionFactor = portionFactorByItemId[itemId] ?? 1;
 
                 if (item?.name && item.name.toLowerCase().includes("egg mcmuffin")) {
                   console.log("DEBUG MENU ITEM – Egg McMuffin", item, Object.keys(item || {}));
@@ -478,6 +522,10 @@ export default function RestaurantScreen() {
                               {viewModel.allergenSentence ? (
                                 <Text style={styles.sectionBody}>{viewModel.allergenSentence}</Text>
                               ) : null}
+                              <Text style={styles.allergenDisclaimer}>
+                                Based on recipe analysis and external ingredient data. Ingredients may
+                                vary by restaurant—always confirm if you have a severe allergy.
+                              </Text>
                             </View>
 
                             {/* 2) FODMAP row */}
@@ -504,6 +552,9 @@ export default function RestaurantScreen() {
                             {viewModel?.fodmapSentence ? (
                               <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
                             ) : null}
+                            <Text style={styles.lifestyleDisclaimer}>
+                              Lifestyle tags are inferred from dish name, description, and typical recipes.
+                            </Text>
                           </View>
 
                           {/* 2.5) Diet & lifestyle */}
@@ -573,92 +624,195 @@ export default function RestaurantScreen() {
                                 );
                               })}
                             </View>
-                          </View>
+                            </View>
+
+                            <View style={styles.portionRow}>
+                            {[
+                              { label: "Small", value: 0.5 },
+                              { label: "Regular", value: 1 },
+                              { label: "Large", value: 1.5 },
+                            ].map((option) => {
+                                const isActive = portionFactor === option.value;
+                                return (
+                                  <TouchableOpacity
+                                    key={option.label}
+                                    style={[
+                                      styles.portionButton,
+                                      isActive && styles.portionButtonActive,
+                                    ]}
+                                    onPress={() => {
+                                      setPortionFactorByItemId((prev) => ({
+                                        ...prev,
+                                        [itemId]: option.value,
+                                      }));
+                                      if (analysis) {
+                                        runAnalysisForItem({
+                                          itemId,
+                                          item,
+                                          sectionName: section.name || "",
+                                          descriptionText,
+                                          portionFactor: option.value,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.portionButtonText,
+                                        isActive && styles.portionButtonTextActive,
+                                      ]}
+                                    >
+                                      {option.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                            {viewModel?.portion && (
+                              <View style={{ marginTop: 4 }}>
+                                <Text style={{ fontSize: 12, opacity: 0.7 }}>
+                                  Portion factors:{" "}
+                                  <Text style={{ fontWeight: "600" }}>
+                                    effective {viewModel.portion.effectiveFactor.toFixed(2)}×
+                                  </Text>{" "}
+                                  (
+                                  <Text>
+                                    manual {viewModel.portion.manualFactor.toFixed(2)}×
+                                    {viewModel.portion.aiFactor !== 1
+                                      ? ` · AI ${viewModel.portion.aiFactor.toFixed(2)}×`
+                                      : ""}
+                                  </Text>
+                                  )
+                                </Text>
+                              </View>
+                            )}
+                            {viewModel?.portionVision && (
+                              <View style={{ marginTop: 4 }}>
+                                <Text style={{ fontSize: 12, opacity: 0.7 }}>
+                                  AI portion (stub):{" "}
+                                  <Text style={{ fontWeight: "600" }}>
+                                    {viewModel.portionVision.factor.toFixed(2)}×
+                                  </Text>
+                                  {viewModel.portionVision.confidence > 0 ? (
+                                    <> ({Math.round(viewModel.portionVision.confidence * 100)}% confidence)</>
+                                  ) : null}
+                                  {viewModel.portionVision.hasImage ? " • image present" : ""}
+                                </Text>
+                                {viewModel.portionVision.reason ? (
+                                  <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                    {viewModel.portionVision.reason}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            )}
 
                             {/* 4) Nutrition facts */}
                             <View style={styles.nutritionSection}>
-                              <Text style={styles.sectionTitle}>Nutrition facts (estimate)</Text>
-                            <View style={styles.nutritionGrid}>
-                              <View style={styles.nutritionTile}>
-                                <Text style={styles.nutritionLabel}>Calories</Text>
-                                <Text style={styles.nutritionValue}>
-                                  {viewModel.nutrition.calories != null
-                                      ? Math.round(viewModel.nutrition.calories)
-                                      : "--"}
-                                  </Text>
-                                </View>
-                                <View style={styles.nutritionTile}>
-                                  <Text style={styles.nutritionLabel}>Protein</Text>
-                                  <Text style={styles.nutritionValue}>
-                                    {viewModel.nutrition.protein != null
-                                      ? `${Math.round(viewModel.nutrition.protein)} g`
-                                      : "--"}
-                                  </Text>
-                                </View>
-                                <View style={styles.nutritionTile}>
-                                  <Text style={styles.nutritionLabel}>Carbs</Text>
-                                  <Text style={styles.nutritionValue}>
-                                    {viewModel.nutrition.carbs != null
-                                      ? `${Math.round(viewModel.nutrition.carbs)} g`
-                                      : "--"}
-                                  </Text>
-                                </View>
-                              <View style={styles.nutritionTile}>
-                                <Text style={styles.nutritionLabel}>Fat</Text>
-                                <Text style={styles.nutritionValue}>
-                                  {viewModel.nutrition.fat != null
-                                    ? `${Math.round(viewModel.nutrition.fat)} g`
-                                    : "--"}
-                                </Text>
-                              </View>
-                              <View style={styles.nutritionTile}>
-                                <Text style={styles.nutritionLabel}>Sugar</Text>
-                                <Text style={styles.nutritionValue}>
-                                  {viewModel.nutrition.sugar != null
-                                    ? `${Math.round(viewModel.nutrition.sugar)} g`
-                                    : "--"}
-                                </Text>
-                              </View>
-                              <View style={styles.nutritionTile}>
-                                <Text style={styles.nutritionLabel}>Fiber</Text>
-                                <Text style={styles.nutritionValue}>
-                                  {viewModel.nutrition.fiber != null
-                                    ? `${Math.round(viewModel.nutrition.fiber)} g`
-                                    : "--"}
-                                </Text>
-                              </View>
-                              <View style={styles.nutritionTile}>
-                                <Text style={styles.nutritionLabel}>Sodium</Text>
-                                <Text style={styles.nutritionValue}>
-                                  {viewModel.nutrition.sodium != null
-                                    ? `${Math.round(viewModel.nutrition.sodium)} mg`
-                                    : "--"}
-                                </Text>
-                              </View>
-                            </View>
-                            {viewModel.nutritionInsights ? (
-                              <View style={styles.nutritionInsightsBox}>
-                                {!!viewModel.nutritionInsights.summary && (
-                                  <Text style={styles.nutritionInsightsSummary}>
-                                    {viewModel.nutritionInsights.summary}
-                                  </Text>
-                                )}
-                                {viewModel.nutritionInsights.highlights
-                                  ?.slice(0, 2)
-                                  .map((line: string, idx: number) => (
-                                    <Text key={`ni-hi-${idx}`} style={styles.nutritionInsightsHighlight}>
-                                      • {line}
+                              <Text style={styles.sectionTitle}>Nutrition facts (per serving, estimate)</Text>
+                            {viewModel.nutrition && viewModel.nutritionSource
+                              ? console.log("TB nutrition source:", viewModel.nutritionSource)
+                              : null}
+                            {viewModel.nutrition ? (
+                              <>
+                                <View style={styles.nutritionGrid}>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Calories</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.calories != null
+                                        ? Math.round(viewModel.nutrition.calories)
+                                        : "--"}
                                     </Text>
-                                  ))}
-                                {viewModel.nutritionInsights.cautions
-                                  ?.slice(0, 1)
-                                  .map((line: string, idx: number) => (
-                                    <Text key={`ni-c-${idx}`} style={styles.nutritionInsightsCaution}>
-                                      ⚠ {line}
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Protein</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.protein != null
+                                        ? `${Math.round(viewModel.nutrition.protein)} g`
+                                        : "--"}
                                     </Text>
-                                  ))}
-                              </View>
-                            ) : null}
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Carbs</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.carbs != null
+                                        ? `${Math.round(viewModel.nutrition.carbs)} g`
+                                        : "--"}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Fat</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.fat != null
+                                        ? `${Math.round(viewModel.nutrition.fat)} g`
+                                        : "--"}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Sugar</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.sugar != null
+                                        ? `${Math.round(viewModel.nutrition.sugar)} g`
+                                        : "--"}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Fiber</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.fiber != null
+                                        ? `${Math.round(viewModel.nutrition.fiber)} g`
+                                        : "--"}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.nutritionTile}>
+                                    <Text style={styles.nutritionLabel}>Sodium</Text>
+                                    <Text style={styles.nutritionValue}>
+                                      {viewModel.nutrition.sodium != null
+                                        ? `${Math.round(viewModel.nutrition.sodium)} mg`
+                                        : "--"}
+                                    </Text>
+                                  </View>
+                                </View>
+                                {viewModel.nutritionSourceLabel ? (
+                                  <Text style={styles.nutritionSourceLabel}>
+                                    {viewModel.nutritionSourceLabel}
+                                  </Text>
+                                ) : null}
+                                {viewModel.nutritionInsights ? (
+                                  <View style={styles.nutritionInsightsBox}>
+                                    {!!viewModel.nutritionInsights.summary && (
+                                      <Text style={styles.nutritionInsightsSummary}>
+                                        {viewModel.nutritionInsights.summary}
+                                      </Text>
+                                    )}
+                                    {viewModel.nutritionInsights.highlights
+                                      ?.slice(0, 2)
+                                      .map((line: string, idx: number) => (
+                                        <Text
+                                          key={`ni-hi-${idx}`}
+                                          style={styles.nutritionInsightsHighlight}
+                                        >
+                                          • {line}
+                                        </Text>
+                                      ))}
+                                    {viewModel.nutritionInsights.cautions
+                                      ?.slice(0, 1)
+                                      .map((line: string, idx: number) => (
+                                        <Text key={`ni-c-${idx}`} style={styles.nutritionInsightsCaution}>
+                                          ⚠ {line}
+                                        </Text>
+                                      ))}
+                                  </View>
+                                ) : null}
+                              </>
+                            ) : (
+                              <Text style={styles.nutritionUnavailable}>
+                                Nutrition details are not available for this dish yet.
+                              </Text>
+                            )}
+                            <Text style={styles.nutritionDisclaimer}>
+                              Nutrition values are estimates based on recipe analysis and nutrition
+                              databases, not official restaurant labels.
+                            </Text>
                           </View>
                           </>
                         )}
@@ -1120,6 +1274,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#ffffff",
   },
+  nutritionUnavailable: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 4,
+  },
   dietTagsSection: {
     marginTop: 12,
   },
@@ -1147,11 +1306,57 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     marginTop: 4,
   },
+  allergenDisclaimer: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  nutritionDisclaimer: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  lifestyleDisclaimer: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  portionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  portionButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#ffffff",
+  },
+  portionButtonActive: {
+    borderColor: "#3b82f6",
+    backgroundColor: "#dbeafe",
+  },
+  portionButtonText: {
+    fontSize: 12,
+    color: "#374151",
+  },
+  portionButtonTextActive: {
+    color: "#1d4ed8",
+    fontWeight: "600",
+  },
   nutritionInsightsBox: {
     marginTop: 8,
     paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: "#1f2937",
+  },
+  nutritionSourceLabel: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 4,
   },
   nutritionInsightsSummary: {
     color: "#e5e7eb",

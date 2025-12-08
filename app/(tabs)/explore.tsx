@@ -50,11 +50,11 @@ function BarChart({ data }: { data: WeeklyPoint[] }) {
   const max = Math.max(...data.map((d) => d.score), 100);
   return (
     <View style={styles.barChart}>
-      {data.map((d) => {
+      {data.map((d, index) => {
         const heightPct = Math.max(8, (d.score / max) * 100);
         const barColor = d.score >= 80 ? '#22c55e' : d.score >= 60 ? '#fbbf24' : '#f97316';
         return (
-          <View key={d.label} style={styles.barItem}>
+          <View key={`${d.label}-${index}`} style={styles.barItem}>
             <View style={[styles.bar, { height: `${heightPct}%`, backgroundColor: barColor }]} />
             <Text style={styles.barLabel}>{d.label}</Text>
           </View>

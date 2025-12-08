@@ -48,6 +48,16 @@ export interface NutritionInsights {
   };
 }
 
+export interface NutritionSummary {
+  energyKcal: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carbs_g: number | null;
+  sugar_g: number | null;
+  fiber_g: number | null;
+  sodium_mg: number | null;
+}
+
 export interface AllergenFlag {
   kind: string;
   present: "yes" | "no" | "maybe";
@@ -65,6 +75,15 @@ export interface LactoseFlag {
   level: "none" | "trace" | "low" | "medium" | "high";
   reason: string;
   source: string;
+}
+
+export type LifestyleTag = string;
+
+export interface LifestyleChecks {
+  contains_red_meat: "yes" | "no" | "maybe";
+  red_meat_free: "yes" | "no" | "maybe";
+  vegetarian: "yes" | "no" | "maybe";
+  vegan: "yes" | "no" | "maybe";
 }
 
 export interface DishOrganFlags {
@@ -108,7 +127,12 @@ export interface AnalyzeDishResponse {
   allergen_flags?: AllergenFlag[];
   fodmap_flags?: FodmapFlag | null;
   lactose_flags?: LactoseFlag | null;
+  nutrition_summary?: NutritionSummary | null;
+  nutrition_badges?: string[] | null;
   nutrition_insights?: NutritionInsights | null;
+  lifestyle_tags?: LifestyleTag[];
+  lifestyle_checks?: LifestyleChecks | null;
+  nutrition_source?: string | null;
 }
 
 export interface AnalyzeDishCardResponse {
@@ -206,7 +230,24 @@ export async function fetchMenu(placeId: string) {
 }
 
 // NEW: dish analysis from dish-processor
-export async function analyzeDish(payload: any): Promise<AnalyzeDishResponse> {
+export interface AnalyzeDishPayload {
+  dishName: string;
+  restaurantName?: string | null;
+  menuDescription?: string;
+  menuSection?: string;
+  priceText?: string;
+  placeId?: string | null;
+  source?: string;
+  restaurantCalories?: number;
+   portionFactor?: number;
+  description?: string;
+  menu?: any;
+  price?: string;
+  dishId?: string;
+  dishImageUrl?: string;
+}
+
+export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish`;
   console.log("TB analyzeDish calling:", url, "with", payload);
 
