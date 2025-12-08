@@ -47,6 +47,9 @@ export interface DishViewModel {
     aiFactor: number;
     effectiveFactor: number;
   } | null;
+  plateComponents?: PlateComponentVM[];
+  plateComponentsSummary?: string;
+  componentAllergens?: ComponentAllergenVM[];
 }
 
 type OrganSeverity = "low" | "medium" | "high" | "neutral";
@@ -84,6 +87,31 @@ const PRIORITY_LIFESTYLE_LABELS: string[] = [
   "Fish",
   "Shellfish",
 ];
+
+type PlateComponentVM = {
+  component: string;
+  role: string;
+  category: string;
+  shareRatio: number;
+  energyKcal?: number;
+  protein_g?: number;
+  fat_g?: number;
+  carbs_g?: number;
+  sugar_g?: number;
+  fiber_g?: number;
+  sodium_mg?: number;
+};
+
+type AllergenPill = { name: string; kind?: string; isUserAllergen: boolean; present?: string };
+
+type ComponentAllergenVM = {
+  component: string;
+  role: string;
+  category: string;
+  allergenPills: AllergenPill[];
+  fodmapLevel?: string;
+  lactoseLevel?: string;
+};
 
 function mapNutritionSourceToLabel(source: string | null | undefined): string | null {
   if (!source) return null;
@@ -229,6 +257,26 @@ function chooseFodmapFlag(
   return undefined;
 }
 
+function buildAllergenPillsFromFlags(
+  flags: AllergenFlag[],
+  matchesUserAllergen: (name: string) => boolean,
+): AllergenPill[] {
+  const pills: AllergenPill[] = [];
+  for (const flag of flags) {
+    const present = (flag.present || "").toLowerCase();
+    if (present !== "yes" && present !== "maybe") continue;
+    const label = flag.kind || "";
+    if (!label) continue;
+    pills.push({
+      name: label,
+      kind: flag.kind,
+      isUserAllergen: matchesUserAllergen(flag.kind),
+      present: flag.present,
+    });
+  }
+  return pills;
+}
+
 export function buildDishViewModel(
   analysis: AnalyzeDishResponse,
   userAllergens: string[]
@@ -299,45 +347,101 @@ export function buildDishViewModel(
     };
   }
 
+  const plateComponentsRaw = (analysis as any)?.plate_components || [];
+  const nutritionBreakdownRaw = (analysis as any)?.nutrition_breakdown || [];
+  const allergenBreakdownRaw = (analysis as any)?.allergen_breakdown || [];
+  let plateComponents: PlateComponentVM[] | undefined;
+  let plateComponentsSummary: string | undefined;
+  if (Array.isArray(plateComponentsRaw) && plateComponentsRaw.length > 0) {
+    plateComponents = plateComponentsRaw.map((comp: any, idx: number) => {
+      const breakdown = Array.isArray(nutritionBreakdownRaw) ? nutritionBreakdownRaw[idx] || null : null;
+      const shareRatio =
+        typeof breakdown?.share_ratio === "number" && breakdown.share_ratio > 0
+          ? breakdown.share_ratio
+          : typeof comp?.area_ratio === "number" && comp.area_ratio > 0
+          ? comp.area_ratio
+          : 0;
+      const baseLabel =
+        (comp && (comp.label || comp.component || comp.name)) ||
+        (breakdown && (breakdown.component || breakdown.name)) ||
+        `Component ${idx + 1}`;
+      return {
+        component: baseLabel,
+        role: (comp && comp.role) || (breakdown && breakdown.role) || "unknown",
+        category: (comp && comp.category) || (breakdown && breakdown.category) || "other",
+        shareRatio,
+        energyKcal: typeof breakdown?.energyKcal === "number" ? breakdown.energyKcal : undefined,
+        protein_g: typeof breakdown?.protein_g === "number" ? breakdown.protein_g : undefined,
+        fat_g: typeof breakdown?.fat_g === "number" ? breakdown.fat_g : undefined,
+        carbs_g: typeof breakdown?.carbs_g === "number" ? breakdown.carbs_g : undefined,
+        sugar_g: typeof breakdown?.sugar_g === "number" ? breakdown.sugar_g : undefined,
+        fiber_g: typeof breakdown?.fiber_g === "number" ? breakdown.fiber_g : undefined,
+        sodium_mg: typeof breakdown?.sodium_mg === "number" ? breakdown.sodium_mg : undefined,
+      };
+    });
+    const summaryParts = plateComponents.map((pc) => {
+      const label = pc.component || "Component";
+      const roleSuffix = pc.role && pc.role !== "unknown" ? ` (${pc.role.toLowerCase()})` : "";
+      return `${label}${roleSuffix}`;
+    });
+    plateComponentsSummary = summaryParts.join(" + ");
+  }
+
   // 1. Allergens: prefer LLM flags, fallback to legacy
   const allergenFlags = chooseAllergenFlags(analysis, summary, flags);
   const matchesUserAllergen = buildUserAllergenMatcher(userAllergens);
-  const allergenPills: { name: string; kind?: string; isUserAllergen: boolean; present?: string }[] =
-    [];
+  let allergenPills: AllergenPill[] = [];
 
   if (allergenFlags.length > 0) {
-    for (const flag of allergenFlags) {
-      const present = (flag.present || "").toLowerCase();
-      if (present !== "yes" && present !== "maybe") continue;
-      const label = flag.kind || "";
-      if (!label) continue;
-      allergenPills.push({
-        name: label,
-        kind: flag.kind,
-        isUserAllergen: matchesUserAllergen(flag.kind),
-        present: flag.present,
-      });
-    }
+    allergenPills = buildAllergenPillsFromFlags(allergenFlags, matchesUserAllergen);
   } else {
     // Legacy fallback to summary.keyFlags
     const allergenNames = summary?.keyFlags?.allergens ?? [];
-    for (const name of allergenNames) {
-      allergenPills.push({
-        name,
-        kind: name,
-        isUserAllergen: matchesUserAllergen(name),
-        present: "yes",
-      });
-    }
+    allergenPills = allergenNames.map((name) => ({
+      name,
+      kind: name,
+      isUserAllergen: matchesUserAllergen(name),
+      present: "yes",
+    }));
   }
 
   // Lactose pill when high and user cares about milk/dairy
   const lactose = analysis.lactose_flags;
   const caresAboutMilk = userAllergens.map((a) => a.toLowerCase()).includes("milk");
   if (lactose && lactose.level === "high" && caresAboutMilk) {
-    allergens.push({
+    allergenPills.push({
       name: "High lactose",
       isUserAllergen: true,
+    });
+  }
+
+  let componentAllergens: ComponentAllergenVM[] | undefined;
+  if (Array.isArray(allergenBreakdownRaw) && allergenBreakdownRaw.length > 0) {
+    componentAllergens = allergenBreakdownRaw.map((entry: any, idx: number) => {
+      const componentLabel =
+        entry?.component ||
+        plateComponents?.[idx]?.component ||
+        `Component ${idx + 1}`;
+      const role = entry?.role || plateComponents?.[idx]?.role || "unknown";
+      const category = entry?.category || plateComponents?.[idx]?.category || "other";
+      const flags = Array.isArray(entry?.allergen_flags) ? entry.allergen_flags : [];
+      const entryFodmapLevel =
+        entry?.fodmap_flags && entry.fodmap_flags.level
+          ? String(entry.fodmap_flags.level)
+          : undefined;
+      const entryLactoseLevel =
+        entry?.lactose_flags && entry.lactose_flags.level
+          ? String(entry.lactose_flags.level)
+          : undefined;
+
+      return {
+        component: componentLabel,
+        role,
+        category,
+        allergenPills: buildAllergenPillsFromFlags(flags, matchesUserAllergen),
+        fodmapLevel: entryFodmapLevel,
+        lactoseLevel: entryLactoseLevel,
+      };
     });
   }
 
@@ -507,6 +611,19 @@ export function buildDishViewModel(
     });
   }
 
+  if (plateComponentsSummary) {
+    if (allergenSentence) {
+      allergenSentence = allergenSentence.trim().endsWith(".")
+        ? `${allergenSentence} This analysis considers the whole plate, including: ${plateComponentsSummary}.`
+        : `${allergenSentence}. This analysis considers the whole plate, including: ${plateComponentsSummary}.`;
+    }
+    if (fodmapSentence) {
+      fodmapSentence = fodmapSentence.trim().endsWith(".")
+        ? `${fodmapSentence} This analysis considers the whole plate, including: ${plateComponentsSummary}.`
+        : `${fodmapSentence}. This analysis considers the whole plate, including: ${plateComponentsSummary}.`;
+    }
+  }
+
   return {
     allergens: allergenPills,
     allergenSentence,
@@ -521,5 +638,8 @@ export function buildDishViewModel(
     nutritionSourceLabel: mapNutritionSourceToLabel((analysis as any)?.nutrition_source || null),
     portionVision,
     portion,
+    plateComponents,
+    plateComponentsSummary,
+    componentAllergens,
   };
 }

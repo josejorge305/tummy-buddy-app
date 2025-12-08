@@ -99,6 +99,7 @@ export default function RestaurantScreen() {
   const [analysisLoadingByItemId, setAnalysisLoadingByItemId] = useState<Record<string, boolean>>(
     {},
   );
+  const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -479,283 +480,538 @@ export default function RestaurantScreen() {
 
                         {!isAnalysisLoading && viewModel && (
                           <>
-                            {/* 1) Allergens row */}
-                            <View style={styles.sectionBlock}>
-                              <Text style={styles.sectionTitle}>Allergens</Text>
-                              <View style={styles.pillRow}>
-                                {viewModel.allergens.length === 0 && (
-                                  <View style={[styles.allergenPill, styles.allergenPillNeutral]}>
-                                    <Text style={styles.allergenPillText}>None detected</Text>
-                                  </View>
-                                )}
-                                {viewModel.allergens.map((pill) => {
-                                  const isSelected = pill.isUserAllergen;
-                                  return (
-                                    <View
-                                      key={pill.name}
-                                      style={[
-                                        styles.allergenPill,
-                                        isSelected && styles.allergenPillSelected,
-                                      ]}
-                                    >
-                                      <Text
-                                        style={
-                                          isSelected
-                                            ? styles.allergenPillTextSelected
-                                            : styles.allergenPillText
-                                        }
-                                      >
-                                        {pill.name}
-                                      </Text>
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                              {viewModel.allergenSentence ? (
-                                <Text style={styles.sectionBody}>{viewModel.allergenSentence}</Text>
-                              ) : null}
-                              <Text style={styles.allergenDisclaimer}>
-                                Based on recipe analysis and external ingredient data. Ingredients may
-                                vary by restaurant—always confirm if you have a severe allergy.
-                              </Text>
-                            </View>
-
-                            {/* 2) FODMAP row */}
-                            <View style={styles.sectionBlock}>
-                              <View style={styles.sectionHeaderRow}>
-                                <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
-                              </View>
-                              {viewModel?.fodmapLevel ? (
-                                <View style={styles.fodmapLevelBadge}>
-                                  <Text style={styles.fodmapLevelText}>
-                                    {viewModel.fodmapLevel.toLowerCase()}
-                                  </Text>
-                                </View>
-                              ) : null}
-                              {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
-                                <View style={styles.pillRow}>
-                                  {viewModel.fodmapPills.map((name) => (
-                                    <View key={name} style={styles.fodmapPill}>
-                                      <Text style={styles.fodmapPillText}>{name}</Text>
-                                    </View>
-                                  ))}
-                                </View>
-                              ) : null}
-                            {viewModel?.fodmapSentence ? (
-                              <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
-                            ) : null}
-                            <Text style={styles.lifestyleDisclaimer}>
-                              Lifestyle tags are inferred from dish name, description, and typical recipes.
-                            </Text>
-                          </View>
-
-                          {/* 2.5) Diet & lifestyle */}
-                          <View style={styles.dietTagsSection}>
-                            <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
-
-                            {viewModel.dietTags && viewModel.dietTags.length > 0 ? (
-                              <View style={styles.dietTagsRow}>
-                                {viewModel.dietTags.map((label) => (
-                                  <View key={label} style={styles.dietTagChip}>
-                                    <Text style={styles.dietTagText}>{label}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            ) : (
-                              <Text style={styles.dietTagsEmptyText}>
-                                No specific diet or lifestyle tags available for this dish yet.
-                              </Text>
-                            )}
-                          </View>
-
-                          {/* 3) Organ impact list */}
-                          <View style={styles.organSection}>
-                            <Text style={styles.sectionTitle}>Organ impact</Text>
-                            <View style={styles.organListCard}>
-                              {viewModel.organLines.map((line, idx) => {
-                                const organKey = line.organKey.toLowerCase();
-                                const iconSource =
-                                  ORGAN_ICONS[organKey as keyof typeof ORGAN_ICONS];
-                                const isLast = idx === viewModel.organLines.length - 1;
-                                return (
-                                  <View
-                                    key={line.organKey}
+                            {viewModel.plateComponents && viewModel.plateComponents.length > 0 && (
+                              <View style={styles.focusChipsRow}>
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={styles.focusChipsContent}
+                                >
+                                  <TouchableOpacity
+                                    onPress={() => setFocusedComponentIndex(null)}
                                     style={[
-                                      styles.organImpactRow,
-                                      !isLast && styles.organRowDividerCompact,
+                                      styles.focusChip,
+                                      (focusedComponentIndex === null ||
+                                        focusedComponentIndex < 0 ||
+                                        focusedComponentIndex >= viewModel.plateComponents.length) &&
+                                        styles.focusChipActive,
                                     ]}
                                   >
-                                    <View style={styles.organIconBox}>
-                                      {iconSource ? (
-                                        <Image source={iconSource} style={styles.organImpactIcon} />
-                                      ) : (
-                                        <Text style={{ color: "#fff" }}>
-                                          {line.organLabel?.[0] || "O"}
-                                        </Text>
-                                      )}
-                                    </View>
-                                    <View style={styles.organImpactContent}>
-                                      <View style={styles.organHeaderLine}>
-                                        <Text style={styles.organName}>{line.organLabel}</Text>
-                                        <View
+                                    <Text
+                                      style={[
+                                        styles.focusChipText,
+                                        (focusedComponentIndex === null ||
+                                          focusedComponentIndex < 0 ||
+                                          focusedComponentIndex >= viewModel.plateComponents.length) &&
+                                          styles.focusChipTextActive,
+                                      ]}
+                                    >
+                                      Whole plate
+                                    </Text>
+                                  </TouchableOpacity>
+                                  {viewModel.plateComponents.map((pc, idx) => {
+                                    const isActive = focusedComponentIndex === idx;
+                                    return (
+                                      <TouchableOpacity
+                                        key={`focus-${idx}`}
+                                        onPress={() => setFocusedComponentIndex(idx)}
+                                        style={[styles.focusChip, isActive && styles.focusChipActive]}
+                                      >
+                                        <Text
                                           style={[
-                                            styles.organBadge,
-                                            organSeverityStyle(line.severity),
+                                            styles.focusChipText,
+                                            isActive && styles.focusChipTextActive,
                                           ]}
                                         >
-                                          <Text style={styles.organBadgeText}>
-                                            {organSeverityLabel(line.severity)}
+                                          {pc.component || `Item ${idx + 1}`}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                      })}
+                                    </ScrollView>
+                                <Text style={styles.focusHint}>
+                                  Tap a component to see allergens and nutrition just for that item.
+                                </Text>
+                              </View>
+                            )}
+
+                            {(() => {
+                              const hasComponents =
+                                viewModel.plateComponents && viewModel.plateComponents.length > 0;
+                              const activeComponent =
+                                hasComponents &&
+                                focusedComponentIndex !== null &&
+                                focusedComponentIndex >= 0 &&
+                                focusedComponentIndex < (viewModel.plateComponents?.length || 0)
+                                  ? viewModel.plateComponents![focusedComponentIndex]
+                                  : null;
+                              const activeComponentAllergens =
+                                viewModel.componentAllergens &&
+                                focusedComponentIndex !== null &&
+                                focusedComponentIndex >= 0 &&
+                                viewModel.componentAllergens.length > focusedComponentIndex
+                                  ? viewModel.componentAllergens[focusedComponentIndex]
+                                  : null;
+                              const isWholePlateFocus =
+                                !hasComponents ||
+                                focusedComponentIndex === null ||
+                                focusedComponentIndex < 0 ||
+                                focusedComponentIndex >= (viewModel.plateComponents?.length || 0);
+                              const activeAllergenPills = isWholePlateFocus
+                                ? viewModel.allergens
+                                : activeComponentAllergens?.allergenPills || viewModel.allergens;
+                              const activeAllergenTitleSuffix = isWholePlateFocus
+                                ? ""
+                                : activeComponent
+                                ? ` (${activeComponent.component} only)`
+                                : "";
+                              const activeAllergenSentence = (() => {
+                                if (isWholePlateFocus || !activeComponentAllergens) {
+                                  return viewModel.allergenSentence;
+                                }
+                                const names =
+                                  activeComponentAllergens.allergenPills
+                                    ?.map((p) => p.name)
+                                    .join(", ");
+                                if (!names) {
+                                  return `Allergens for ${activeComponentAllergens.component} only.`;
+                                }
+                                return `Contains ${names} for ${activeComponentAllergens.component} only.`;
+                              })();
+
+                              const activeFodmapLevel = isWholePlateFocus
+                                ? viewModel.fodmapLevel
+                                : activeComponentAllergens?.fodmapLevel || viewModel.fodmapLevel;
+                              const activeFodmapSentence = (() => {
+                                if (isWholePlateFocus || !activeComponentAllergens) {
+                                  return viewModel.fodmapSentence;
+                                }
+                                if (!activeComponentAllergens.fodmapLevel) {
+                                  return viewModel.fodmapSentence;
+                                }
+                                return `FODMAP for ${activeComponentAllergens.component}: ${activeComponentAllergens.fodmapLevel}.`;
+                              })();
+
+                              const fodmapLevelScore = (level?: string | null): number => {
+                                switch (level) {
+                                  case "low":
+                                    return 1;
+                                  case "medium":
+                                    return 2;
+                                  case "high":
+                                    return 3;
+                                  default:
+                                    return 0;
+                                }
+                              };
+
+                              let sideFodmapWarning: string | null = null;
+
+                              if (
+                                isWholePlateFocus &&
+                                viewModel.componentAllergens &&
+                                viewModel.componentAllergens.length > 0 &&
+                                viewModel.plateComponents &&
+                                viewModel.plateComponents.length === viewModel.componentAllergens.length
+                              ) {
+                                const wholeScore = fodmapLevelScore(viewModel.fodmapLevel);
+
+                                let bestSideIndex: number | null = null;
+                                let bestSideScore = 0;
+
+                                viewModel.componentAllergens.forEach((ca, idx) => {
+                                  const comp = viewModel.plateComponents![idx];
+                                  if (!comp || comp.role !== "side") return;
+                                  const s = fodmapLevelScore(ca.fodmapLevel);
+                                  if (s > bestSideScore) {
+                                    bestSideScore = s;
+                                    bestSideIndex = idx;
+                                  }
+                                });
+
+                                if (bestSideIndex !== null && bestSideScore > wholeScore) {
+                                  const comp = viewModel.componentAllergens[bestSideIndex];
+                                  const name = comp?.component || "this side";
+                                  sideFodmapWarning = `FODMAP risk is mostly driven by ${name}.`;
+                                }
+                              }
+
+                              const activeNutrition = (() => {
+                                if (isWholePlateFocus || !activeComponent || !viewModel.nutrition) {
+                                  return viewModel.nutrition;
+                                }
+                                return {
+                                  calories: activeComponent.energyKcal ?? viewModel.nutrition.calories,
+                                  protein: activeComponent.protein_g ?? viewModel.nutrition.protein,
+                                  carbs: activeComponent.carbs_g ?? viewModel.nutrition.carbs,
+                                  fat: activeComponent.fat_g ?? viewModel.nutrition.fat,
+                                  sugar: activeComponent.sugar_g ?? viewModel.nutrition.sugar,
+                                  fiber: activeComponent.fiber_g ?? viewModel.nutrition.fiber,
+                                  sodium: activeComponent.sodium_mg ?? viewModel.nutrition.sodium,
+                                };
+                              })();
+                              const activeNutritionSubtitle =
+                                !isWholePlateFocus && activeComponent
+                                  ? `${activeComponent.component} only`
+                                  : undefined;
+
+                              return (
+                                <>
+                                  {/* 1) Allergens row */}
+                                  <View style={styles.sectionBlock}>
+                                    <Text style={styles.sectionTitle}>
+                                      Allergens{activeAllergenTitleSuffix}
+                                    </Text>
+                                    <View style={styles.pillRow}>
+                                      {activeAllergenPills.length === 0 && (
+                                        <View style={[styles.allergenPill, styles.allergenPillNeutral]}>
+                                          <Text style={styles.allergenPillText}>None detected</Text>
+                                        </View>
+                                      )}
+                                      {activeAllergenPills.map((pill) => {
+                                        const isSelected = pill.isUserAllergen;
+                                        return (
+                                          <View
+                                            key={pill.name}
+                                            style={[
+                                              styles.allergenPill,
+                                              isSelected && styles.allergenPillSelected,
+                                            ]}
+                                          >
+                                            <Text
+                                              style={
+                                                isSelected
+                                                  ? styles.allergenPillTextSelected
+                                                  : styles.allergenPillText
+                                              }
+                                            >
+                                              {pill.name}
+                                            </Text>
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                    {activeAllergenSentence ? (
+                                      <Text style={styles.sectionBody}>{activeAllergenSentence}</Text>
+                                    ) : null}
+                                    <Text style={styles.allergenDisclaimer}>
+                                      Based on recipe analysis and external ingredient data. Ingredients may
+                                      vary by restaurant—always confirm if you have a severe allergy.
+                                    </Text>
+                                  </View>
+
+                                  {/* 2) FODMAP row */}
+                                  <View style={styles.sectionBlock}>
+                                    <View style={styles.sectionHeaderRow}>
+                                      <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
+                                    </View>
+                                    {activeFodmapLevel ? (
+                                      <View style={styles.fodmapLevelBadge}>
+                                        <Text style={styles.fodmapLevelText}>
+                                          {activeFodmapLevel.toLowerCase()}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                    {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
+                                      <View style={styles.pillRow}>
+                                        {viewModel.fodmapPills.map((name) => (
+                                          <View key={name} style={styles.fodmapPill}>
+                                            <Text style={styles.fodmapPillText}>{name}</Text>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    ) : null}
+                                    {activeFodmapSentence ? (
+                                      <Text style={styles.sectionBody}>{activeFodmapSentence}</Text>
+                                    ) : null}
+                                    {isWholePlateFocus && sideFodmapWarning && (
+                                      <Text style={styles.sideFodmapWarningText}>{sideFodmapWarning}</Text>
+                                    )}
+                                    <Text style={styles.lifestyleDisclaimer}>
+                                      Lifestyle tags are inferred from dish name, description, and typical recipes.
+                                    </Text>
+                                  </View>
+
+                                  {/* 2.5) Diet & lifestyle */}
+                                  <View style={styles.dietTagsSection}>
+                                    <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
+
+                                    {viewModel.dietTags && viewModel.dietTags.length > 0 ? (
+                                      <View style={styles.dietTagsRow}>
+                                        {viewModel.dietTags.map((label) => (
+                                          <View key={label} style={styles.dietTagChip}>
+                                            <Text style={styles.dietTagText}>{label}</Text>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    ) : (
+                                      <Text style={styles.dietTagsEmptyText}>
+                                        No specific diet or lifestyle tags available for this dish yet.
+                                      </Text>
+                                    )}
+                                  </View>
+
+                                  {/* 3) Organ impact list */}
+                                  <View style={styles.organSection}>
+                                    <Text style={styles.sectionTitle}>Organ impact (whole plate)</Text>
+                                    <View style={styles.organListCard}>
+                                      {viewModel.organLines.map((line, idx) => {
+                                        const organKey = line.organKey.toLowerCase();
+                                        const iconSource =
+                                          ORGAN_ICONS[organKey as keyof typeof ORGAN_ICONS];
+                                        const isLast = idx === viewModel.organLines.length - 1;
+                                        return (
+                                          <View
+                                            key={line.organKey}
+                                            style={[
+                                              styles.organImpactRow,
+                                              !isLast && styles.organRowDividerCompact,
+                                            ]}
+                                          >
+                                            <View style={styles.organIconBox}>
+                                              {iconSource ? (
+                                                <Image source={iconSource} style={styles.organImpactIcon} />
+                                              ) : (
+                                                <Text style={{ color: "#fff" }}>
+                                                  {line.organLabel?.[0] || "O"}
+                                                </Text>
+                                              )}
+                                            </View>
+                                            <View style={styles.organImpactContent}>
+                                              <View style={styles.organHeaderLine}>
+                                                <Text style={styles.organName}>{line.organLabel}</Text>
+                                                <View
+                                                  style={[
+                                                    styles.organBadge,
+                                                    organSeverityStyle(line.severity),
+                                                  ]}
+                                                >
+                                                  <Text style={styles.organBadgeText}>
+                                                    {organSeverityLabel(line.severity)}
+                                                  </Text>
+                                                </View>
+                                              </View>
+                                              <Text style={styles.organEffect}>
+                                                {line.sentence || "Organ impact details to follow."}
+                                              </Text>
+                                            </View>
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                    </View>
+
+                                  {viewModel?.plateComponents && viewModel.plateComponents.length > 0 && (
+                                    <View style={styles.sectionBlock}>
+                                      <Text style={styles.sectionTitle}>Plate components</Text>
+                                      {viewModel.plateComponentsSummary ? (
+                                        <Text style={styles.sectionBody}>{viewModel.plateComponentsSummary}</Text>
+                                      ) : null}
+                                      {viewModel.plateComponents.map((pc, idx) => {
+                                        const compAllergens = viewModel.componentAllergens?.[idx];
+                                        return (
+                                          <View key={`pc-${idx}`} style={styles.plateComponentRow}>
+                                            <View style={styles.plateComponentMain}>
+                                              <Text style={styles.plateComponentName}>
+                                                {pc.component}
+                                                {pc.role && pc.role !== "unknown" ? ` (${pc.role})` : ""}
+                                              </Text>
+                                              {typeof pc.shareRatio === "number" && pc.shareRatio > 0 ? (
+                                                <Text style={styles.plateComponentMeta}>
+                                                  ~{Math.round(pc.shareRatio * 100)}% of plate
+                                                </Text>
+                                              ) : null}
+                                            </View>
+                                            <View style={styles.plateComponentMacros}>
+                                              {typeof pc.energyKcal === "number" && pc.energyKcal > 0 ? (
+                                                <Text style={styles.plateComponentMacro}>
+                                                  {Math.round(pc.energyKcal)} kcal
+                                                </Text>
+                                              ) : null}
+                                            </View>
+                                            {compAllergens && (
+                                              <View style={styles.plateComponentAllergens}>
+                                                {compAllergens.allergenPills &&
+                                                  compAllergens.allergenPills.length > 0 && (
+                                                    <View style={styles.plateComponentPillsRow}>
+                                                      {compAllergens.allergenPills.map((pill, pillIdx) => (
+                                                        <View
+                                                          key={`pc-pill-${idx}-${pillIdx}`}
+                                                          style={styles.allergenPill}
+                                                        >
+                                                          <Text style={styles.allergenPillText}>
+                                                            {pill.name}
+                                                            {pill.present === "maybe" ? " (?)" : ""}
+                                                          </Text>
+                                                        </View>
+                                                      ))}
+                                                    </View>
+                                                  )}
+
+                                                {(compAllergens.fodmapLevel || compAllergens.lactoseLevel) && (
+                                                  <Text style={styles.plateComponentFodmapText}>
+                                                    {compAllergens.fodmapLevel
+                                                      ? `FODMAP: ${compAllergens.fodmapLevel}`
+                                                      : ""}
+                                                    {compAllergens.fodmapLevel && compAllergens.lactoseLevel
+                                                      ? " · "
+                                                      : ""}
+                                                    {compAllergens.lactoseLevel
+                                                      ? `Lactose: ${compAllergens.lactoseLevel}`
+                                                      : ""}
+                                                  </Text>
+                                                )}
+                                              </View>
+                                            )}
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                  )}
+
+                                  {viewModel?.portion && viewModel.portion.effectiveFactor !== 1 && (
+                                    <View style={{ marginTop: 4 }}>
+                                      <Text style={{ fontSize: 12, opacity: 0.8 }}>
+                                        Portion (AI estimate):{" "}
+                                        <Text style={{ fontWeight: "600" }}>
+                                          {viewModel.portion.effectiveFactor.toFixed(2)}× typical serving
+                                        </Text>
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {viewModel?.portionVision && (
+                                    <View style={{ marginTop: 4 }}>
+                                      <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                        {viewModel.portionVision.hasImage
+                                          ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(2)}× · ${Math.round(
+                                              viewModel.portionVision.confidence * 100,
+                                            )}% confidence`
+                                          : `Estimated portion: ${viewModel.portionVision.factor.toFixed(2)}×`}
+                                      </Text>
+                                      {viewModel.portionVision.reason ? (
+                                        <Text style={{ fontSize: 11, opacity: 0.5 }}>
+                                          {viewModel.portionVision.reason}
+                                        </Text>
+                                      ) : null}
+                                    </View>
+                                  )}
+
+                                  {/* 4) Nutrition facts */}
+                                  <View style={styles.nutritionSection}>
+                                    <Text style={styles.sectionTitle}>Nutrition facts (per serving, estimate)</Text>
+                                    {activeNutritionSubtitle ? (
+                                      <Text style={styles.sectionBody}>{activeNutritionSubtitle}</Text>
+                                    ) : null}
+                                  {viewModel.nutrition && viewModel.nutritionSource
+                                    ? console.log("TB nutrition source:", viewModel.nutritionSource)
+                                    : null}
+                                  {activeNutrition ? (
+                                    <>
+                                      <View style={styles.nutritionGrid}>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Calories</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.calories != null
+                                              ? Math.round(activeNutrition.calories)
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Protein</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.protein != null
+                                              ? `${Math.round(activeNutrition.protein)} g`
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Carbs</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.carbs != null
+                                              ? `${Math.round(activeNutrition.carbs)} g`
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Fat</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.fat != null
+                                              ? `${Math.round(activeNutrition.fat)} g`
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Sugar</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.sugar != null
+                                              ? `${Math.round(activeNutrition.sugar)} g`
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Fiber</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.fiber != null
+                                              ? `${Math.round(activeNutrition.fiber)} g`
+                                              : "--"}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.nutritionTile}>
+                                          <Text style={styles.nutritionLabel}>Sodium</Text>
+                                          <Text style={styles.nutritionValue}>
+                                            {activeNutrition.sodium != null
+                                              ? `${Math.round(activeNutrition.sodium)} mg`
+                                              : "--"}
                                           </Text>
                                         </View>
                                       </View>
-                                      <Text style={styles.organEffect}>
-                                        {line.sentence || "Organ impact details to follow."}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                            </View>
-
-                            {viewModel?.portion && viewModel.portion.effectiveFactor !== 1 && (
-                              <View style={{ marginTop: 4 }}>
-                                <Text style={{ fontSize: 12, opacity: 0.8 }}>
-                                  Portion (AI estimate):{" "}
-                                  <Text style={{ fontWeight: "600" }}>
-                                    {viewModel.portion.effectiveFactor.toFixed(2)}× typical serving
+                                      {viewModel.nutritionSourceLabel ? (
+                                        <Text style={styles.nutritionSourceLabel}>
+                                          {viewModel.nutritionSourceLabel}
+                                        </Text>
+                                      ) : null}
+                                      {viewModel.nutritionInsights ? (
+                                        <View style={styles.nutritionInsightsBox}>
+                                          {!!viewModel.nutritionInsights.summary && (
+                                            <Text style={styles.nutritionInsightsSummary}>
+                                              {viewModel.nutritionInsights.summary}
+                                            </Text>
+                                          )}
+                                          {viewModel.nutritionInsights.highlights
+                                            ?.slice(0, 2)
+                                            .map((line: string, idx: number) => (
+                                              <Text
+                                                key={`ni-hi-${idx}`}
+                                                style={styles.nutritionInsightsHighlight}
+                                              >
+                                                • {line}
+                                              </Text>
+                                            ))}
+                                          {viewModel.nutritionInsights.cautions
+                                            ?.slice(0, 1)
+                                            .map((line: string, idx: number) => (
+                                              <Text key={`ni-c-${idx}`} style={styles.nutritionInsightsCaution}>
+                                                ⚠ {line}
+                                              </Text>
+                                            ))}
+                                        </View>
+                                      ) : null}
+                                    </>
+                                  ) : (
+                                    <Text style={styles.nutritionUnavailable}>
+                                      Nutrition details are not available for this dish yet.
+                                    </Text>
+                                  )}
+                                  <Text style={styles.nutritionDisclaimer}>
+                                    Nutrition values are estimates based on recipe analysis and nutrition
+                                    databases, not official restaurant labels.
                                   </Text>
-                                </Text>
-                              </View>
-                            )}
-                            {viewModel?.portionVision && (
-                              <View style={{ marginTop: 4 }}>
-                                <Text style={{ fontSize: 11, opacity: 0.6 }}>
-                                  {viewModel.portionVision.hasImage
-                                    ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(2)}× · ${Math.round(
-                                        viewModel.portionVision.confidence * 100,
-                                      )}% confidence`
-                                    : `Estimated portion: ${viewModel.portionVision.factor.toFixed(2)}×`}
-                                </Text>
-                                {viewModel.portionVision.reason ? (
-                                  <Text style={{ fontSize: 11, opacity: 0.5 }}>
-                                    {viewModel.portionVision.reason}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            )}
-
-                            {/* 4) Nutrition facts */}
-                            <View style={styles.nutritionSection}>
-                              <Text style={styles.sectionTitle}>Nutrition facts (per serving, estimate)</Text>
-                            {viewModel.nutrition && viewModel.nutritionSource
-                              ? console.log("TB nutrition source:", viewModel.nutritionSource)
-                              : null}
-                            {viewModel.nutrition ? (
-                              <>
-                                <View style={styles.nutritionGrid}>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Calories</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.calories != null
-                                        ? Math.round(viewModel.nutrition.calories)
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Protein</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.protein != null
-                                        ? `${Math.round(viewModel.nutrition.protein)} g`
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Carbs</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.carbs != null
-                                        ? `${Math.round(viewModel.nutrition.carbs)} g`
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Fat</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.fat != null
-                                        ? `${Math.round(viewModel.nutrition.fat)} g`
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Sugar</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.sugar != null
-                                        ? `${Math.round(viewModel.nutrition.sugar)} g`
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Fiber</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.fiber != null
-                                        ? `${Math.round(viewModel.nutrition.fiber)} g`
-                                        : "--"}
-                                    </Text>
-                                  </View>
-                                  <View style={styles.nutritionTile}>
-                                    <Text style={styles.nutritionLabel}>Sodium</Text>
-                                    <Text style={styles.nutritionValue}>
-                                      {viewModel.nutrition.sodium != null
-                                        ? `${Math.round(viewModel.nutrition.sodium)} mg`
-                                        : "--"}
-                                    </Text>
-                                  </View>
                                 </View>
-                                {viewModel.nutritionSourceLabel ? (
-                                  <Text style={styles.nutritionSourceLabel}>
-                                    {viewModel.nutritionSourceLabel}
-                                  </Text>
-                                ) : null}
-                                {viewModel.nutritionInsights ? (
-                                  <View style={styles.nutritionInsightsBox}>
-                                    {!!viewModel.nutritionInsights.summary && (
-                                      <Text style={styles.nutritionInsightsSummary}>
-                                        {viewModel.nutritionInsights.summary}
-                                      </Text>
-                                    )}
-                                    {viewModel.nutritionInsights.highlights
-                                      ?.slice(0, 2)
-                                      .map((line: string, idx: number) => (
-                                        <Text
-                                          key={`ni-hi-${idx}`}
-                                          style={styles.nutritionInsightsHighlight}
-                                        >
-                                          • {line}
-                                        </Text>
-                                      ))}
-                                    {viewModel.nutritionInsights.cautions
-                                      ?.slice(0, 1)
-                                      .map((line: string, idx: number) => (
-                                        <Text key={`ni-c-${idx}`} style={styles.nutritionInsightsCaution}>
-                                          ⚠ {line}
-                                        </Text>
-                                      ))}
-                                  </View>
-                                ) : null}
-                              </>
-                            ) : (
-                              <Text style={styles.nutritionUnavailable}>
-                                Nutrition details are not available for this dish yet.
-                              </Text>
-                            )}
-                            <Text style={styles.nutritionDisclaimer}>
-                              Nutrition values are estimates based on recipe analysis and nutrition
-                              databases, not official restaurant labels.
-                            </Text>
-                          </View>
+                                </>
+                              );
+                            })()}
                           </>
                         )}
-
                     {/* Buttons */}
                     <View style={styles.buttonRow}>
                       <TouchableOpacity
@@ -793,6 +1049,10 @@ export default function RestaurantScreen() {
           <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/")}>
             <Ionicons name="home" size={22} color="#ffffff" />
             <Text style={styles.bottomNavText}>Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/(tabs)/explore")}>
+            <Ionicons name="bar-chart-outline" size={22} color="#ffffff" />
+            <Text style={styles.bottomNavText}>Tracker</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/profile")}>
             <Ionicons name="person-circle" size={22} color="#ffffff" />
@@ -1188,6 +1448,83 @@ const styles = StyleSheet.create({
   },
   nutritionSection: {
     marginTop: 10,
+  },
+  plateComponentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  plateComponentMain: {
+    flex: 1,
+    marginRight: 8,
+  },
+  plateComponentName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  plateComponentMeta: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  plateComponentMacros: {
+    alignItems: "flex-end",
+  },
+  plateComponentMacro: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#e5e7eb",
+  },
+  plateComponentAllergens: {
+    marginTop: 4,
+  },
+  plateComponentPillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginBottom: 2,
+  },
+  plateComponentFodmapText: {
+    fontSize: 11,
+    color: "#9ca3af",
+  },
+  focusChipsRow: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  focusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#444",
+    marginRight: 6,
+  },
+  focusChipActive: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
+  },
+  focusChipText: {
+    fontSize: 12,
+    color: "#cccccc",
+  },
+  focusChipTextActive: {
+    color: "#000000",
+  },
+  focusChipsContent: {
+    paddingHorizontal: 4,
+  },
+  focusHint: {
+    fontSize: 11,
+    color: "#888888",
+    marginTop: 4,
+  },
+  sideFodmapWarningText: {
+    fontSize: 11,
+    color: "#f0c36a",
+    marginTop: 4,
   },
   nutritionGrid: {
     marginTop: 8,
