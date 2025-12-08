@@ -99,7 +99,6 @@ export default function RestaurantScreen() {
   const [analysisLoadingByItemId, setAnalysisLoadingByItemId] = useState<Record<string, boolean>>(
     {},
   );
-  const [portionFactorByItemId, setPortionFactorByItemId] = useState<Record<string, number>>({});
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -193,13 +192,11 @@ export default function RestaurantScreen() {
     item,
     sectionName,
     descriptionText,
-    portionFactor,
   }: {
     itemId: string;
     item: any;
     sectionName?: string;
     descriptionText: string;
-    portionFactor: number;
   }) => {
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
@@ -214,7 +211,6 @@ export default function RestaurantScreen() {
         source: "edamam_recipe_card",
         restaurantCalories: item?.restaurantCalories,
         imageUrl: item?.imageUrl ?? null,
-        portionFactor,
       });
 
       setAnalysisByItemId((prev) => ({
@@ -246,8 +242,6 @@ export default function RestaurantScreen() {
       item?.rawDescription ??
       "";
 
-    const portionFactor = portionFactorByItemId[itemId] ?? 1;
-
     // Collapse if tapping the same expanded item
     if (expandedItemId === itemId) {
       setExpandedItemId(null);
@@ -266,7 +260,6 @@ export default function RestaurantScreen() {
       item,
       sectionName,
       descriptionText,
-      portionFactor,
     });
   };
 
@@ -403,7 +396,6 @@ export default function RestaurantScreen() {
                   item?.shortDescription ??
                   item?.rawDescription ??
                   "";
-                const portionFactor = portionFactorByItemId[itemId] ?? 1;
 
                 if (item?.name && item.name.toLowerCase().includes("egg mcmuffin")) {
                   console.log("DEBUG MENU ITEM – Egg McMuffin", item, Object.keys(item || {}));
@@ -626,80 +618,27 @@ export default function RestaurantScreen() {
                             </View>
                             </View>
 
-                            <View style={styles.portionRow}>
-                            {[
-                              { label: "Small", value: 0.5 },
-                              { label: "Regular", value: 1 },
-                              { label: "Large", value: 1.5 },
-                            ].map((option) => {
-                                const isActive = portionFactor === option.value;
-                                return (
-                                  <TouchableOpacity
-                                    key={option.label}
-                                    style={[
-                                      styles.portionButton,
-                                      isActive && styles.portionButtonActive,
-                                    ]}
-                                    onPress={() => {
-                                      setPortionFactorByItemId((prev) => ({
-                                        ...prev,
-                                        [itemId]: option.value,
-                                      }));
-                                      if (analysis) {
-                                        runAnalysisForItem({
-                                          itemId,
-                                          item,
-                                          sectionName: section.name || "",
-                                          descriptionText,
-                                          portionFactor: option.value,
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    <Text
-                                      style={[
-                                        styles.portionButtonText,
-                                        isActive && styles.portionButtonTextActive,
-                                      ]}
-                                    >
-                                      {option.label}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                            {viewModel?.portion && (
+                            {viewModel?.portion && viewModel.portion.effectiveFactor !== 1 && (
                               <View style={{ marginTop: 4 }}>
-                                <Text style={{ fontSize: 12, opacity: 0.7 }}>
-                                  Portion factors:{" "}
+                                <Text style={{ fontSize: 12, opacity: 0.8 }}>
+                                  Portion (AI estimate):{" "}
                                   <Text style={{ fontWeight: "600" }}>
-                                    effective {viewModel.portion.effectiveFactor.toFixed(2)}×
-                                  </Text>{" "}
-                                  (
-                                  <Text>
-                                    manual {viewModel.portion.manualFactor.toFixed(2)}×
-                                    {viewModel.portion.aiFactor !== 1
-                                      ? ` · AI ${viewModel.portion.aiFactor.toFixed(2)}×`
-                                      : ""}
+                                    {viewModel.portion.effectiveFactor.toFixed(2)}× typical serving
                                   </Text>
-                                  )
                                 </Text>
                               </View>
                             )}
                             {viewModel?.portionVision && (
                               <View style={{ marginTop: 4 }}>
-                                <Text style={{ fontSize: 12, opacity: 0.7 }}>
-                                  AI portion (stub):{" "}
-                                  <Text style={{ fontWeight: "600" }}>
-                                    {viewModel.portionVision.factor.toFixed(2)}×
-                                  </Text>
-                                  {viewModel.portionVision.confidence > 0 ? (
-                                    <> ({Math.round(viewModel.portionVision.confidence * 100)}% confidence)</>
-                                  ) : null}
-                                  {viewModel.portionVision.hasImage ? " • image present" : ""}
+                                <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                  {viewModel.portionVision.hasImage
+                                    ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(2)}× · ${Math.round(
+                                        viewModel.portionVision.confidence * 100,
+                                      )}% confidence`
+                                    : `Estimated portion: ${viewModel.portionVision.factor.toFixed(2)}×`}
                                 </Text>
                                 {viewModel.portionVision.reason ? (
-                                  <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                  <Text style={{ fontSize: 11, opacity: 0.5 }}>
                                     {viewModel.portionVision.reason}
                                   </Text>
                                 ) : null}
@@ -1320,32 +1259,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#6b7280",
     marginTop: 4,
-  },
-  portionRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  portionButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#ffffff",
-  },
-  portionButtonActive: {
-    borderColor: "#3b82f6",
-    backgroundColor: "#dbeafe",
-  },
-  portionButtonText: {
-    fontSize: 12,
-    color: "#374151",
-  },
-  portionButtonTextActive: {
-    color: "#1d4ed8",
-    fontWeight: "600",
   },
   nutritionInsightsBox: {
     marginTop: 8,
