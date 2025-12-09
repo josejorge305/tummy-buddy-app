@@ -205,6 +205,8 @@ export default function RestaurantScreen() {
       const result = await analyzeDish({
         dishName: item?.name,
         restaurantName: restaurant?.name || restaurantNameValue || restaurantName || null,
+        // Send both menuDescription and description so the backend can rely on either
+        menuDescription: descriptionText,
         description: descriptionText,
         menuSection: sectionName || '',
         priceText: item?.priceText || '',
@@ -1459,6 +1461,7 @@ const styles = StyleSheet.create({
   },
   organImpactContent: {
     flex: 1,
+    minWidth: 0, // allow children (text) to shrink and wrap inside the row
   },
   organHeaderLine: {
     flexDirection: 'row',
@@ -1498,6 +1501,7 @@ const styles = StyleSheet.create({
     color: '#cbd5e1',
     fontSize: 13,
     lineHeight: 17,
+    flexShrink: 1, // let the text wrap instead of being clipped
   },
   nutritionSection: {
     marginTop: 10,

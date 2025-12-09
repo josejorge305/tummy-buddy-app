@@ -112,6 +112,50 @@ export interface DishNormalizedBlock {
   ingredients_parsed: any | null;
 }
 
+export interface PlateComponent {
+  component_id?: string;
+  role?: string | null;
+  category?: string | null;
+  label?: string | null;
+  confidence?: number | null;
+  area_ratio?: number | null;
+}
+
+export interface SelectionNutritionRow {
+  component_id?: string;
+  component?: string;
+  role?: string;
+  category?: string;
+  share_ratio?: number | null;
+  energyKcal?: number | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carbs_g?: number | null;
+  sugar_g?: number | null;
+  fiber_g?: number | null;
+  sodium_mg?: number | null;
+}
+
+export interface SelectionResult {
+  componentIds: string[];
+  components?: PlateComponent[];
+  nutrition?: SelectionNutritionRow[];
+  combined_nutrition?: NutritionSummary | null;
+  combined_allergens?: AllergenFlag[];
+  combined_fodmap?: FodmapFlag | null;
+  combined_lactose?: LactoseFlag | null;
+}
+
+export interface ComponentAllergenBreakdown {
+  component_id?: string;
+  component?: string;
+  role?: string;
+  category?: string;
+  allergen_flags?: AllergenFlag[];
+  fodmap_flags?: FodmapFlag | null;
+  lactose_flags?: LactoseFlag | null;
+}
+
 export interface AnalyzeDishResponse {
   ok: boolean;
   apiVersion?: string;
@@ -124,6 +168,8 @@ export interface AnalyzeDishResponse {
   organs?: DishOrgansBlock;
   debug?: any;
   error?: string;
+
+  // Whole-dish level flags / nutrition
   allergen_flags?: AllergenFlag[];
   fodmap_flags?: FodmapFlag | null;
   lactose_flags?: LactoseFlag | null;
@@ -133,6 +179,15 @@ export interface AnalyzeDishResponse {
   lifestyle_tags?: LifestyleTag[];
   lifestyle_checks?: LifestyleChecks | null;
   nutrition_source?: string | null;
+
+  // Plate / selection fields (optional for backward compatibility)
+  plate_components?: PlateComponent[] | null;
+  nutrition_breakdown?: SelectionNutritionRow[] | null;
+  allergen_breakdown?: ComponentAllergenBreakdown[] | null;
+
+  selection_default?: SelectionResult | null;
+  selection_components?: Record<string, SelectionResult> | null;
+  selection_custom?: SelectionResult | null;
 }
 
 export interface AnalyzeDishCardResponse {
@@ -239,12 +294,16 @@ export interface AnalyzeDishPayload {
   placeId?: string | null;
   source?: string;
   restaurantCalories?: number;
-   portionFactor?: number;
+  portionFactor?: number;
   description?: string;
   menu?: any;
   price?: string;
   dishId?: string;
   dishImageUrl?: string;
+
+  // New: unified image + selection contract
+  imageUrl?: string | null;
+  selection_component_ids?: string[];
 }
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {

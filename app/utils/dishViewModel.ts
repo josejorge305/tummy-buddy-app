@@ -4,7 +4,7 @@ import {
   DishSummary,
   NutritionInsights,
 } from "../../api/api";
-import type { AllergenFlag, FodmapFlag } from "../../api/api";
+import type { AllergenFlag, FodmapFlag, LactoseFlag } from "../../api/api";
 
 export interface DishOrganLine {
   organKey: string;
@@ -234,6 +234,16 @@ function chooseAllergenFlags(
   summary: DishSummary | null | undefined,
   flags: DishOrganFlags | undefined
 ): AllergenFlag[] {
+  const selectionDefault: any = (analysis as any)?.selection_default;
+  const combinedFromSelection: AllergenFlag[] | undefined =
+    selectionDefault && Array.isArray(selectionDefault.combined_allergens)
+      ? (selectionDefault.combined_allergens as AllergenFlag[])
+      : undefined;
+
+  if (combinedFromSelection && combinedFromSelection.length > 0) {
+    return combinedFromSelection;
+  }
+
   if (analysis.allergen_flags && analysis.allergen_flags.length > 0) {
     return analysis.allergen_flags;
   }
@@ -245,6 +255,10 @@ function chooseFodmapFlag(
   flags: DishOrganFlags | undefined,
   summary: DishSummary | null | undefined
 ): FodmapFlag | undefined {
+  const selectionDefault: any = (analysis as any)?.selection_default;
+  if (selectionDefault && selectionDefault.combined_fodmap) {
+    return selectionDefault.combined_fodmap as FodmapFlag;
+  }
   if (analysis.fodmap_flags) return analysis.fodmap_flags;
   if (flags?.fodmap) return flags.fodmap as FodmapFlag;
   if (summary?.keyFlags?.fodmapLevel) {
@@ -287,6 +301,9 @@ export function buildDishViewModel(
   const lexDebug = (analysis.debug as any)?.lex_per_ingredient;
   const perIngredients = Array.isArray(lexDebug?.perIngredient) ? lexDebug.perIngredient : [];
   let dietTags: any[] = Array.isArray(summary?.edamamLabels) ? summary?.edamamLabels : [];
+  const selectionDefault: any = (analysis as any)?.selection_default || null;
+  const selectionComponents: Record<string, any> | null =
+    ((analysis as any)?.selection_components as Record<string, any> | null) || null;
 
   const fodmapTriggerSet = new Set<string>();
   for (const entry of perIngredients) {
@@ -352,36 +369,62 @@ export function buildDishViewModel(
   const allergenBreakdownRaw = (analysis as any)?.allergen_breakdown || [];
   let plateComponents: PlateComponentVM[] | undefined;
   let plateComponentsSummary: string | undefined;
+
   if (Array.isArray(plateComponentsRaw) && plateComponentsRaw.length > 0) {
     plateComponents = plateComponentsRaw.map((comp: any, idx: number) => {
-      const breakdown = Array.isArray(nutritionBreakdownRaw) ? nutritionBreakdownRaw[idx] || null : null;
+      const componentId = typeof comp?.component_id === "string" ? comp.component_id : undefined;
+      let breakdown: any = null;
+
+      if (selectionComponents && componentId && selectionComponents[componentId]) {
+        const sel = selectionComponents[componentId];
+        if (Array.isArray(sel?.nutrition) && sel.nutrition.length > 0) {
+          breakdown = sel.nutrition[0];
+        } else if (sel?.combined_nutrition) {
+          breakdown = { ...sel.combined_nutrition };
+        }
+      }
+
+      if (!breakdown && Array.isArray(nutritionBreakdownRaw)) {
+        breakdown = nutritionBreakdownRaw[idx] || null;
+      }
+
       const shareRatio =
         typeof breakdown?.share_ratio === "number" && breakdown.share_ratio > 0
           ? breakdown.share_ratio
           : typeof comp?.area_ratio === "number" && comp.area_ratio > 0
           ? comp.area_ratio
           : 0;
+
       const baseLabel =
         (comp && (comp.label || comp.component || comp.name)) ||
         (breakdown && (breakdown.component || breakdown.name)) ||
         `Component ${idx + 1}`;
+
       return {
         component: baseLabel,
         role: (comp && comp.role) || (breakdown && breakdown.role) || "unknown",
         category: (comp && comp.category) || (breakdown && breakdown.category) || "other",
         shareRatio,
-        energyKcal: typeof breakdown?.energyKcal === "number" ? breakdown.energyKcal : undefined,
-        protein_g: typeof breakdown?.protein_g === "number" ? breakdown.protein_g : undefined,
+        energyKcal:
+          typeof breakdown?.energyKcal === "number" ? breakdown.energyKcal : undefined,
+        protein_g:
+          typeof breakdown?.protein_g === "number" ? breakdown.protein_g : undefined,
         fat_g: typeof breakdown?.fat_g === "number" ? breakdown.fat_g : undefined,
-        carbs_g: typeof breakdown?.carbs_g === "number" ? breakdown.carbs_g : undefined,
-        sugar_g: typeof breakdown?.sugar_g === "number" ? breakdown.sugar_g : undefined,
-        fiber_g: typeof breakdown?.fiber_g === "number" ? breakdown.fiber_g : undefined,
-        sodium_mg: typeof breakdown?.sodium_mg === "number" ? breakdown.sodium_mg : undefined,
+        carbs_g:
+          typeof breakdown?.carbs_g === "number" ? breakdown.carbs_g : undefined,
+        sugar_g:
+          typeof breakdown?.sugar_g === "number" ? breakdown.sugar_g : undefined,
+        fiber_g:
+          typeof breakdown?.fiber_g === "number" ? breakdown.fiber_g : undefined,
+        sodium_mg:
+          typeof breakdown?.sodium_mg === "number" ? breakdown.sodium_mg : undefined,
       };
     });
+
     const summaryParts = plateComponents.map((pc) => {
       const label = pc.component || "Component";
-      const roleSuffix = pc.role && pc.role !== "unknown" ? ` (${pc.role.toLowerCase()})` : "";
+      const roleSuffix =
+        pc.role && pc.role !== "unknown" ? ` (${pc.role.toLowerCase()})` : "";
       return `${label}${roleSuffix}`;
     });
     plateComponentsSummary = summaryParts.join(" + ");
@@ -406,9 +449,12 @@ export function buildDishViewModel(
   }
 
   // Lactose pill when high and user cares about milk/dairy
-  const lactose = analysis.lactose_flags;
+  const selectionLactose: LactoseFlag | null =
+    (analysis as any)?.lactose_flags ||
+    (selectionDefault && selectionDefault.combined_lactose) ||
+    null;
   const caresAboutMilk = userAllergens.map((a) => a.toLowerCase()).includes("milk");
-  if (lactose && lactose.level === "high" && caresAboutMilk) {
+  if (selectionLactose && selectionLactose.level === "high" && caresAboutMilk) {
     allergenPills.push({
       name: "High lactose",
       isUserAllergen: true,
@@ -416,7 +462,48 @@ export function buildDishViewModel(
   }
 
   let componentAllergens: ComponentAllergenVM[] | undefined;
-  if (Array.isArray(allergenBreakdownRaw) && allergenBreakdownRaw.length > 0) {
+
+  if (selectionComponents && Array.isArray(plateComponentsRaw) && plateComponentsRaw.length > 0) {
+    // Derive per-component allergens/FODMAP/lactose from selection_components
+    componentAllergens = plateComponentsRaw.map((comp: any, idx: number) => {
+      const componentId = typeof comp?.component_id === "string" ? comp.component_id : undefined;
+      const sel = componentId ? selectionComponents[componentId] : null;
+
+      const flags: AllergenFlag[] =
+        sel && Array.isArray(sel?.combined_allergens)
+          ? (sel.combined_allergens as AllergenFlag[])
+          : [];
+
+      const entryFodmapLevel =
+        sel && sel.combined_fodmap && sel.combined_fodmap.level
+          ? String(sel.combined_fodmap.level)
+          : undefined;
+
+      const entryLactoseLevel =
+        sel && sel.combined_lactose && sel.combined_lactose.level
+          ? String(sel.combined_lactose.level)
+          : undefined;
+
+      const vmBase = plateComponents?.[idx];
+
+      const componentLabel =
+        (comp && (comp.label || comp.component || comp.name)) ||
+        vmBase?.component ||
+        `Component ${idx + 1}`;
+      const role = (comp && comp.role) || vmBase?.role || "unknown";
+      const category = (comp && comp.category) || vmBase?.category || "other";
+
+      return {
+        component: componentLabel,
+        role,
+        category,
+        allergenPills: buildAllergenPillsFromFlags(flags, matchesUserAllergen),
+        fodmapLevel: entryFodmapLevel,
+        lactoseLevel: entryLactoseLevel,
+      };
+    });
+  } else if (Array.isArray(allergenBreakdownRaw) && allergenBreakdownRaw.length > 0) {
+    // Legacy fallback
     componentAllergens = allergenBreakdownRaw.map((entry: any, idx: number) => {
       const componentLabel =
         entry?.component ||
@@ -524,8 +611,11 @@ export function buildDishViewModel(
     };
   });
 
-  // 4. Nutrition – use normalized per-serving nutrition_summary from analysis
-  const ns = analysis.nutrition_summary || null;
+  // 4. Nutrition – prefer selection_default.combined_nutrition, fallback to legacy nutrition_summary
+  const ns =
+    (selectionDefault && selectionDefault.combined_nutrition) ||
+    analysis.nutrition_summary ||
+    null;
   let nutrition: any = null;
   if (ns) {
     nutrition = {
