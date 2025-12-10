@@ -1,0 +1,372 @@
+import React, { useMemo, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+
+type ImpactLevel = "high" | "medium" | "low";
+
+export type OrganImpactEntry = {
+  id: string;
+  organId: string;
+  label: string;
+  level: ImpactLevel;
+  score?: number | null;
+  description: string;
+};
+
+type Props = {
+  title?: string;
+  impacts: OrganImpactEntry[];
+  overallSummary?: string | null;
+};
+
+const LEVEL_COLORS: Record<ImpactLevel, string> = {
+  high: "#fb923c",
+  medium: "#facc15",
+  low: "#22c55e",
+};
+
+const LEVEL_BADGE_BG: Record<ImpactLevel, string> = {
+  high: "rgba(251, 146, 60, 0.16)",
+  medium: "rgba(250, 204, 21, 0.16)",
+  low: "rgba(34, 197, 94, 0.16)",
+};
+
+const LEVEL_LABEL: Record<ImpactLevel, string> = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+};
+
+const DEFAULT_GAUGE_BY_LEVEL: Record<ImpactLevel, number> = {
+  high: 0.9,
+  medium: 0.65,
+  low: 0.35,
+};
+
+const ORGAN_TINT: Record<string, string> = {
+  gut: "rgba(251, 146, 60, 0.18)",
+  liver: "rgba(168, 85, 247, 0.18)",
+  heart: "rgba(248, 113, 113, 0.18)",
+  metabolic: "rgba(59, 130, 246, 0.18)",
+  immune: "rgba(34, 197, 94, 0.18)",
+  brain: "rgba(129, 140, 248, 0.18)",
+  kidney: "rgba(52, 211, 153, 0.18)",
+};
+
+const SEVERITY_ORDER: Record<ImpactLevel, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
+export const OrganImpactSection: React.FC<Props> = ({
+  title = "Organ impact (whole plate)",
+  impacts,
+  overallSummary,
+}) => {
+  const [showLowImpacts, setShowLowImpacts] = useState(false);
+
+  const { highMedium, low, summaryText, overallLevel } = useMemo(() => {
+    const sorted = [...impacts].sort((a, b) => {
+      const levelDiff = SEVERITY_ORDER[a.level] - SEVERITY_ORDER[b.level];
+      if (levelDiff !== 0) return levelDiff;
+      const aScore = Math.abs(a.score ?? 0);
+      const bScore = Math.abs(b.score ?? 0);
+      return bScore - aScore;
+    });
+
+    const highMediumArr = sorted.filter((o) => o.level !== "low");
+    const lowArr = sorted.filter((o) => o.level === "low");
+
+    const top = highMediumArr[0] ?? sorted[0];
+    const effLevel: ImpactLevel = top?.level ?? "low";
+
+    const strongestOrgans = highMediumArr
+      .slice(0, 2)
+      .map((o) => o.label)
+      .join(" & ");
+
+    const defaultSummary =
+      strongestOrgans.length > 0
+        ? `${capitalize(LEVEL_LABEL[effLevel])} overall impact – strongest effects on ${strongestOrgans}.`
+        : `${capitalize(LEVEL_LABEL[effLevel])} overall impact for this plate.`;
+
+    return {
+      highMedium: highMediumArr,
+      low: lowArr,
+      overallLevel: effLevel,
+      summaryText:
+        overallSummary && overallSummary.trim().length > 0
+          ? overallSummary
+          : defaultSummary,
+    };
+  }, [impacts, overallSummary]);
+
+  if (!impacts || impacts.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>{title}</Text>
+        <OverallBadge level={overallLevel} />
+      </View>
+
+      <Text style={styles.summaryText}>{summaryText}</Text>
+
+      {highMedium.map((item) => (
+        <OrganImpactRow key={item.id} entry={item} />
+      ))}
+
+      {low.length > 0 && (
+        <View style={styles.lowImpactSection}>
+          <TouchableOpacity
+            onPress={() => setShowLowImpacts((prev) => !prev)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.lowToggleText}>
+              {showLowImpacts
+                ? "Hide low-impact organs"
+                : `Show ${low.length} low-impact organs`}
+            </Text>
+          </TouchableOpacity>
+
+          {showLowImpacts &&
+            low.map((item) => (
+              <OrganImpactRow key={item.id} entry={item} isLow />
+            ))}
+        </View>
+      )}
+    </View>
+  );
+};
+
+const OverallBadge: React.FC<{ level: ImpactLevel }> = ({ level }) => {
+  const icon = level === "high" ? "⚠️" : level === "medium" ? "⚠️" : "✅";
+  return (
+    <View style={[styles.overallBadge, { borderColor: LEVEL_COLORS[level] }]}>
+      <Text style={styles.overallBadgeText}>
+        {icon} {capitalize(LEVEL_LABEL[level])}
+      </Text>
+    </View>
+  );
+};
+
+const OrganImpactRow: React.FC<{
+  entry: OrganImpactEntry;
+  isLow?: boolean;
+}> = ({ entry, isLow }) => {
+  const { organId, label, level, description, score } = entry;
+  const tint = ORGAN_TINT[organId] ?? "rgba(148, 163, 184, 0.22)";
+
+  const fraction = (() => {
+    if (typeof score !== "number") {
+      return DEFAULT_GAUGE_BY_LEVEL[level];
+    }
+    const abs = Math.min(Math.abs(score), 100);
+    return abs / 100 || DEFAULT_GAUGE_BY_LEVEL[level];
+  })();
+
+  return (
+    <View
+      style={[
+        styles.row,
+        {
+          borderLeftColor: LEVEL_COLORS[level],
+          opacity: isLow ? 0.85 : 1,
+        },
+      ]}
+    >
+      <View style={styles.iconColumn}>
+        <View style={[styles.iconWrapper, { backgroundColor: tint }]}>
+          <Text style={styles.iconEmoji}>{fallbackEmojiForOrgan(organId)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.contentColumn}>
+        <View style={styles.rowHeader}>
+          <Text style={styles.organLabel}>{label}</Text>
+          <ImpactLevelChip level={level} />
+        </View>
+
+        <ImpactGauge level={level} fraction={fraction} />
+
+        <Text style={styles.description} numberOfLines={3}>
+          {description}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+const ImpactLevelChip: React.FC<{ level: ImpactLevel }> = ({ level }) => {
+  return (
+    <View
+      style={[
+        styles.levelChip,
+        { backgroundColor: LEVEL_BADGE_BG[level] },
+      ]}
+    >
+      <Text
+        style={[
+          styles.levelChipText,
+          { color: LEVEL_COLORS[level] },
+        ]}
+      >
+        {LEVEL_LABEL[level]}
+      </Text>
+    </View>
+  );
+};
+
+const ImpactGauge: React.FC<{
+  level: ImpactLevel;
+  fraction: number;
+}> = ({ level, fraction }) => {
+  return (
+    <View style={styles.gaugeTrack}>
+      <View
+        style={[
+          styles.gaugeFill,
+          {
+            width: `${Math.round(
+              Math.max(0.15, Math.min(fraction, 1)) * 100
+            )}%`,
+            backgroundColor: LEVEL_COLORS[level],
+          },
+        ]}
+      />
+    </View>
+  );
+};
+
+const fallbackEmojiForOrgan = (organId: string): string => {
+  switch (organId) {
+    case "gut":
+      return "🧠";
+    case "liver":
+      return "🧬";
+    case "heart":
+      return "❤️";
+    case "metabolic":
+      return "⚙️";
+    case "immune":
+      return "🛡️";
+    case "brain":
+      return "🧠";
+    case "kidney":
+      return "🫁";
+    default:
+      return "✨";
+  }
+};
+
+const capitalize = (s: string) =>
+  s.length ? s[0].toUpperCase() + s.slice(1) : s;
+
+const styles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "#020617",
+    gap: 8,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#e5e7eb",
+  },
+  overallBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  overallBadgeText: {
+    fontSize: 11,
+    color: "#e5e7eb",
+  },
+  summaryText: {
+    fontSize: 13,
+    color: "#9ca3af",
+    marginBottom: 6,
+  },
+  row: {
+    flexDirection: "row",
+    borderLeftWidth: 3,
+    paddingLeft: 10,
+    paddingVertical: 10,
+    columnGap: 10,
+  },
+  iconColumn: {
+    width: 40,
+    alignItems: "center",
+  },
+  iconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconEmoji: {
+    fontSize: 18,
+  },
+  contentColumn: {
+    flex: 1,
+  },
+  rowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  organLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#e5e7eb",
+  },
+  levelChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  levelChipText: {
+    fontSize: 11,
+    textTransform: "capitalize",
+  },
+  gaugeTrack: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
+    overflow: "hidden",
+    marginBottom: 4,
+  },
+  gaugeFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  description: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#9ca3af",
+  },
+  lowImpactSection: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(148, 163, 184, 0.3)",
+    paddingTop: 6,
+  },
+  lowToggleText: {
+    fontSize: 12,
+    color: "#67e8f9",
+    marginBottom: 4,
+  },
+});

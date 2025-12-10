@@ -13,15 +13,14 @@ import {
   View,
 } from 'react-native';
 import { API_BASE_URL, AnalyzeDishResponse, analyzeDish } from '../api/api';
-import BrainIcon from '../assets/images/brain_icon.png';
-import GutIcon from '../assets/images/Gut_icon.png';
-import HeartIcon from '../assets/images/heart_icon.png';
-import ImmuneIcon from '../assets/images/Inmune_Icon.png';
-import KidneyIcon from '../assets/images/kidney_icon.png';
-import LiverIcon from '../assets/images/Liver_icon.png';
-import MetabolicIcon from '../assets/images/Metabolic_Icon.png';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { buildDishViewModel } from './utils/dishViewModel';
+import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/OrganImpactSection';
+import {
+  PlateComponentEntry,
+  PlateComponentsSection,
+  PlateComponentKind,
+} from '../components/analysis/PlateComponentsSection';
 
 const BG = '#020617';
 const TEAL = '#14b8a6';
@@ -110,20 +109,6 @@ export default function RestaurantScreen() {
   // keep as strings for now (backend will parse to numbers)
   const latValue = latValueRaw ?? undefined;
   const lngValue = lngValueRaw ?? undefined;
-
-  const organSeverityLabel = (severity: 'low' | 'medium' | 'high' | 'neutral') => severity;
-  const organSeverityStyle = (severity: 'low' | 'medium' | 'high' | 'neutral') => {
-    switch (severity) {
-      case 'high':
-        return styles.organBadgeHigh;
-      case 'medium':
-        return styles.organBadgeMedium;
-      case 'low':
-        return styles.organBadgeLow;
-      default:
-        return styles.organBadgeNeutral;
-    }
-  };
 
   useEffect(() => {
     async function loadMenu() {
@@ -264,26 +249,6 @@ export default function RestaurantScreen() {
       sectionName,
       descriptionText,
     });
-  };
-
-  const ORGAN_ICONS: Record<string, any> = {
-    gut: GutIcon,
-    liver: LiverIcon,
-    heart: HeartIcon,
-    metabolic: MetabolicIcon,
-    immune: ImmuneIcon,
-    brain: BrainIcon,
-    kidney: KidneyIcon,
-  };
-
-  const ORGAN_LABELS: Record<string, string> = {
-    gut: 'Gut',
-    liver: 'Liver',
-    heart: 'Heart',
-    metabolic: 'Metabolic',
-    immune: 'Immune',
-    brain: 'Brain',
-    kidney: 'Kidney',
   };
 
   const heroUrl = buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
@@ -745,164 +710,104 @@ export default function RestaurantScreen() {
                                   </View>
 
                                   {/* 2.5) Diet & lifestyle */}
-                                  <View style={styles.dietTagsSection}>
-                                    <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
+                                  {(() => {
+                                    const dietTags = viewModel.dietTags || [];
+                                    const dietSummaryRaw = '';
+                                    const hasDietSummary =
+                                      typeof dietSummaryRaw === 'string' &&
+                                      dietSummaryRaw.trim().length > 0;
+                                    const hasDietTags =
+                                      Array.isArray(dietTags) && dietTags.length > 0;
+                                    const showDietLifestyleSection =
+                                      hasDietSummary || hasDietTags;
 
-                                    {viewModel.dietTags && viewModel.dietTags.length > 0 ? (
-                                      <View style={styles.dietTagsRow}>
-                                        {viewModel.dietTags.map((label) => (
-                                          <View key={label} style={styles.dietTagChip}>
-                                            <Text style={styles.dietTagText}>{label}</Text>
+                                    if (!showDietLifestyleSection) return null;
+
+                                    return (
+                                      <View style={styles.dietTagsSection}>
+                                        <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
+
+                                        {hasDietSummary && (
+                                          <Text style={styles.sectionBody}>
+                                            {dietSummaryRaw.trim()}
+                                          </Text>
+                                        )}
+
+                                        {hasDietTags && (
+                                          <View style={styles.dietTagsRow}>
+                                            {dietTags.map((label: any) => (
+                                              <View
+                                                key={
+                                                  (label as any)?.id ||
+                                                  (label as any)?.code ||
+                                                  String(label)
+                                                }
+                                                style={styles.dietTagChip}
+                                              >
+                                                <Text style={styles.dietTagText}>
+                                                  {(label as any)?.label ||
+                                                    (label as any)?.name ||
+                                                    String(label)}
+                                                </Text>
+                                              </View>
+                                            ))}
                                           </View>
-                                        ))}
+                                        )}
                                       </View>
-                                    ) : (
-                                      <Text style={styles.dietTagsEmptyText}>
-                                        No specific diet or lifestyle tags available for this dish
-                                        yet.
-                                      </Text>
-                                    )}
-                                  </View>
+                                    );
+                                  })()}
 
                                   {/* 3) Organ impact list */}
-                                  <View style={styles.organSection}>
-                                    <Text style={styles.sectionTitle}>
-                                      Organ impact (whole plate)
-                                    </Text>
-                                    <View style={styles.organListCard}>
-                                      {viewModel.organLines.map((line, idx) => {
-                                        const organKey = line.organKey.toLowerCase();
-                                        const iconSource =
-                                          ORGAN_ICONS[organKey as keyof typeof ORGAN_ICONS];
-                                        const isLast = idx === viewModel.organLines.length - 1;
-                                        return (
-                                          <View
-                                            key={line.organKey}
-                                            style={[
-                                              styles.organImpactRow,
-                                              !isLast && styles.organRowDividerCompact,
-                                            ]}
-                                          >
-                                            <View style={styles.organIconBox}>
-                                              {iconSource ? (
-                                                <Image
-                                                  source={iconSource}
-                                                  style={styles.organImpactIcon}
-                                                />
-                                              ) : (
-                                                <Text style={{ color: '#fff' }}>
-                                                  {line.organLabel?.[0] || 'O'}
-                                                </Text>
-                                              )}
-                                            </View>
-                                            <View style={styles.organImpactContent}>
-                                              <View style={styles.organHeaderLine}>
-                                                <Text style={styles.organName}>
-                                                  {line.organLabel}
-                                                </Text>
-                                                <View
-                                                  style={[
-                                                    styles.organBadge,
-                                                    organSeverityStyle(line.severity),
-                                                  ]}
-                                                >
-                                                  <Text style={styles.organBadgeText}>
-                                                    {organSeverityLabel(line.severity)}
-                                                  </Text>
-                                                </View>
-                                              </View>
-                                              <Text style={styles.organEffect}>
-                                                {line.sentence || 'Organ impact details to follow.'}
-                                              </Text>
-                                            </View>
-                                          </View>
-                                        );
-                                      })}
-                                    </View>
-                                  </View>
+                                  <OrganImpactSection
+                                    impacts={viewModel.organLines.map((line, idx) => ({
+                                      id: line.organKey || String(idx),
+                                      organId: line.organKey || 'organ',
+                                      label: line.organLabel,
+                                      level:
+                                        line.severity === 'high'
+                                          ? 'high'
+                                          : line.severity === 'medium'
+                                          ? 'medium'
+                                          : 'low',
+                                      score:
+                                        typeof line.score === 'number' ? line.score : null,
+                                      description:
+                                        line.sentence || 'Organ impact details to follow.',
+                                    })) as OrganImpactEntry[]}
+                                  />
 
                                   {viewModel?.plateComponents &&
                                     viewModel.plateComponents.length > 0 && (
-                                      <View style={styles.sectionBlock}>
-                                        <Text style={styles.sectionTitle}>Plate components</Text>
-                                        {viewModel.plateComponentsSummary ? (
-                                          <Text style={styles.sectionBody}>
-                                            {viewModel.plateComponentsSummary}
-                                          </Text>
-                                        ) : null}
-                                        {viewModel.plateComponents.map((pc, idx) => {
-                                          const compAllergens = viewModel.componentAllergens?.[idx];
-                                          return (
-                                            <View
-                                              key={`pc-${idx}`}
-                                              style={styles.plateComponentRow}
-                                            >
-                                              <View style={styles.plateComponentMain}>
-                                                <Text style={styles.plateComponentName}>
-                                                  {pc.component}
-                                                  {pc.role && pc.role !== 'unknown'
-                                                    ? ` (${pc.role})`
-                                                    : ''}
-                                                </Text>
-                                                {typeof pc.shareRatio === 'number' &&
-                                                pc.shareRatio > 0 ? (
-                                                  <Text style={styles.plateComponentMeta}>
-                                                    ~{Math.round(pc.shareRatio * 100)}% of plate
-                                                  </Text>
-                                                ) : null}
-                                              </View>
-                                              <View style={styles.plateComponentMacros}>
-                                                {typeof pc.energyKcal === 'number' &&
-                                                pc.energyKcal > 0 ? (
-                                                  <Text style={styles.plateComponentMacro}>
-                                                    {Math.round(pc.energyKcal)} kcal
-                                                  </Text>
-                                                ) : null}
-                                              </View>
-                                              {compAllergens && (
-                                                <View style={styles.plateComponentAllergens}>
-                                                  {compAllergens.allergenPills &&
-                                                    compAllergens.allergenPills.length > 0 && (
-                                                      <View style={styles.plateComponentPillsRow}>
-                                                        {compAllergens.allergenPills.map(
-                                                          (pill, pillIdx) => (
-                                                            <View
-                                                              key={`pc-pill-${idx}-${pillIdx}`}
-                                                              style={styles.allergenPill}
-                                                            >
-                                                              <Text style={styles.allergenPillText}>
-                                                                {pill.name}
-                                                                {pill.present === 'maybe'
-                                                                  ? ' (?)'
-                                                                  : ''}
-                                                              </Text>
-                                                            </View>
-                                                          )
-                                                        )}
-                                                      </View>
-                                                    )}
-
-                                                  {(compAllergens.fodmapLevel ||
-                                                    compAllergens.lactoseLevel) && (
-                                                    <Text style={styles.plateComponentFodmapText}>
-                                                      {compAllergens.fodmapLevel
-                                                        ? `FODMAP: ${compAllergens.fodmapLevel}`
-                                                        : ''}
-                                                      {compAllergens.fodmapLevel &&
-                                                      compAllergens.lactoseLevel
-                                                        ? ' · '
-                                                        : ''}
-                                                      {compAllergens.lactoseLevel
-                                                        ? `Lactose: ${compAllergens.lactoseLevel}`
-                                                        : ''}
-                                                    </Text>
-                                                  )}
-                                                </View>
-                                              )}
-                                            </View>
-                                          );
-                                        })}
-                                      </View>
+                                      <PlateComponentsSection
+                                        components={
+                                          viewModel.plateComponents.map((pc, idx) => {
+                                            const compAllergens = viewModel.componentAllergens?.[idx];
+                                            const allergenLabels =
+                                              compAllergens?.allergenPills?.map((p: any) => p.name) ?? [];
+                                            return {
+                                              id: pc.component || `pc-${idx}`,
+                                              name: pc.component,
+                                              kind:
+                                                (pc.role as PlateComponentKind) ||
+                                                ('other' as PlateComponentKind),
+                                              calories:
+                                                typeof pc.energyKcal === 'number' ? pc.energyKcal : null,
+                                              sharePercent:
+                                                typeof pc.shareRatio === 'number'
+                                                  ? pc.shareRatio * 100
+                                                  : null,
+                                              allergens: allergenLabels,
+                                              fodmapLevel: compAllergens?.fodmapLevel || 'unknown',
+                                              lactoseLevel: (compAllergens?.lactoseLevel as any) || 'unknown',
+                                            } as PlateComponentEntry;
+                                          }) || []
+                                        }
+                                        totalCaloriesOverride={
+                                          viewModel.nutrition?.calories != null
+                                            ? viewModel.nutrition.calories
+                                            : null
+                                        }
+                                      />
                                     )}
 
                                   {viewModel?.portion &&
@@ -1422,86 +1327,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#020617',
-  },
-  organSection: {
-    marginTop: 10,
-  },
-  organListCard: {
-    marginTop: 8,
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-  },
-  organImpactRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(148,163,184,0.3)',
-  },
-  organRowDividerCompact: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  organIconBox: {
-    marginRight: 12,
-    marginTop: 4,
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  organImpactIcon: {
-    width: 32,
-    height: 32,
-    resizeMode: 'contain',
-  },
-  organImpactContent: {
-    flex: 1,
-    minWidth: 0, // allow children (text) to shrink and wrap inside the row
-  },
-  organHeaderLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  organName: {
-    color: '#fefefe',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  organBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  organBadgeText: {
-    color: '#0B1120',
-    fontWeight: '600',
-    fontSize: 12,
-    textTransform: 'lowercase',
-  },
-  organBadgeLow: {
-    backgroundColor: '#14B8A6',
-  },
-  organBadgeMedium: {
-    backgroundColor: '#F97316',
-  },
-  organBadgeHigh: {
-    backgroundColor: '#EF4444',
-  },
-  organBadgeNeutral: {
-    backgroundColor: '#6B7280',
-  },
-  organEffect: {
-    color: '#cbd5e1',
-    fontSize: 13,
-    lineHeight: 17,
-    flexShrink: 1, // let the text wrap instead of being clipped
   },
   nutritionSection: {
     marginTop: 10,
