@@ -19,6 +19,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import Logo from '../../assets/images/tummy-logo.png';
+import BrandTitle from '../../components/BrandTitle';
 import {
   fetchPlaceSuggestions,
   fetchPlaceDetails,
@@ -475,7 +476,7 @@ export default function HomeScreen() {
         <View style={styles.navBar}>
           <View style={styles.navLeft}>
             <Image source={Logo} style={styles.logoImage} />
-            <Text style={styles.appTitle}>Tummy Buddy</Text>
+            <BrandTitle />
           </View>
         </View>
       </SafeAreaView>
@@ -883,11 +884,6 @@ const styles = StyleSheet.create({
     width: 48,      // bigger logo
     height: 48,
     borderRadius: 24,
-  },
-  appTitle: {
-    color: '#f9fafb',
-    fontSize: 18,   // slightly smaller text
-    fontWeight: '700',
   },
   navIconButton: {
     padding: 6,
