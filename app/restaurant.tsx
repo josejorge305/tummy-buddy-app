@@ -13,14 +13,14 @@ import {
   View,
 } from 'react-native';
 import { API_BASE_URL, AnalyzeDishResponse, analyzeDish } from '../api/api';
-import { useUserPrefs } from '../context/UserPrefsContext';
-import { buildDishViewModel } from './utils/dishViewModel';
 import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/OrganImpactSection';
 import {
   PlateComponentEntry,
-  PlateComponentsSection,
   PlateComponentKind,
+  PlateComponentsSection,
 } from '../components/analysis/PlateComponentsSection';
+import { useUserPrefs } from '../context/UserPrefsContext';
+import { buildDishViewModel } from './utils/dishViewModel';
 
 const BG = '#020617';
 const TEAL = '#14b8a6';
@@ -371,6 +371,13 @@ export default function RestaurantScreen() {
                 const isAnalysisLoading = !!analysisLoadingByItemId[itemId];
                 const viewModel =
                   analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
+                if (viewModel) {
+                  console.log(
+                    'TB DEBUG componentAllergens',
+                    viewModel.plateComponents,
+                    viewModel.componentAllergens
+                  );
+                }
                 const descriptionText =
                   item?.menuDescription ??
                   item?.description ??
@@ -655,11 +662,11 @@ export default function RestaurantScreen() {
                                           <Text style={styles.allergenPillText}>None detected</Text>
                                         </View>
                                       )}
-                                      {activeAllergenPills.map((pill) => {
+                                      {activeAllergenPills.map((pill, idx) => {
                                         const isSelected = pill.isUserAllergen;
                                         return (
                                           <View
-                                            key={pill.name}
+                                            key={`${pill.name}-${idx}`}
                                             style={[
                                               styles.allergenPill,
                                               isSelected
@@ -697,21 +704,24 @@ export default function RestaurantScreen() {
                                     <View style={styles.sectionHeaderRow}>
                                       <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
                                     </View>
-                                    {activeFodmapLevel ? (() => {
-                                      const borderColor = getFodmapLevelBorderColor(activeFodmapLevel);
-                                      return (
-                                        <View
-                                          style={[
-                                            styles.fodmapLevelBadge,
-                                            { borderWidth: 1, borderColor },
-                                          ]}
-                                        >
-                                          <Text style={styles.fodmapLevelText}>
-                                            {activeFodmapLevel.toLowerCase()}
-                                          </Text>
-                                        </View>
-                                      );
-                                    })() : null}
+                                    {activeFodmapLevel
+                                      ? (() => {
+                                          const borderColor =
+                                            getFodmapLevelBorderColor(activeFodmapLevel);
+                                          return (
+                                            <View
+                                              style={[
+                                                styles.fodmapLevelBadge,
+                                                { borderWidth: 1, borderColor },
+                                              ]}
+                                            >
+                                              <Text style={styles.fodmapLevelText}>
+                                                {activeFodmapLevel.toLowerCase()}
+                                              </Text>
+                                            </View>
+                                          );
+                                        })()
+                                      : null}
                                     {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
                                       <View style={styles.pillRow}>
                                         {viewModel.fodmapPills.map((name) => (
@@ -744,8 +754,7 @@ export default function RestaurantScreen() {
                                       dietSummaryRaw.trim().length > 0;
                                     const hasDietTags =
                                       Array.isArray(dietTags) && dietTags.length > 0;
-                                    const showDietLifestyleSection =
-                                      hasDietSummary || hasDietTags;
+                                    const showDietLifestyleSection = hasDietSummary || hasDietTags;
 
                                     if (!showDietLifestyleSection) return null;
 
@@ -785,21 +794,22 @@ export default function RestaurantScreen() {
 
                                   {/* 3) Organ impact list */}
                                   <OrganImpactSection
-                                    impacts={viewModel.organLines.map((line, idx) => ({
-                                      id: line.organKey || String(idx),
-                                      organId: line.organKey || 'organ',
-                                      label: line.organLabel,
-                                      level:
-                                        line.severity === 'high'
-                                          ? 'high'
-                                          : line.severity === 'medium'
-                                          ? 'medium'
-                                          : 'low',
-                                      score:
-                                        typeof line.score === 'number' ? line.score : null,
-                                      description:
-                                        line.sentence || 'Organ impact details to follow.',
-                                    })) as OrganImpactEntry[]}
+                                    impacts={
+                                      viewModel.organLines.map((line, idx) => ({
+                                        id: line.organKey || String(idx),
+                                        organId: line.organKey || 'organ',
+                                        label: line.organLabel,
+                                        level:
+                                          line.severity === 'high'
+                                            ? 'high'
+                                            : line.severity === 'medium'
+                                            ? 'medium'
+                                            : 'low',
+                                        score: typeof line.score === 'number' ? line.score : null,
+                                        description:
+                                          line.sentence || 'Organ impact details to follow.',
+                                      })) as OrganImpactEntry[]
+                                    }
                                   />
 
                                   {viewModel?.plateComponents &&
@@ -807,9 +817,12 @@ export default function RestaurantScreen() {
                                       <PlateComponentsSection
                                         components={
                                           viewModel.plateComponents.map((pc, idx) => {
-                                            const compAllergens = viewModel.componentAllergens?.[idx];
+                                            const compAllergens =
+                                              viewModel.componentAllergens?.[idx];
                                             const allergenLabels =
-                                              compAllergens?.allergenPills?.map((p: any) => p.name) ?? [];
+                                              compAllergens?.allergenPills?.map(
+                                                (p: any) => p.name
+                                              ) ?? [];
                                             return {
                                               id: pc.component || `pc-${idx}`,
                                               name: pc.component,
@@ -817,14 +830,17 @@ export default function RestaurantScreen() {
                                                 (pc.role as PlateComponentKind) ||
                                                 ('other' as PlateComponentKind),
                                               calories:
-                                                typeof pc.energyKcal === 'number' ? pc.energyKcal : null,
+                                                typeof pc.energyKcal === 'number'
+                                                  ? pc.energyKcal
+                                                  : null,
                                               sharePercent:
                                                 typeof pc.shareRatio === 'number'
                                                   ? pc.shareRatio * 100
                                                   : null,
                                               allergens: allergenLabels,
                                               fodmapLevel: compAllergens?.fodmapLevel || 'unknown',
-                                              lactoseLevel: (compAllergens?.lactoseLevel as any) || 'unknown',
+                                              lactoseLevel:
+                                                (compAllergens?.lactoseLevel as any) || 'unknown',
                                             } as PlateComponentEntry;
                                           }) || []
                                         }

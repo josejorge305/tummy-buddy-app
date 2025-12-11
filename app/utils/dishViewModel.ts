@@ -288,7 +288,15 @@ function buildAllergenPillsFromFlags(
       present: flag.present,
     });
   }
-  return pills;
+  const seen = new Set<string>();
+  const deduped: AllergenPill[] = [];
+  for (const pill of pills) {
+    if (!pill || typeof pill.name !== "string") continue;
+    if (seen.has(pill.name)) continue;
+    seen.add(pill.name);
+    deduped.push(pill);
+  }
+  return deduped;
 }
 
 export function buildDishViewModel(

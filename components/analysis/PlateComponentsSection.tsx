@@ -219,8 +219,8 @@ const ComponentRow: React.FC<{ component: PlateComponentEntry; color: string; is
             {sharePercent != null ? `≈${Math.round(sharePercent)}% of plate` : "Share unknown"}
           </Text>
           <View style={styles.tagsRow}>
-            {allergens.map((a) => (
-              <TagPill key={a} label={a} variant="allergen" />
+            {allergens.map((a, idx) => (
+              <TagPill key={`${a}-${idx}`} label={a} variant="allergen" />
             ))}
             {fodmapLevel !== "unknown" && (
               <TagPill label={`FODMAP: ${fodmapLevel}`} variant="level" level={fodmapLevel} />
