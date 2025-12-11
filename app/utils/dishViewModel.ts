@@ -461,76 +461,47 @@ export function buildDishViewModel(
     });
   }
 
-  let componentAllergens: ComponentAllergenVM[] | undefined;
+  // Build per-component allergens/FODMAP/lactose from selection_components.
+  // Always emit an entry for each plate component; if the backend reports none,
+  // allergenPills stays empty (no fallback to whole-plate).
+  const componentAllergens: ComponentAllergenVM[] | undefined = Array.isArray(plateComponentsRaw)
+    ? plateComponentsRaw.map((comp: any, idx: number) => {
+        const componentId = typeof comp?.component_id === "string" ? comp.component_id : undefined;
+        const sel = componentId ? selectionComponents?.[componentId] : null;
 
-  if (selectionComponents && Array.isArray(plateComponentsRaw) && plateComponentsRaw.length > 0) {
-    // Derive per-component allergens/FODMAP/lactose from selection_components
-    componentAllergens = plateComponentsRaw.map((comp: any, idx: number) => {
-      const componentId = typeof comp?.component_id === "string" ? comp.component_id : undefined;
-      const sel = componentId ? selectionComponents[componentId] : null;
-
-      const flags: AllergenFlag[] =
-        sel && Array.isArray(sel?.combined_allergens)
+        const flags: AllergenFlag[] = Array.isArray(sel?.combined_allergens)
           ? (sel.combined_allergens as AllergenFlag[])
           : [];
 
-      const entryFodmapLevel =
-        sel && sel.combined_fodmap && sel.combined_fodmap.level
-          ? String(sel.combined_fodmap.level)
-          : undefined;
+        const entryFodmapLevel =
+          sel && sel.combined_fodmap && sel.combined_fodmap.level
+            ? String(sel.combined_fodmap.level)
+            : undefined;
 
-      const entryLactoseLevel =
-        sel && sel.combined_lactose && sel.combined_lactose.level
-          ? String(sel.combined_lactose.level)
-          : undefined;
+        const entryLactoseLevel =
+          sel && sel.combined_lactose && sel.combined_lactose.level
+            ? String(sel.combined_lactose.level)
+            : undefined;
 
-      const vmBase = plateComponents?.[idx];
+        const vmBase = plateComponents?.[idx];
 
-      const componentLabel =
-        (comp && (comp.label || comp.component || comp.name)) ||
-        vmBase?.component ||
-        `Component ${idx + 1}`;
-      const role = (comp && comp.role) || vmBase?.role || "unknown";
-      const category = (comp && comp.category) || vmBase?.category || "other";
+        const componentLabel =
+          (comp && (comp.label || comp.component || comp.name)) ||
+          vmBase?.component ||
+          `Component ${idx + 1}`;
+        const role = (comp && comp.role) || vmBase?.role || "unknown";
+        const category = (comp && comp.category) || vmBase?.category || "other";
 
-      return {
-        component: componentLabel,
-        role,
-        category,
-        allergenPills: buildAllergenPillsFromFlags(flags, matchesUserAllergen),
-        fodmapLevel: entryFodmapLevel,
-        lactoseLevel: entryLactoseLevel,
-      };
-    });
-  } else if (Array.isArray(allergenBreakdownRaw) && allergenBreakdownRaw.length > 0) {
-    // Legacy fallback
-    componentAllergens = allergenBreakdownRaw.map((entry: any, idx: number) => {
-      const componentLabel =
-        entry?.component ||
-        plateComponents?.[idx]?.component ||
-        `Component ${idx + 1}`;
-      const role = entry?.role || plateComponents?.[idx]?.role || "unknown";
-      const category = entry?.category || plateComponents?.[idx]?.category || "other";
-      const flags = Array.isArray(entry?.allergen_flags) ? entry.allergen_flags : [];
-      const entryFodmapLevel =
-        entry?.fodmap_flags && entry.fodmap_flags.level
-          ? String(entry.fodmap_flags.level)
-          : undefined;
-      const entryLactoseLevel =
-        entry?.lactose_flags && entry.lactose_flags.level
-          ? String(entry.lactose_flags.level)
-          : undefined;
-
-      return {
-        component: componentLabel,
-        role,
-        category,
-        allergenPills: buildAllergenPillsFromFlags(flags, matchesUserAllergen),
-        fodmapLevel: entryFodmapLevel,
-        lactoseLevel: entryLactoseLevel,
-      };
-    });
-  }
+        return {
+          component: componentLabel,
+          role,
+          category,
+          allergenPills: buildAllergenPillsFromFlags(flags, matchesUserAllergen),
+          fodmapLevel: entryFodmapLevel,
+          lactoseLevel: entryLactoseLevel,
+        };
+      })
+    : undefined;
 
   // Allergen smart sentence from organs.flags.allergens if present
   let allergenSentence: string | null = null;

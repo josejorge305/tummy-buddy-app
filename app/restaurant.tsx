@@ -41,6 +41,22 @@ const getSeverityChipStyle = (severity: string) => {
   return { backgroundColor: '#4b5563' };
 };
 
+const getFodmapLevelBorderColor = (level?: string | null) => {
+  const s = (level || '').toLowerCase();
+
+  if (s === 'high') {
+    return 'rgba(248, 113, 113, 0.9)';
+  }
+  if (s === 'medium') {
+    return 'rgba(250, 204, 21, 0.9)';
+  }
+  if (s === 'low') {
+    return 'rgba(34, 197, 94, 0.9)';
+  }
+
+  return '#4b5563';
+};
+
 type MenuResponse = {
   restaurant?: {
     id?: string | number;
@@ -646,7 +662,9 @@ export default function RestaurantScreen() {
                                             key={pill.name}
                                             style={[
                                               styles.allergenPill,
-                                              isSelected && styles.allergenPillSelected,
+                                              isSelected
+                                                ? styles.allergenPillSelected
+                                                : styles.allergenPillOther,
                                             ]}
                                           >
                                             <Text
@@ -679,13 +697,21 @@ export default function RestaurantScreen() {
                                     <View style={styles.sectionHeaderRow}>
                                       <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
                                     </View>
-                                    {activeFodmapLevel ? (
-                                      <View style={styles.fodmapLevelBadge}>
-                                        <Text style={styles.fodmapLevelText}>
-                                          {activeFodmapLevel.toLowerCase()}
-                                        </Text>
-                                      </View>
-                                    ) : null}
+                                    {activeFodmapLevel ? (() => {
+                                      const borderColor = getFodmapLevelBorderColor(activeFodmapLevel);
+                                      return (
+                                        <View
+                                          style={[
+                                            styles.fodmapLevelBadge,
+                                            { borderWidth: 1, borderColor },
+                                          ]}
+                                        >
+                                          <Text style={styles.fodmapLevelText}>
+                                            {activeFodmapLevel.toLowerCase()}
+                                          </Text>
+                                        </View>
+                                      );
+                                    })() : null}
                                     {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
                                       <View style={styles.pillRow}>
                                         {viewModel.fodmapPills.map((name) => (

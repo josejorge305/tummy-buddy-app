@@ -18,7 +18,6 @@ import { useRouter } from 'expo-router';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import Logo from '../../assets/images/tummy-logo.png';
 import BrandTitle from '../../components/BrandTitle';
 import {
   fetchPlaceSuggestions,
@@ -68,7 +67,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c; // distance in km
 }
 
-type SearchMode = 'restaurant' | 'dish';
+type SearchMode = 'restaurant' | 'dish' | 'photo';
 
 const DUMMY_DISH = {
   id: 'dish-1',
@@ -475,8 +474,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.navBar}>
           <View style={styles.navLeft}>
-            <Image source={Logo} style={styles.logoImage} />
-            <BrandTitle />
+            <BrandTitle style={styles.brandTitle} />
           </View>
         </View>
       </SafeAreaView>
@@ -488,6 +486,10 @@ export default function HomeScreen() {
         nestedScrollEnabled={true}
       >
         <View style={styles.mainBody}>
+          <View style={styles.brandTaglineBlock}>
+            <Text style={styles.brandTaglineText}>Smart restaurant & gut insights</Text>
+          </View>
+
           {/* Search + mode row */}
           <View style={styles.searchRow}>
             <View style={styles.searchWrapper}>
@@ -510,7 +512,7 @@ export default function HomeScreen() {
           />
             </View>
 
-            {/* Mode toggle + camera */}
+            {/* Mode toggle */}
             <View style={styles.modeRow}>
               <View style={styles.modeToggle}>
                 <Pressable
@@ -526,7 +528,7 @@ export default function HomeScreen() {
                       searchMode === 'restaurant' && styles.modeSegmentTextActive,
                     ]}
                   >
-                    Rest
+                    Restaurants
                   </Text>
                 </Pressable>
                 <Pressable
@@ -542,18 +544,26 @@ export default function HomeScreen() {
                       searchMode === 'dish' && styles.modeSegmentTextActive,
                     ]}
                   >
-                    Dish
+                    Dishes
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMode('photo')}
+                  style={[
+                    styles.modeSegment,
+                    searchMode === 'photo' && styles.modeSegmentActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.modeSegmentText,
+                      searchMode === 'photo' && styles.modeSegmentTextActive,
+                    ]}
+                  >
+                    Photo
                   </Text>
                 </Pressable>
               </View>
-
-              <Pressable onPress={handleCameraPress} style={styles.cameraPill}>
-                <Ionicons
-                  name="camera-outline"
-                  size={18}
-                  style={styles.cameraIcon}
-                />
-              </Pressable>
             </View>
           </View>
 
@@ -600,8 +610,11 @@ export default function HomeScreen() {
         )}
 
         {/* Premium CTA row – navigates to Profile */}
-        <Pressable onPress={() => router.push('/profile')} style={styles.premiumRow}>
-          <Text style={styles.premiumTitle}>Upgrade for Premium features & analytics</Text>
+        <Pressable onPress={() => router.push('/profile')} style={styles.upgradeCard}>
+          <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
+          <Text style={styles.upgradeSubtitle}>
+            Unlock detailed organ analytics & meal history.
+          </Text>
         </Pressable>
 
         {/* Nearby restaurants header */}
@@ -862,7 +875,15 @@ const styles = StyleSheet.create({
   },
   mainBody: {
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  brandTaglineBlock: {
+    marginBottom: 8,
+  },
+  brandTaglineText: {
+    fontSize: 12,
+    color: '#9ca3af',
   },
   safeArea: {
     backgroundColor: '#020617',
@@ -878,12 +899,12 @@ const styles = StyleSheet.create({
   navLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
   },
-  logoImage: {
-    width: 48,      // bigger logo
-    height: 48,
-    borderRadius: 24,
+  brandTitle: {
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    transform: [{ translateY: 1 }],
   },
   navIconButton: {
     padding: 6,
@@ -925,6 +946,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 8,
+    marginBottom: 14,
   },
   modeToggle: {
     flexDirection: 'row',
@@ -994,27 +1016,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fefefe',
   },
-  premiumRow: {
-    marginTop: 14,
-    marginBottom: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#0b1220',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+  upgradeCard: {
+    marginBottom: 16,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.35)',
   },
-  premiumTitle: {
-    color: '#ffffff',
+  upgradeTitle: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#e5e7eb',
+  },
+  upgradeSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#9ca3af',
   },
   sectionHeader: {
     marginTop: 10,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 13,
