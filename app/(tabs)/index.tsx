@@ -25,6 +25,7 @@ import {
   PlaceSuggestion,
 } from '../../api/places';
 import { API_BASE_URL } from '../../api/api';
+import { useMenuPrefetch } from '../../context/MenuPrefetchContext';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -78,6 +79,7 @@ const DUMMY_DISH = {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { prefetchMenu, getPrefetchStatus } = useMenuPrefetch();
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('restaurant');
 
@@ -213,7 +215,12 @@ export default function HomeScreen() {
         lng: items[activeIndex].lng,
       });
 
+      // Start background prefetching for menu
       const active = items[activeIndex];
+      if (active?.placeId && active?.name && active?.address) {
+        prefetchMenu(active.placeId, active.name, active.address);
+      }
+
       const activeLat = active?.lat ?? lat;
       const activeLng = active?.lng ?? lng;
 
@@ -661,6 +668,10 @@ export default function HomeScreen() {
                         lat: r.lat,
                         lng: r.lng,
                       });
+                      // Start background prefetching for menu
+                      if (r.placeId && r.name && r.address) {
+                        prefetchMenu(r.placeId, r.name, r.address);
+                      }
                     }}
                   >
                     <View style={styles.pinContainer}>
@@ -823,6 +834,11 @@ export default function HomeScreen() {
                   lat: item.lat,
                   lng: item.lng,
                 });
+
+                // Start background prefetching for menu
+                if (item.placeId && item.name && item.address) {
+                  prefetchMenu(item.placeId, item.name, item.address);
+                }
               }}
             />
           ) : (

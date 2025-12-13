@@ -289,6 +289,90 @@ export async function fetchMenu(placeId: string) {
   }
 }
 
+// Fast menu fetch using /menu/uber-test (no strict Google filter)
+// This endpoint is faster (~10-30s) and more reliable than /menu/extract
+export async function fetchMenuFast(
+  restaurantName: string,
+  address: string,
+  maxRows: number = 50
+): Promise<any> {
+  const params = new URLSearchParams({
+    query: restaurantName,
+    address,
+    maxRows: String(maxRows),
+  });
+  const url = `${RESTAURANT_API_BASE}/menu/uber-test?${params.toString()}`;
+  console.log('TB fetchMenuFast calling:', url);
+
+  try {
+    const res = await fetch(url);
+    const raw = await res.text();
+    console.log('fetchMenuFast raw snippet:', raw.slice(0, 200));
+
+    if (!res.ok) {
+      console.error('fetchMenuFast HTTP error:', res.status);
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+
+    const data = JSON.parse(raw);
+
+    // Transform /menu/uber-test response to match /menu/extract format
+    if (data.ok && data.data?.items) {
+      const items = data.data.items;
+
+      // Group items by section
+      const sectionMap: Record<string, any[]> = {};
+      let firstImageUrl: string | null = null;
+
+      for (const item of items) {
+        const sectionName = item.section || 'Menu';
+        if (!sectionMap[sectionName]) {
+          sectionMap[sectionName] = [];
+        }
+
+        // Capture first item's image as potential hero
+        const itemImage = item.imageUrl || item.image_url || item.image || null;
+        if (!firstImageUrl && itemImage) {
+          firstImageUrl = itemImage;
+        }
+
+        sectionMap[sectionName].push({
+          id: item.id || `item-${sectionMap[sectionName].length}`,
+          name: item.name,
+          description: item.description,
+          menuDescription: item.description,
+          priceText: item.price_display,
+          restaurantCalories: item.restaurantCalories,
+          imageUrl: itemImage,
+        });
+      }
+
+      const sections = Object.entries(sectionMap).map(([name, sectionItems], idx) => ({
+        id: `section-${idx}`,
+        name,
+        items: sectionItems,
+      }));
+
+      return {
+        ok: true,
+        source: 'uber-test-fast',
+        restaurant: {
+          id: data.data.query,
+          name: restaurantName,
+          address: address,
+          imageUrl: firstImageUrl, // Use first item image as hero fallback
+        },
+        sections,
+      };
+    }
+
+    return { ok: false, error: data.error || 'No items found' };
+  } catch (e: any) {
+    console.error('fetchMenuFast error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Failed to fetch menu' };
+  }
+}
+
 // Async menu fetch with polling for background job completion
 export async function fetchMenuWithRetry(
   placeId: string,
@@ -445,4 +529,129 @@ export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResp
     console.error('TB analyzeDishCard JSON.parse failed:', e?.message || String(e));
     throw e;
   }
+}
+
+// ============================================================
+// Apify Async Menu Scraping (for background prefetching)
+// ============================================================
+
+export interface ApifyJobStartResponse {
+  ok: boolean;
+  jobId: string;
+  status: 'started' | 'already_cached';
+  runId?: string;
+  message?: string;
+  data?: any[]; // Present if already cached
+}
+
+export interface ApifyJobStatusResponse {
+  ok: boolean;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'not_found';
+  jobId?: string;
+  runId?: string;
+  datasetId?: string;
+  resultCount?: number;
+  data?: any[];
+  error?: string;
+}
+
+/**
+ * Start an async Apify scraping job for a restaurant.
+ * Returns immediately with a jobId that can be polled.
+ *
+ * @param restaurantName - Restaurant name to search for
+ * @param address - Address/location for the search
+ * @param maxRows - Max results (default 5)
+ */
+export async function startApifyScrape(
+  restaurantName: string,
+  address: string,
+  maxRows: number = 5
+): Promise<ApifyJobStartResponse> {
+  const params = new URLSearchParams({
+    query: restaurantName,
+    address,
+    maxRows: String(maxRows),
+  });
+
+  const url = `${API_BASE_URL}/api/apify-start?${params.toString()}`;
+  console.log('TB startApifyScrape calling:', url);
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    console.log('TB startApifyScrape response:', data);
+    return data as ApifyJobStartResponse;
+  } catch (e: any) {
+    console.error('TB startApifyScrape error:', e?.message || String(e));
+    return {
+      ok: false,
+      jobId: '',
+      status: 'started',
+      message: e?.message || 'Failed to start scrape',
+    };
+  }
+}
+
+/**
+ * Check the status of an Apify scraping job.
+ *
+ * @param jobId - The job ID returned from startApifyScrape
+ */
+export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusResponse> {
+  const url = `${API_BASE_URL}/api/apify-job/${encodeURIComponent(jobId)}`;
+  console.log('TB getApifyJobStatus calling:', url);
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 200));
+    return data as ApifyJobStatusResponse;
+  } catch (e: any) {
+    console.error('TB getApifyJobStatus error:', e?.message || String(e));
+    return {
+      ok: false,
+      status: 'failed',
+      error: e?.message || 'Failed to get job status',
+    };
+  }
+}
+
+/**
+ * Poll for Apify job completion with configurable intervals.
+ *
+ * @param jobId - The job ID to poll
+ * @param onStatusChange - Optional callback when status changes
+ * @param maxWaitMs - Maximum wait time in ms (default 60s)
+ * @param pollIntervalMs - Poll interval in ms (default 3s)
+ */
+export async function pollApifyJob(
+  jobId: string,
+  onStatusChange?: (status: ApifyJobStatusResponse) => void,
+  maxWaitMs: number = 60000,
+  pollIntervalMs: number = 3000
+): Promise<ApifyJobStatusResponse> {
+  const startTime = Date.now();
+  let lastStatus = '';
+
+  while (Date.now() - startTime < maxWaitMs) {
+    const result = await getApifyJobStatus(jobId);
+
+    if (result.status !== lastStatus) {
+      lastStatus = result.status;
+      onStatusChange?.(result);
+    }
+
+    if (result.status === 'completed' || result.status === 'failed' || result.status === 'not_found') {
+      return result;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return {
+    ok: false,
+    status: 'failed',
+    error: 'Polling timed out',
+  };
 }

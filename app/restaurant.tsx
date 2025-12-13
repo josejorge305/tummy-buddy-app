@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -9,10 +9,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AnalyzeDishResponse, analyzeDish, fetchMenuWithRetry } from '../api/api';
+import { AnalyzeDishResponse, analyzeDish, fetchMenuWithRetry, fetchMenuFast, pollApifyJob } from '../api/api';
+import { fetchPlaceDetails } from '../api/places';
 import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/OrganImpactSection';
 import {
   PlateComponentEntry,
@@ -20,6 +22,7 @@ import {
   PlateComponentsSection,
 } from '../components/analysis/PlateComponentsSection';
 import { useUserPrefs } from '../context/UserPrefsContext';
+import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { buildDishViewModel } from './utils/dishViewModel';
 
 const BG = '#020617';
@@ -101,6 +104,7 @@ export default function RestaurantScreen() {
   const router = useRouter();
   const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
   const { selectedAllergens } = useUserPrefs();
+  const { getPrefetchedMenu, isMenuReady, getPrefetchStatus } = useMenuPrefetch();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});
   const [menu, setMenu] = useState<MenuResponse | null>(null);
@@ -118,6 +122,8 @@ export default function RestaurantScreen() {
   const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
   const [showOrganDetails, setShowOrganDetails] = useState(false);
   const [showPlateBreakdown, setShowPlateBreakdown] = useState(false);
+  const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
+  const [menuSearch, setMenuSearch] = useState('');
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -134,27 +140,22 @@ export default function RestaurantScreen() {
       setError(null);
       setLoading(true);
       try {
-        const params = new URLSearchParams();
+        let data: any = null;
 
-        if (placeIdValue) {
-          params.append('placeId', String(placeIdValue));
-        }
-        if (restaurantNameValue) {
-          params.append('restaurantName', String(restaurantNameValue));
-        }
-        if (addressValue) {
-          params.append('address', String(addressValue));
-        }
-        if (latValue) {
-          params.append('lat', String(latValue));
-        }
-        if (lngValue) {
-          params.append('lng', String(lngValue));
+        // FAST PATH: Use fetchMenuFast first - it's the fastest (~10-30s)
+        const searchAddress = addressValue || restaurantNameValue || '';
+        if (restaurantNameValue && searchAddress) {
+          console.log('[RestaurantScreen] Using fetchMenuFast (FAST PATH) with:', restaurantNameValue, searchAddress);
+          data = await fetchMenuFast(restaurantNameValue, searchAddress, 50);
         }
 
-        // Use fetchMenuWithRetry for async job polling support
-        const data = await fetchMenuWithRetry(placeIdValue);
-        console.log('MENU RAW DATA:', JSON.stringify(data, null, 2));
+        // Fall back to fetchMenuWithRetry only if fast method fails
+        if ((!data || !data.ok) && placeIdValue) {
+          console.log('[RestaurantScreen] fetchMenuFast failed, using fetchMenuWithRetry fallback');
+          data = await fetchMenuWithRetry(placeIdValue);
+        }
+
+        console.log('MENU RAW DATA:', JSON.stringify(data, null, 2).slice(0, 500));
         const normalizedSections = Array.isArray((data as any)?.sections)
           ? (data as any).sections.map((section: any) => ({
               ...section,
@@ -177,7 +178,7 @@ export default function RestaurantScreen() {
         setRestaurant((data as any)?.restaurant ?? null);
       } catch (e: any) {
         console.log('MENU ERROR:', e);
-        setError('We couldn’t load this menu right now. Please try again.');
+        setError("We couldn't load this menu right now. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -185,10 +186,29 @@ export default function RestaurantScreen() {
     if (placeIdValue) {
       loadMenu();
     } else {
-      setError('We couldn’t load this menu right now. Please try again.');
+      setError("We couldn't load this menu right now. Please try again.");
       setLoading(false);
     }
-  }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue]);
+  }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue, getPrefetchedMenu, getPrefetchStatus]);
+
+  // Fetch Google Places photo reference for restaurant hero image
+  useEffect(() => {
+    async function fetchGooglePhoto() {
+      if (!placeIdValue) return;
+      try {
+        console.log('[RestaurantScreen] Fetching Google photo for placeId:', placeIdValue);
+        const details = await fetchPlaceDetails(placeIdValue);
+        if (details.photoRef) {
+          console.log('[RestaurantScreen] Got Google photo ref:', details.photoRef.slice(0, 50) + '...');
+          setGooglePhotoRef(details.photoRef);
+        }
+      } catch (e: any) {
+        console.log('[RestaurantScreen] Failed to fetch Google photo:', e?.message);
+        // Non-critical - hero image will fall back to item image or no image
+      }
+    }
+    fetchGooglePhoto();
+  }, [placeIdValue]);
 
   const runAnalysisForItem = async ({
     itemId,
@@ -322,7 +342,24 @@ export default function RestaurantScreen() {
     });
   };
 
-  const heroUrl = buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
+  // Hero image priority: Google photo ref (fetched from place details) > menu API imageRef > menu API imageUrl
+  const heroUrl = buildPhotoUrl(googlePhotoRef) || buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
+
+  // Filter menu sections/items based on search query
+  const filteredSections = useMemo(() => {
+    if (!menuSearch.trim()) return menu?.sections || [];
+    const query = menuSearch.toLowerCase();
+    return (menu?.sections || [])
+      .map((section) => ({
+        ...section,
+        items: section.items?.filter(
+          (item: any) =>
+            item.name?.toLowerCase().includes(query) ||
+            item.description?.toLowerCase().includes(query)
+        ),
+      }))
+      .filter((section) => section.items && section.items.length > 0);
+  }, [menu?.sections, menuSearch]);
 
   if (loading) {
     return (
@@ -427,7 +464,30 @@ export default function RestaurantScreen() {
             </View>
           )}
 
-          {menu.sections.map((section) => (
+          {/* Menu Search Bar */}
+          <View style={styles.menuSearchContainer}>
+            <Ionicons name="search" size={18} color="#666" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.menuSearchInput}
+              placeholder="Search menu items..."
+              placeholderTextColor="#666"
+              value={menuSearch}
+              onChangeText={setMenuSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {menuSearch ? (
+              <TouchableOpacity onPress={() => setMenuSearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={18} color="#666" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {menuSearch && filteredSections.length === 0 && (
+            <Text style={styles.noResultsText}>No items found for "{menuSearch}"</Text>
+          )}
+
+          {filteredSections.map((section) => (
             <View key={section.id || section.name} style={{ marginTop: 16 }}>
               {section.name ? <Text style={styles.sectionTitle}>{section.name}</Text> : null}
 
@@ -1763,5 +1823,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 13,
+  },
+  menuSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1f2937',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 16,
+  },
+  menuSearchInput: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 15,
+  },
+  noResultsText: {
+    color: '#9ca3af',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 24,
+    marginBottom: 16,
   },
 });

@@ -8,6 +8,7 @@ export type PlaceSuggestion = {
 export type PlaceDetails = {
   lat: number;
   lng: number;
+  photoRef?: string | null;
 };
 
 export async function fetchPlaceSuggestions(
@@ -43,12 +44,12 @@ export async function fetchPlaceSuggestions(
   }));
 }
 
-// NEW: fetch lat/lng for a placeId
+// NEW: fetch lat/lng and photo reference for a placeId
 export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> {
   const url =
     'https://maps.googleapis.com/maps/api/place/details/json' +
     `?place_id=${encodeURIComponent(placeId)}` +
-    '&fields=geometry' +
+    '&fields=geometry,photos' +
     `&key=${GOOGLE_PLACES_API_KEY}`;
 
   console.log('Calling Google Place Details:', url);
@@ -71,9 +72,13 @@ export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> 
     throw new Error('No geometry.location in Place Details');
   }
 
+  // Extract first photo reference if available
+  const photoRef = json?.result?.photos?.[0]?.photo_reference || null;
+
   return {
     lat: loc.lat,
     lng: loc.lng,
+    photoRef,
   };
 }
 
