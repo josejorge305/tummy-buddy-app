@@ -876,7 +876,9 @@ export default function RestaurantScreen() {
                                   {/* 2) FODMAP row */}
                                   <View style={styles.sectionBlock}>
                                     <View style={styles.sectionHeaderRow}>
-                                      <Text style={styles.sectionTitle}>FODMAP / IBS</Text>
+                                      <Text style={styles.sectionTitle}>
+                                        FODMAP / IBS{!isWholePlateFocus && activeComponent ? ` (${activeComponent.component})` : ''}
+                                      </Text>
                                     </View>
                                     {activeFodmapLevel
                                       ? (() => {
@@ -896,7 +898,8 @@ export default function RestaurantScreen() {
                                           );
                                         })()
                                       : null}
-                                    {viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
+                                    {/* Only show FODMAP trigger pills for whole plate */}
+                                    {isWholePlateFocus && viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
                                       <View style={styles.pillRow}>
                                         {viewModel.fodmapPills.map((name) => (
                                           <View key={name} style={styles.fodmapPill}>
@@ -966,12 +969,12 @@ export default function RestaurantScreen() {
                                     );
                                   })()}
 
-                                  {/* 3) Organ impact – summary + optional details */}
-                                  {organOverallLevel && (
+                                  {/* 3) Organ impact – only show for whole plate (no per-component data yet) */}
+                                  {organOverallLevel && isWholePlateFocus && (
                                     <View style={styles.sectionBlock}>
                                       <View style={styles.sectionHeaderRow}>
                                         <Text style={styles.sectionTitle}>
-                                          Organ impact (whole plate)
+                                          Organ impact
                                         </Text>
                                         <View
                                           style={[
@@ -1033,13 +1036,8 @@ export default function RestaurantScreen() {
                                   {/* 4) Nutrition facts (per serving, estimate) */}
                                   <View style={styles.nutritionSection}>
                                     <Text style={styles.sectionTitle}>
-                                      Nutrition facts (per serving, estimate)
+                                      Nutrition facts{!isWholePlateFocus && activeComponent ? ` (${activeComponent.component})` : ''} (estimate)
                                     </Text>
-                                    {activeNutritionSubtitle ? (
-                                      <Text style={styles.sectionBody}>
-                                        {activeNutritionSubtitle}
-                                      </Text>
-                                    ) : null}
                                     {viewModel.nutrition && viewModel.nutritionSource
                                       ? console.log(
                                           'TB nutrition source:',
