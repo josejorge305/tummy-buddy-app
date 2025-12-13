@@ -639,7 +639,8 @@ export default function RestaurantScreen() {
 
                         {!isAnalysisLoading && viewModel && (
                           <>
-                            {viewModel.plateComponents && viewModel.plateComponents.length > 0 && (
+                            {/* Only show component selector when there are multiple components */}
+                            {viewModel.plateComponents && viewModel.plateComponents.length > 1 && (
                               <View style={styles.focusChipsRow}>
                                 <ScrollView
                                   horizontal
