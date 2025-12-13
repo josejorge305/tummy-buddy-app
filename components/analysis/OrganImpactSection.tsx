@@ -16,6 +16,8 @@ type Props = {
   title?: string;
   impacts: OrganImpactEntry[];
   overallSummary?: string | null;
+  showHeader?: boolean;
+  showSummary?: boolean;
 };
 
 const LEVEL_COLORS: Record<ImpactLevel, string> = {
@@ -62,6 +64,8 @@ export const OrganImpactSection: React.FC<Props> = ({
   title = "Organ impact (whole plate)",
   impacts,
   overallSummary,
+  showHeader = true,
+  showSummary = true,
 }) => {
   const [showLowImpacts, setShowLowImpacts] = useState(false);
 
@@ -107,12 +111,16 @@ export const OrganImpactSection: React.FC<Props> = ({
 
   return (
     <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>{title}</Text>
-        <OverallBadge level={overallLevel} />
-      </View>
+      {showHeader && (
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>{title}</Text>
+          <OverallBadge level={overallLevel} />
+        </View>
+      )}
 
-      <Text style={styles.summaryText}>{summaryText}</Text>
+      {showSummary && summaryText && (
+        <Text style={styles.summaryText}>{summaryText}</Text>
+      )}
 
       {highMedium.map((item) => (
         <OrganImpactRow key={item.id} entry={item} />

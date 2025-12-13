@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://api.rrginvestment.com";
+export const API_BASE_URL = 'https://api.rrginvestment.com';
 
 const RESTAURANT_API_BASE = API_BASE_URL;
 
@@ -38,13 +38,13 @@ export interface NutritionInsights {
   highlights: string[];
   cautions: string[];
   classifications: {
-    calories: "low" | "medium" | "high";
-    protein: "low" | "medium" | "high";
-    carbs: "low" | "medium" | "high";
-    sugar: "low" | "medium" | "high";
-    fiber: "low" | "medium" | "high";
-    fat: "low" | "medium" | "high";
-    sodium: "low" | "medium" | "high";
+    calories: 'low' | 'medium' | 'high';
+    protein: 'low' | 'medium' | 'high';
+    carbs: 'low' | 'medium' | 'high';
+    sugar: 'low' | 'medium' | 'high';
+    fiber: 'low' | 'medium' | 'high';
+    fat: 'low' | 'medium' | 'high';
+    sodium: 'low' | 'medium' | 'high';
   };
 }
 
@@ -60,19 +60,19 @@ export interface NutritionSummary {
 
 export interface AllergenFlag {
   kind: string;
-  present: "yes" | "no" | "maybe";
+  present: 'yes' | 'no' | 'maybe';
   message: string;
   source: string;
 }
 
 export interface FodmapFlag {
-  level: "low" | "medium" | "high";
+  level: 'low' | 'medium' | 'high';
   reason: string;
   source: string;
 }
 
 export interface LactoseFlag {
-  level: "none" | "trace" | "low" | "medium" | "high";
+  level: 'none' | 'trace' | 'low' | 'medium' | 'high';
   reason: string;
   source: string;
 }
@@ -80,10 +80,10 @@ export interface LactoseFlag {
 export type LifestyleTag = string;
 
 export interface LifestyleChecks {
-  contains_red_meat: "yes" | "no" | "maybe";
-  red_meat_free: "yes" | "no" | "maybe";
-  vegetarian: "yes" | "no" | "maybe";
-  vegan: "yes" | "no" | "maybe";
+  contains_red_meat: 'yes' | 'no' | 'maybe';
+  red_meat_free: 'yes' | 'no' | 'maybe';
+  vegetarian: 'yes' | 'no' | 'maybe';
+  vegan: 'yes' | 'no' | 'maybe';
 }
 
 export interface DishOrganFlags {
@@ -198,52 +198,52 @@ export interface AnalyzeDishCardResponse {
 }
 
 async function apiGet(fullUrl: string) {
-  console.log("Calling API GET:", fullUrl);
+  console.log('Calling API GET:', fullUrl);
 
   const res = await fetch(fullUrl, {
-    method: "GET",
+    method: 'GET',
   });
 
   const raw = await res.text();
-  console.log("apiGet raw snippet:", raw.slice(0, 200));
+  console.log('apiGet raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
-    throw new Error(
-      `API GET error ${res.status}: ${raw.slice(0, 200)}`,
-    );
+    throw new Error(`API GET error ${res.status}: ${raw.slice(0, 200)}`);
   }
 
   try {
     return JSON.parse(raw);
   } catch (error) {
-    console.error("apiGet JSON.parse failed:", error);
+    console.error('apiGet JSON.parse failed:', error);
     throw new Error(
-      `API GET returned non-JSON or unexpected shape. Status: ${res.status}, body starts with: ${raw.slice(0, 40)}`,
+      `API GET returned non-JSON or unexpected shape. Status: ${
+        res.status
+      }, body starts with: ${raw.slice(0, 40)}`
     );
   }
 }
 
 async function apiPostDish(path: string, body: any) {
   const url = `${DISH_API_BASE}${path}`;
-  console.log("Calling Dish API POST:", url, "with body:", body);
+  console.log('Calling Dish API POST:', url, 'with body:', body);
 
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      const text = await res.text().catch(() => '');
       throw new Error(`Dish API error ${res.status}: ${text.slice(0, 200)}`);
     }
 
     return await res.json();
   } catch (error) {
-    console.error("Dish API error:", error);
+    console.error('Dish API error:', error);
     throw error;
   }
 }
@@ -256,32 +256,96 @@ export function getMenuExtract(placeId: string) {
 
 export async function fetchMenu(placeId: string) {
   const url = `${RESTAURANT_API_BASE}/menu/extract?placeId=${placeId}`;
-  console.log("TB fetchMenu calling:", url);
+  console.log('TB fetchMenu calling:', url);
 
   const res = await fetch(url);
 
   const raw = await res.text();
-  console.log("fetchMenu raw snippet:", raw.slice(0, 200));
+  console.log('fetchMenu raw snippet:', raw.slice(0, 200));
+
+  // For 202 responses (processing), parse and return the JSON body
+  if (res.status === 202) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { ok: false, status: 'processing', retryIn: 5 };
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(
-      `fetchMenu HTTP ${res.status} – body starts with: ${raw.slice(0, 40)}`,
-    );
+    throw new Error(`fetchMenu HTTP ${res.status} – body starts with: ${raw.slice(0, 40)}`);
   }
 
   try {
     const data = JSON.parse(raw);
     console.log(
-      "fetchMenu JSON top-level keys:",
-      data && typeof data === "object" ? Object.keys(data) : typeof data,
+      'fetchMenu JSON top-level keys:',
+      data && typeof data === 'object' ? Object.keys(data) : typeof data
     );
     return data;
   } catch (e) {
-    console.error("fetchMenu JSON.parse failed:", e);
-    throw new Error(
-      `fetchMenu got non-JSON body starting with: ${raw.slice(0, 40)}`,
-    );
+    console.error('fetchMenu JSON.parse failed:', e);
+    throw new Error(`fetchMenu got non-JSON body starting with: ${raw.slice(0, 40)}`);
   }
+}
+
+// Async menu fetch with polling for background job completion
+export async function fetchMenuWithRetry(
+  placeId: string,
+  maxRetries: number = 24, // 24 * 5s = 2 minutes max wait
+  retryDelay: number = 5000
+): Promise<any> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetchMenu(placeId);
+
+      // Success - menu is ready
+      if (response.ok) {
+        return response;
+      }
+
+      // Job is processing - wait and retry
+      if (response.status === 'processing') {
+        console.log(
+          `TB fetchMenuWithRetry: processing, attempt ${attempt + 1}/${maxRetries}, retrying in ${
+            response.retryIn || 5
+          }s`
+        );
+        const waitTime = (response.retryIn || 5) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // Job failed recently - wait longer before retry
+      if (response.status === 'failed') {
+        console.log(
+          `TB fetchMenuWithRetry: failed, attempt ${attempt + 1}/${maxRetries}, retrying in ${
+            response.retryIn || 30
+          }s`
+        );
+        const waitTime = (response.retryIn || 30) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // Other error - throw
+      throw new Error(response.error || 'Menu fetch failed');
+    } catch (err: any) {
+      // Network error on last attempt - throw
+      if (attempt === maxRetries - 1) {
+        throw err;
+      }
+      // Network error - wait and retry
+      console.log(
+        `TB fetchMenuWithRetry: network error, attempt ${attempt + 1}/${maxRetries}, retrying...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+
+  throw new Error(
+    'Menu loading timed out after ' + Math.floor((maxRetries * retryDelay) / 1000) + ' seconds'
+  );
 }
 
 // NEW: dish analysis from dish-processor
@@ -308,28 +372,28 @@ export interface AnalyzeDishPayload {
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish`;
-  console.log("TB analyzeDish calling:", url, "with", payload);
+  console.log('TB analyzeDish calling:', url, 'with', payload);
 
   const res = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
   const raw = await res.text();
-  console.log("TB analyzeDish raw snippet:", raw.slice(0, 200));
+  console.log('TB analyzeDish raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
-    console.error("analyzeDish HTTP error:", res.status, raw.slice(0, 80));
+    console.error('analyzeDish HTTP error:', res.status, raw.slice(0, 80));
     return {
       ok: false,
       tummy_score: 82,
       organs: {},
       allergens: [],
       fodmap: {},
-      insights: ["Analysis temporarily unavailable."],
+      insights: ['Analysis temporarily unavailable.'],
       _raw: raw,
     } as unknown as AnalyzeDishResponse;
   }
@@ -337,22 +401,19 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
   try {
     const data = JSON.parse(raw);
     console.log(
-      "TB analyzeDish JSON keys:",
-      data && typeof data === "object" ? Object.keys(data) : typeof data,
+      'TB analyzeDish JSON keys:',
+      data && typeof data === 'object' ? Object.keys(data) : typeof data
     );
     return data as AnalyzeDishResponse;
   } catch (e: any) {
-    console.error(
-      "TB analyzeDish JSON.parse failed:",
-      e?.message || String(e),
-    );
+    console.error('TB analyzeDish JSON.parse failed:', e?.message || String(e));
     return {
       ok: false,
       tummy_score: 82,
       organs: {},
       allergens: [],
       fodmap: {},
-      insights: ["Analysis response was not valid JSON."],
+      insights: ['Analysis response was not valid JSON.'],
       _raw: raw,
     } as unknown as AnalyzeDishResponse;
   }
@@ -360,18 +421,18 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
 
 export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish/card`;
-  console.log("TB analyzeDishCard calling:", url, "with", payload);
+  console.log('TB analyzeDishCard calling:', url, 'with', payload);
 
   const res = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
   const raw = await res.text();
-  console.log("TB analyzeDishCard raw snippet:", raw.slice(0, 200));
+  console.log('TB analyzeDishCard raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
     throw new Error(`analyzeDishCard HTTP error: ${res.status} ${raw.slice(0, 120)}`);
@@ -381,7 +442,7 @@ export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResp
     const data = JSON.parse(raw);
     return data as AnalyzeDishCardResponse;
   } catch (e: any) {
-    console.error("TB analyzeDishCard JSON.parse failed:", e?.message || String(e));
+    console.error('TB analyzeDishCard JSON.parse failed:', e?.message || String(e));
     throw e;
   }
 }

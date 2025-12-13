@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { API_BASE_URL, AnalyzeDishResponse, analyzeDish } from '../api/api';
+import { AnalyzeDishResponse, analyzeDish, fetchMenuWithRetry } from '../api/api';
 import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/OrganImpactSection';
 import {
   PlateComponentEntry,
@@ -26,6 +26,7 @@ const BG = '#020617';
 const TEAL = '#14b8a6';
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
 const USER_SELECTED_ALLERGENS: string[] = []; // TODO: wire from user profile/preferences
+const PREFETCH_ANALYSIS_LIMIT = 0;
 
 const getSeverityChipStyle = (severity: string) => {
   const s = (severity || '').toLowerCase();
@@ -115,6 +116,8 @@ export default function RestaurantScreen() {
     {}
   );
   const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
+  const [showOrganDetails, setShowOrganDetails] = useState(false);
+  const [showPlateBreakdown, setShowPlateBreakdown] = useState(false);
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -149,12 +152,9 @@ export default function RestaurantScreen() {
           params.append('lng', String(lngValue));
         }
 
-        const url = `${API_BASE_URL}/menu/extract?${params.toString()}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`Request failed with status ${res.status}`);
-        }
-        const data = await res.json();
+        // Use fetchMenuWithRetry for async job polling support
+        const data = await fetchMenuWithRetry(placeIdValue);
+        console.log('MENU RAW DATA:', JSON.stringify(data, null, 2));
         const normalizedSections = Array.isArray((data as any)?.sections)
           ? (data as any).sections.map((section: any) => ({
               ...section,
@@ -169,6 +169,7 @@ export default function RestaurantScreen() {
             }))
           : [];
 
+        console.log('MENU NORMALIZED SECTIONS LENGTH:', normalizedSections.length);
         setMenu({
           ...(data as any),
           sections: normalizedSections,
@@ -235,6 +236,60 @@ export default function RestaurantScreen() {
     }
   };
 
+  useEffect(() => {
+    if (PREFETCH_ANALYSIS_LIMIT <= 0) return;
+    if (!menu || !menu.sections || menu.sections.length === 0) return;
+
+    const itemsToPrefetch: {
+      itemId: string;
+      item: any;
+      sectionName: string;
+      descriptionText: string;
+    }[] = [];
+
+    for (const section of menu.sections) {
+      const sectionName = section.name || '';
+      const items = Array.isArray(section.items) ? section.items : [];
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const itemId = String(item?.id ?? item?.name ?? `${section.id}-${index}`);
+
+        if (itemsToPrefetch.length >= PREFETCH_ANALYSIS_LIMIT) break;
+
+        const descriptionText =
+          item?.menuDescription ??
+          item?.description ??
+          item?.subtitle ??
+          item?.shortDescription ??
+          item?.rawDescription ??
+          '';
+
+        itemsToPrefetch.push({
+          itemId,
+          item,
+          sectionName,
+          descriptionText,
+        });
+      }
+      if (itemsToPrefetch.length >= PREFETCH_ANALYSIS_LIMIT) break;
+    }
+
+    if (!itemsToPrefetch.length) return;
+
+    // Fire analysis in the background for items that don't already have it
+    itemsToPrefetch.forEach(({ itemId, item, sectionName, descriptionText }) => {
+      if (analysisByItemId[itemId] || analysisLoadingByItemId[itemId]) {
+        return;
+      }
+      runAnalysisForItem({
+        itemId,
+        item,
+        sectionName,
+        descriptionText,
+      });
+    });
+  }, [menu, analysisByItemId, analysisLoadingByItemId]);
+
   const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
     if (!itemId) return;
 
@@ -290,9 +345,22 @@ export default function RestaurantScreen() {
   }
 
   if (!menu?.sections || menu.sections.length === 0) {
+    const src = (menu as any)?.source || 'unknown';
+    const backendError = (menu as any)?.error || (menu as any)?.uberDebug?.error || null;
+
+    console.log('MENU EMPTY SECTIONS DEBUG:', {
+      source: src,
+      backendError,
+      ok: (menu as any)?.ok,
+    });
+
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>No menu found.</Text>
+        <Text style={styles.errorText}>
+          {backendError
+            ? `We couldn’t load this menu (${src}): ${backendError}`
+            : 'No menu found for this restaurant.'}
+        </Text>
       </View>
     );
   }
@@ -378,6 +446,51 @@ export default function RestaurantScreen() {
                     viewModel.componentAllergens
                   );
                 }
+                const organLines = viewModel?.organLines || [];
+
+                const organOverallLevel: 'high' | 'medium' | 'low' | null = organLines.length
+                  ? organLines.some((l: any) => l.severity === 'high')
+                    ? 'high'
+                    : organLines.some((l: any) => l.severity === 'medium')
+                    ? 'medium'
+                    : 'low'
+                  : null;
+
+                const organSummary: string | null = (() => {
+                  if (!organLines || organLines.length === 0) {
+                    return null;
+                  }
+
+                  const important = organLines.filter(
+                    (l: any) => l.severity === 'high' || l.severity === 'medium'
+                  );
+                  if (important.length === 0) {
+                    return 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
+                  }
+
+                  const names = important.map((l: any) => l.organLabel).join(', ');
+                  if (organOverallLevel === 'high') {
+                    return `Stronger impact on ${names}, while other organs remain closer to neutral.`;
+                  }
+                  return `Mild impact on ${names}, with other organs generally neutral.`;
+                })();
+                const hasPlateComponents = !!(
+                  viewModel?.plateComponents && viewModel.plateComponents.length > 0
+                );
+
+                const primaryPlateComponent = hasPlateComponents
+                  ? viewModel.plateComponents[0]
+                  : null;
+
+                const primarySharePercent =
+                  primaryPlateComponent && typeof primaryPlateComponent.shareRatio === 'number'
+                    ? Math.round(primaryPlateComponent.shareRatio * 100)
+                    : null;
+
+                const totalCaloriesForPlate =
+                  viewModel?.nutrition && typeof viewModel.nutrition.calories === 'number'
+                    ? Math.round(viewModel.nutrition.calories)
+                    : null;
                 const descriptionText =
                   item?.menuDescription ??
                   item?.description ??
@@ -739,10 +852,6 @@ export default function RestaurantScreen() {
                                         {sideFodmapWarning}
                                       </Text>
                                     )}
-                                    <Text style={styles.lifestyleDisclaimer}>
-                                      Lifestyle tags are inferred from dish name, description, and
-                                      typical recipes.
-                                    </Text>
                                   </View>
 
                                   {/* 2.5) Diet & lifestyle */}
@@ -788,104 +897,79 @@ export default function RestaurantScreen() {
                                             ))}
                                           </View>
                                         )}
+                                        <Text style={styles.lifestyleDisclaimer}>
+                                          Lifestyle tags are inferred from dish name, description,
+                                          and typical recipes.
+                                        </Text>
                                       </View>
                                     );
                                   })()}
 
-                                  {/* 3) Organ impact list */}
-                                  <OrganImpactSection
-                                    impacts={
-                                      viewModel.organLines.map((line, idx) => ({
-                                        id: line.organKey || String(idx),
-                                        organId: line.organKey || 'organ',
-                                        label: line.organLabel,
-                                        level:
-                                          line.severity === 'high'
-                                            ? 'high'
-                                            : line.severity === 'medium'
-                                            ? 'medium'
-                                            : 'low',
-                                        score: typeof line.score === 'number' ? line.score : null,
-                                        description:
-                                          line.sentence || 'Organ impact details to follow.',
-                                      })) as OrganImpactEntry[]
-                                    }
-                                  />
-
-                                  {viewModel?.plateComponents &&
-                                    viewModel.plateComponents.length > 0 && (
-                                      <PlateComponentsSection
-                                        components={
-                                          viewModel.plateComponents.map((pc, idx) => {
-                                            const compAllergens =
-                                              viewModel.componentAllergens?.[idx];
-                                            const allergenLabels =
-                                              compAllergens?.allergenPills?.map(
-                                                (p: any) => p.name
-                                              ) ?? [];
-                                            return {
-                                              id: pc.component || `pc-${idx}`,
-                                              name: pc.component,
-                                              kind:
-                                                (pc.role as PlateComponentKind) ||
-                                                ('other' as PlateComponentKind),
-                                              calories:
-                                                typeof pc.energyKcal === 'number'
-                                                  ? pc.energyKcal
-                                                  : null,
-                                              sharePercent:
-                                                typeof pc.shareRatio === 'number'
-                                                  ? pc.shareRatio * 100
-                                                  : null,
-                                              allergens: allergenLabels,
-                                              fodmapLevel: compAllergens?.fodmapLevel || 'unknown',
-                                              lactoseLevel:
-                                                (compAllergens?.lactoseLevel as any) || 'unknown',
-                                            } as PlateComponentEntry;
-                                          }) || []
-                                        }
-                                        totalCaloriesOverride={
-                                          viewModel.nutrition?.calories != null
-                                            ? viewModel.nutrition.calories
-                                            : null
-                                        }
-                                      />
-                                    )}
-
-                                  {viewModel?.portion &&
-                                    viewModel.portion.effectiveFactor !== 1 && (
-                                      <View style={{ marginTop: 4 }}>
-                                        <Text style={{ fontSize: 12, opacity: 0.8 }}>
-                                          Portion (AI estimate):{' '}
-                                          <Text style={{ fontWeight: '600' }}>
-                                            {viewModel.portion.effectiveFactor.toFixed(2)}× typical
-                                            serving
+                                  {/* 3) Organ impact – summary + optional details */}
+                                  {organOverallLevel && (
+                                    <View style={styles.sectionBlock}>
+                                      <View style={styles.sectionHeaderRow}>
+                                        <Text style={styles.sectionTitle}>
+                                          Organ impact (whole plate)
+                                        </Text>
+                                        <View
+                                          style={[
+                                            styles.fodmapLevelBadge,
+                                            {
+                                              borderWidth: 1,
+                                              borderColor:
+                                                getFodmapLevelBorderColor(organOverallLevel),
+                                            },
+                                          ]}
+                                        >
+                                          <Text style={styles.fodmapLevelText}>
+                                            {organOverallLevel.charAt(0).toUpperCase() +
+                                              organOverallLevel.slice(1)}
                                           </Text>
-                                        </Text>
+                                        </View>
                                       </View>
-                                    )}
-                                  {viewModel?.portionVision && (
-                                    <View style={{ marginTop: 4 }}>
-                                      <Text style={{ fontSize: 11, opacity: 0.6 }}>
-                                        {viewModel.portionVision.hasImage
-                                          ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(
-                                              2
-                                            )}× · ${Math.round(
-                                              viewModel.portionVision.confidence * 100
-                                            )}% confidence`
-                                          : `Estimated portion: ${viewModel.portionVision.factor.toFixed(
-                                              2
-                                            )}×`}
-                                      </Text>
-                                      {viewModel.portionVision.reason ? (
-                                        <Text style={{ fontSize: 11, opacity: 0.5 }}>
-                                          {viewModel.portionVision.reason}
-                                        </Text>
+
+                                      {organSummary ? (
+                                        <Text style={styles.sectionBody}>{organSummary}</Text>
                                       ) : null}
+
+                                      <TouchableOpacity
+                                        onPress={() => setShowOrganDetails((prev) => !prev)}
+                                      >
+                                        <Text style={styles.showMoreText}>
+                                          {showOrganDetails
+                                            ? 'Hide organ details'
+                                            : 'Show organ details'}
+                                        </Text>
+                                      </TouchableOpacity>
+
+                                      {showOrganDetails && (
+                                        <OrganImpactSection
+                                          showHeader={false}
+                                          showSummary={false}
+                                          impacts={
+                                            viewModel.organLines.map((line, idx) => ({
+                                              id: line.organKey || String(idx),
+                                              organId: line.organKey || 'organ',
+                                              label: line.organLabel,
+                                              level:
+                                                line.severity === 'high'
+                                                  ? 'high'
+                                                  : line.severity === 'medium'
+                                                  ? 'medium'
+                                                  : 'low',
+                                              score:
+                                                typeof line.score === 'number' ? line.score : null,
+                                              description:
+                                                line.sentence || 'Organ impact details to follow.',
+                                            })) as OrganImpactEntry[]
+                                          }
+                                        />
+                                      )}
                                     </View>
                                   )}
 
-                                  {/* 4) Nutrition facts */}
+                                  {/* 4) Nutrition facts (per serving, estimate) */}
                                   <View style={styles.nutritionSection}>
                                     <Text style={styles.sectionTitle}>
                                       Nutrition facts (per serving, estimate)
@@ -961,11 +1045,13 @@ export default function RestaurantScreen() {
                                             </Text>
                                           </View>
                                         </View>
+
                                         {viewModel.nutritionSourceLabel ? (
                                           <Text style={styles.nutritionSourceLabel}>
                                             {viewModel.nutritionSourceLabel}
                                           </Text>
                                         ) : null}
+
                                         {viewModel.nutritionInsights ? (
                                           <View style={styles.nutritionInsightsBox}>
                                             {!!viewModel.nutritionInsights.summary && (
@@ -995,6 +1081,40 @@ export default function RestaurantScreen() {
                                               ))}
                                           </View>
                                         ) : null}
+
+                                        {/* Portion info now lives under Nutrition */}
+                                        {viewModel?.portion &&
+                                          viewModel.portion.effectiveFactor !== 1 && (
+                                            <View style={{ marginTop: 6 }}>
+                                              <Text style={{ fontSize: 12, opacity: 0.8 }}>
+                                                Portion (AI estimate):{' '}
+                                                <Text style={{ fontWeight: '600' }}>
+                                                  {viewModel.portion.effectiveFactor.toFixed(2)}×
+                                                  typical serving
+                                                </Text>
+                                              </Text>
+                                            </View>
+                                          )}
+                                        {viewModel?.portionVision && (
+                                          <View style={{ marginTop: 4 }}>
+                                            <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                              {viewModel.portionVision.hasImage
+                                                ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(
+                                                    2
+                                                  )}× · ${Math.round(
+                                                    viewModel.portionVision.confidence * 100
+                                                  )}% confidence`
+                                                : `Estimated portion: ${viewModel.portionVision.factor.toFixed(
+                                                    2
+                                                  )}×`}
+                                            </Text>
+                                            {viewModel.portionVision.reason ? (
+                                              <Text style={{ fontSize: 11, opacity: 0.5 }}>
+                                                {viewModel.portionVision.reason}
+                                              </Text>
+                                            ) : null}
+                                          </View>
+                                        )}
                                       </>
                                     ) : (
                                       <Text style={styles.nutritionUnavailable}>
@@ -1006,6 +1126,79 @@ export default function RestaurantScreen() {
                                       nutrition databases, not official restaurant labels.
                                     </Text>
                                   </View>
+
+                                  {/* 5) Plate components – optional breakdown */}
+                                  {viewModel?.plateComponents &&
+                                    viewModel.plateComponents.length > 0 && (
+                                      <View style={styles.sectionBlock}>
+                                        <View style={styles.sectionHeaderRow}>
+                                          <Text style={styles.sectionTitle}>Plate components</Text>
+                                        </View>
+
+                                        {primaryPlateComponent && (
+                                          <Text style={styles.sectionBody}>
+                                            {primaryPlateComponent.component}
+                                            {primarySharePercent != null
+                                              ? ` • ≈${primarySharePercent}% of plate`
+                                              : ''}
+                                            {totalCaloriesForPlate != null
+                                              ? ` • ${totalCaloriesForPlate} kcal`
+                                              : ''}
+                                          </Text>
+                                        )}
+
+                                        <TouchableOpacity
+                                          onPress={() => setShowPlateBreakdown((prev) => !prev)}
+                                        >
+                                          <Text style={styles.showMoreText}>
+                                            {showPlateBreakdown
+                                              ? 'Hide plate breakdown'
+                                              : 'Show plate breakdown'}
+                                          </Text>
+                                        </TouchableOpacity>
+
+                                        {showPlateBreakdown && (
+                                          <PlateComponentsSection
+                                            components={
+                                              viewModel.plateComponents.map((pc, idx) => {
+                                                const compAllergens =
+                                                  viewModel.componentAllergens?.[idx];
+                                                const allergenLabels =
+                                                  compAllergens?.allergenPills?.map(
+                                                    (p: any) => p.name
+                                                  ) ?? [];
+                                                return {
+                                                  id: pc.component || `pc-${idx}`,
+                                                  name: pc.component,
+                                                  kind:
+                                                    (pc.role as PlateComponentKind) ||
+                                                    ('other' as PlateComponentKind),
+                                                  calories:
+                                                    typeof pc.energyKcal === 'number'
+                                                      ? pc.energyKcal
+                                                      : null,
+                                                  sharePercent:
+                                                    typeof pc.shareRatio === 'number'
+                                                      ? pc.shareRatio * 100
+                                                      : null,
+                                                  allergens: allergenLabels,
+                                                  fodmapLevel:
+                                                    compAllergens?.fodmapLevel || 'unknown',
+                                                  lactoseLevel:
+                                                    (compAllergens?.lactoseLevel as any) ||
+                                                    'unknown',
+                                                } as PlateComponentEntry;
+                                              }) || []
+                                            }
+                                            totalCaloriesOverride={
+                                              viewModel.nutrition?.calories != null
+                                                ? viewModel.nutrition.calories
+                                                : null
+                                            }
+                                          />
+                                        )}
+                                      </View>
+                                    )}
                                 </>
                               );
                             })()}
