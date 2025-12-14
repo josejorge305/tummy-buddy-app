@@ -52,6 +52,11 @@ const ORGAN_TINT: Record<string, string> = {
   immune: "rgba(34, 197, 94, 0.18)",
   brain: "rgba(129, 140, 248, 0.18)",
   kidney: "rgba(52, 211, 153, 0.18)",
+  // NEW: 4 additional organs
+  eyes: "rgba(96, 165, 250, 0.18)",
+  skin: "rgba(251, 191, 36, 0.18)",
+  bones: "rgba(209, 213, 219, 0.18)",
+  thyroid: "rgba(192, 132, 252, 0.18)",
 };
 
 const SEVERITY_ORDER: Record<ImpactLevel, number> = {
@@ -251,7 +256,7 @@ const ImpactGauge: React.FC<{
 const fallbackEmojiForOrgan = (organId: string): string => {
   switch (organId) {
     case "gut":
-      return "🧠";
+      return "🦠";
     case "liver":
       return "🧬";
     case "heart":
@@ -263,9 +268,18 @@ const fallbackEmojiForOrgan = (organId: string): string => {
     case "brain":
       return "🧠";
     case "kidney":
-      return "🫁";
-    default:
+      return "🫘";
+    // NEW: 4 additional organs
+    case "eyes":
+      return "👁️";
+    case "skin":
       return "✨";
+    case "bones":
+      return "🦴";
+    case "thyroid":
+      return "🦋";
+    default:
+      return "💫";
   }
 };
 

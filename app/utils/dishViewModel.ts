@@ -62,6 +62,10 @@ const CANONICAL_ORGANS: { key: string; label: string }[] = [
   { key: "immune", label: "Immune" },
   { key: "brain", label: "Brain" },
   { key: "kidney", label: "Kidney" },
+  { key: "eyes", label: "Eyes" },
+  { key: "skin", label: "Skin" },
+  { key: "bones", label: "Bones" },
+  { key: "thyroid", label: "Thyroid" },
 ];
 
 const LIFESTYLE_TAG_LABELS: Record<string, string> = {
