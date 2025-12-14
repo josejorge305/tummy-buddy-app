@@ -18,18 +18,44 @@ type Props = {
   overallSummary?: string | null;
   showHeader?: boolean;
   showSummary?: boolean;
+  showToggle?: boolean;
 };
 
-const LEVEL_COLORS: Record<ImpactLevel, string> = {
-  high: "#fb923c",
-  medium: "#facc15",
-  low: "#22c55e",
+// Colors for negative impacts (concerns)
+const NEGATIVE_COLORS: Record<ImpactLevel, string> = {
+  high: "#ef4444",    // red - high concern
+  medium: "#fb923c",  // orange - medium concern
+  low: "#facc15",     // yellow - low concern
 };
 
-const LEVEL_BADGE_BG: Record<ImpactLevel, string> = {
-  high: "rgba(251, 146, 60, 0.16)",
-  medium: "rgba(250, 204, 21, 0.16)",
-  low: "rgba(34, 197, 94, 0.16)",
+// Colors for positive impacts (benefits)
+const POSITIVE_COLORS: Record<ImpactLevel, string> = {
+  high: "#22c55e",    // green - high benefit
+  medium: "#4ade80",  // light green - medium benefit
+  low: "#86efac",     // pale green - low benefit
+};
+
+const NEGATIVE_BADGE_BG: Record<ImpactLevel, string> = {
+  high: "rgba(239, 68, 68, 0.16)",
+  medium: "rgba(251, 146, 60, 0.16)",
+  low: "rgba(250, 204, 21, 0.16)",
+};
+
+const POSITIVE_BADGE_BG: Record<ImpactLevel, string> = {
+  high: "rgba(34, 197, 94, 0.16)",
+  medium: "rgba(74, 222, 128, 0.16)",
+  low: "rgba(134, 239, 172, 0.16)",
+};
+
+// Helper to get colors based on score (positive = benefit, negative = concern)
+const getColorForImpact = (level: ImpactLevel, score: number | null | undefined): string => {
+  const isPositive = typeof score === "number" && score > 0;
+  return isPositive ? POSITIVE_COLORS[level] : NEGATIVE_COLORS[level];
+};
+
+const getBadgeBgForImpact = (level: ImpactLevel, score: number | null | undefined): string => {
+  const isPositive = typeof score === "number" && score > 0;
+  return isPositive ? POSITIVE_BADGE_BG[level] : NEGATIVE_BADGE_BG[level];
 };
 
 const LEVEL_LABEL: Record<ImpactLevel, string> = {
@@ -71,10 +97,11 @@ export const OrganImpactSection: React.FC<Props> = ({
   overallSummary,
   showHeader = true,
   showSummary = true,
+  showToggle = true,
 }) => {
-  const [showLowImpacts, setShowLowImpacts] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
-  const { highMedium, low, summaryText, overallLevel } = useMemo(() => {
+  const { sortedImpacts, summaryText, overallLevel } = useMemo(() => {
     const sorted = [...impacts].sort((a, b) => {
       const levelDiff = SEVERITY_ORDER[a.level] - SEVERITY_ORDER[b.level];
       if (levelDiff !== 0) return levelDiff;
@@ -83,36 +110,69 @@ export const OrganImpactSection: React.FC<Props> = ({
       return bScore - aScore;
     });
 
-    const highMediumArr = sorted.filter((o) => o.level !== "low");
-    const lowArr = sorted.filter((o) => o.level === "low");
-
-    const top = highMediumArr[0] ?? sorted[0];
+    const top = sorted[0];
     const effLevel: ImpactLevel = top?.level ?? "low";
 
-    const strongestOrgans = highMediumArr
-      .slice(0, 2)
-      .map((o) => o.label)
-      .join(" & ");
+    // Build comprehensive summary from all organ descriptions
+    // Filter to organs with meaningful impact (not neutral/low with generic text)
+    const significantImpacts = sorted.filter(
+      (o) => o.level !== "low" || (o.description && o.description.length > 30)
+    );
 
-    const defaultSummary =
-      strongestOrgans.length > 0
+    // Take descriptions from high/medium impacts first, then a couple low ones
+    const highMedDescriptions = significantImpacts
+      .filter((o) => o.level === "high" || o.level === "medium")
+      .map((o) => o.description?.trim())
+      .filter((d) => d && d.length > 10);
+
+    const lowDescriptions = significantImpacts
+      .filter((o) => o.level === "low")
+      .slice(0, 2)
+      .map((o) => o.description?.trim())
+      .filter((d) => d && d.length > 10);
+
+    // Combine into a paragraph (up to 4-5 sentences)
+    const allDescriptions = [...highMedDescriptions, ...lowDescriptions].slice(0, 5);
+
+    let comprehensiveSummary = "";
+    if (allDescriptions.length > 0) {
+      // Join sentences, ensuring proper punctuation
+      comprehensiveSummary = allDescriptions
+        .map((d) => {
+          // Ensure sentence ends with period
+          const trimmed = d.replace(/\.+$/, "").trim();
+          return trimmed + ".";
+        })
+        .join(" ");
+    } else {
+      // Fallback if no descriptions
+      const strongestOrgans = sorted
+        .filter((o) => o.level !== "low")
+        .slice(0, 2)
+        .map((o) => o.label)
+        .join(" & ");
+
+      comprehensiveSummary = strongestOrgans.length > 0
         ? `${capitalize(LEVEL_LABEL[effLevel])} overall impact – strongest effects on ${strongestOrgans}.`
         : `${capitalize(LEVEL_LABEL[effLevel])} overall impact for this plate.`;
+    }
 
     return {
-      highMedium: highMediumArr,
-      low: lowArr,
+      sortedImpacts: sorted,
       overallLevel: effLevel,
       summaryText:
         overallSummary && overallSummary.trim().length > 0
           ? overallSummary
-          : defaultSummary,
+          : comprehensiveSummary,
     };
   }, [impacts, overallSummary]);
 
   if (!impacts || impacts.length === 0) {
     return null;
   }
+
+  // If showToggle is false, show all organs directly (parent handles toggle)
+  const displayedImpacts = showToggle ? (showDetails ? sortedImpacts : []) : sortedImpacts;
 
   return (
     <View style={styles.card}>
@@ -127,29 +187,20 @@ export const OrganImpactSection: React.FC<Props> = ({
         <Text style={styles.summaryText}>{summaryText}</Text>
       )}
 
-      {highMedium.map((item) => (
+      {showToggle && (
+        <TouchableOpacity
+          onPress={() => setShowDetails((prev) => !prev)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.lowToggleText}>
+            {showDetails ? "Hide organ details" : "Show organ details"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {displayedImpacts.map((item) => (
         <OrganImpactRow key={item.id} entry={item} />
       ))}
-
-      {low.length > 0 && (
-        <View style={styles.lowImpactSection}>
-          <TouchableOpacity
-            onPress={() => setShowLowImpacts((prev) => !prev)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.lowToggleText}>
-              {showLowImpacts
-                ? "Hide low-impact organs"
-                : `Show ${low.length} low-impact organs`}
-            </Text>
-          </TouchableOpacity>
-
-          {showLowImpacts &&
-            low.map((item) => (
-              <OrganImpactRow key={item.id} entry={item} isLow />
-            ))}
-        </View>
-      )}
     </View>
   );
 };
@@ -157,7 +208,7 @@ export const OrganImpactSection: React.FC<Props> = ({
 const OverallBadge: React.FC<{ level: ImpactLevel }> = ({ level }) => {
   const icon = level === "high" ? "⚠️" : level === "medium" ? "⚠️" : "✅";
   return (
-    <View style={[styles.overallBadge, { borderColor: LEVEL_COLORS[level] }]}>
+    <View style={[styles.overallBadge, { borderColor: NEGATIVE_COLORS[level] }]}>
       <Text style={styles.overallBadgeText}>
         {icon} {capitalize(LEVEL_LABEL[level])}
       </Text>
@@ -171,6 +222,7 @@ const OrganImpactRow: React.FC<{
 }> = ({ entry, isLow }) => {
   const { organId, label, level, description, score } = entry;
   const tint = ORGAN_TINT[organId] ?? "rgba(148, 163, 184, 0.22)";
+  const color = getColorForImpact(level, score);
 
   const fraction = (() => {
     if (typeof score !== "number") {
@@ -185,7 +237,7 @@ const OrganImpactRow: React.FC<{
       style={[
         styles.row,
         {
-          borderLeftColor: LEVEL_COLORS[level],
+          borderLeftColor: color,
           opacity: isLow ? 0.85 : 1,
         },
       ]}
@@ -199,10 +251,10 @@ const OrganImpactRow: React.FC<{
       <View style={styles.contentColumn}>
         <View style={styles.rowHeader}>
           <Text style={styles.organLabel}>{label}</Text>
-          <ImpactLevelChip level={level} />
+          <ImpactLevelChip level={level} score={score} />
         </View>
 
-        <ImpactGauge level={level} fraction={fraction} />
+        <ImpactGauge level={level} fraction={fraction} score={score} />
 
         <Text style={styles.description} numberOfLines={3}>
           {description}
@@ -212,18 +264,20 @@ const OrganImpactRow: React.FC<{
   );
 };
 
-const ImpactLevelChip: React.FC<{ level: ImpactLevel }> = ({ level }) => {
+const ImpactLevelChip: React.FC<{ level: ImpactLevel; score?: number | null }> = ({ level, score }) => {
+  const color = getColorForImpact(level, score);
+  const bgColor = getBadgeBgForImpact(level, score);
   return (
     <View
       style={[
         styles.levelChip,
-        { backgroundColor: LEVEL_BADGE_BG[level] },
+        { backgroundColor: bgColor },
       ]}
     >
       <Text
         style={[
           styles.levelChipText,
-          { color: LEVEL_COLORS[level] },
+          { color: color },
         ]}
       >
         {LEVEL_LABEL[level]}
@@ -235,7 +289,9 @@ const ImpactLevelChip: React.FC<{ level: ImpactLevel }> = ({ level }) => {
 const ImpactGauge: React.FC<{
   level: ImpactLevel;
   fraction: number;
-}> = ({ level, fraction }) => {
+  score?: number | null;
+}> = ({ level, fraction, score }) => {
+  const color = getColorForImpact(level, score);
   return (
     <View style={styles.gaugeTrack}>
       <View
@@ -245,7 +301,7 @@ const ImpactGauge: React.FC<{
             width: `${Math.round(
               Math.max(0.15, Math.min(fraction, 1)) * 100
             )}%`,
-            backgroundColor: LEVEL_COLORS[level],
+            backgroundColor: color,
           },
         ]}
       />

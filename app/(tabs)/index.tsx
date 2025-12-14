@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
+  ImageBackground,
   SafeAreaView,
   Pressable,
   Animated,
@@ -18,6 +18,8 @@ import { useRouter } from 'expo-router';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import BrandTitle from '../../components/BrandTitle';
 import {
   fetchPlaceSuggestions,
@@ -732,84 +734,125 @@ export default function HomeScreen() {
                   <View style={{ width: SCREEN_WIDTH }}>
                     <View style={styles.restaurantCardWrapper}>
                       <View style={styles.restaurantCard}>
-                        <View>
-                          <Text style={styles.restaurantTitle}>
-                            {item.name}
-                          </Text>
+                        {/* Hero Photo Header */}
+                        {item.photoUrl ? (
+                          <View style={styles.photoHeader}>
+                            <Image
+                              source={{ uri: item.photoUrl }}
+                              style={styles.heroPhoto}
+                              contentFit="cover"
+                              transition={200}
+                            />
+                            {/* Gradient scrim overlay */}
+                            <LinearGradient
+                              colors={['transparent', 'rgba(2, 6, 23, 0.95)']}
+                              style={styles.photoScrim}
+                            />
+                            {/* Name and pills on top of photo */}
+                            <View style={styles.photoOverlay}>
+                              <Text style={styles.photoTitle} numberOfLines={1}>
+                                {item.name}
+                              </Text>
+                              <View style={styles.photoPillsRow}>
+                                {distanceMiles ? (
+                                  <View style={styles.photoPill}>
+                                    <Text style={styles.photoPillText}>{distanceMiles} mi</Text>
+                                  </View>
+                                ) : null}
+                                <View style={styles.photoPill}>
+                                  <Text style={styles.photoPillText}>
+                                    {eta?.driving ? `🚗 ${eta.driving}` : "Loading ETA…"}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                          </View>
+                        ) : (
+                          /* Fallback: No photo - show name in dark header */
+                          <View style={styles.noPhotoHeader}>
+                            <Text style={styles.restaurantTitle}>
+                              {item.name}
+                            </Text>
+                            <View style={styles.photoPillsRow}>
+                              {distanceMiles ? (
+                                <View style={styles.photoPill}>
+                                  <Text style={styles.photoPillText}>{distanceMiles} mi</Text>
+                                </View>
+                              ) : null}
+                              <View style={styles.photoPill}>
+                                <Text style={styles.photoPillText}>
+                                  {eta?.driving ? `🚗 ${eta.driving}` : "Loading ETA…"}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        )}
 
+                        {/* Card body content */}
+                        <View style={styles.cardBody}>
                           {item.address ? (
-                            <Text style={styles.restaurantAddress}>{item.address}</Text>
+                            <Text style={styles.restaurantAddress} numberOfLines={2}>{item.address}</Text>
                           ) : null}
-
-                          <Text style={styles.restaurantEta}>
-                            {eta
-                              ? `🚗 ${eta.driving || "--"}   🚶 ${eta.walking || "--"}`
-                              : "Loading ETA..."}
-                          </Text>
-
-                          <Text style={styles.restaurantTags}>
-                            {distanceMiles ? `${distanceMiles} mi away` : "Nearby"}
-                          </Text>
 
                           <Text style={styles.restaurantDescription}>
                             Explore the full menu and organ-friendly options.
                           </Text>
-                        </View>
 
-                        <View style={styles.organStripRow}>
-                          <Text style={styles.organChip}>Organ data available on dish page</Text>
-                        </View>
-
-                        <View style={styles.barometerRow}>
-                          <View style={styles.barometerPill}>
-                            <View
-                              style={[
-                                styles.barometerFill,
-                                { width: `${50 + Math.floor(Math.random() * 40)}%` },
-                              ]}
-                            />
+                          <View style={styles.organStripRow}>
+                            <Text style={styles.organChip}>Organ data available on dish page</Text>
                           </View>
-                          <Text style={styles.barometerScore}>
-                            {70 + Math.floor(Math.random() * 20)}
-                          </Text>
-                          <Text style={styles.barometerLabel}>Tummy Barometer™</Text>
+
+                          <View style={styles.barometerRow}>
+                            <View style={styles.barometerPill}>
+                              <View
+                                style={[
+                                  styles.barometerFill,
+                                  { width: `${50 + Math.floor(Math.random() * 40)}%` },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.barometerScore}>
+                              {70 + Math.floor(Math.random() * 20)}
+                            </Text>
+                            <Text style={styles.barometerLabel}>Tummy Barometer™</Text>
+                          </View>
+
+                          <Pressable
+                            style={styles.viewRestaurantButton}
+                            onPress={() => {
+                              const address =
+                                (item as any).address ||
+                                (item as any).formattedAddress ||
+                                (item as any).vicinity ||
+                                '';
+
+                              const lat =
+                                (item as any).lat ??
+                                (item as any).latitude ??
+                                (item as any).location?.lat ??
+                                (item as any).geometry?.location?.lat;
+
+                              const lng =
+                                (item as any).lng ??
+                                (item as any).longitude ??
+                                (item as any).location?.lng ??
+                                (item as any).geometry?.location?.lng;
+
+                              router.push({
+                                pathname: '/restaurant',
+                                params: {
+                                  placeId: item.placeId,
+                                  restaurantName: item.name,
+                                  address,
+                                  ...(lat != null ? { lat: String(lat) } : {}),
+                                  ...(lng != null ? { lng: String(lng) } : {}),
+                                },
+                              });
+                            }}
+                          >
+                            <Text style={styles.viewRestaurantButtonText}>View Restaurant</Text>
+                          </Pressable>
                         </View>
-
-                        <Pressable
-                          style={styles.viewRestaurantButton}
-                          onPress={() => {
-                            const address =
-                              (item as any).address ||
-                              (item as any).formattedAddress ||
-                              (item as any).vicinity ||
-                              '';
-
-                            const lat =
-                              (item as any).lat ??
-                              (item as any).latitude ??
-                              (item as any).location?.lat ??
-                              (item as any).geometry?.location?.lat;
-
-                            const lng =
-                              (item as any).lng ??
-                              (item as any).longitude ??
-                              (item as any).location?.lng ??
-                              (item as any).geometry?.location?.lng;
-
-                            router.push({
-                              pathname: '/restaurant',
-                              params: {
-                                placeId: item.placeId,
-                                restaurantName: item.name,
-                                address,
-                                ...(lat != null ? { lat: String(lat) } : {}),
-                                ...(lng != null ? { lng: String(lng) } : {}),
-                              },
-                            });
-                          }}
-                        >
-                          <Text style={styles.viewRestaurantButtonText}>View Restaurant</Text>
-                        </Pressable>
                       </View>
                     </View>
                   </View>
@@ -1274,5 +1317,66 @@ const styles = StyleSheet.create({
     color: BG,
     fontWeight: '700',
     fontSize: 14,
+  },
+  // Hero photo styles
+  photoHeader: {
+    position: 'relative',
+    height: 140,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 12,
+  },
+  heroPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  photoScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 80,
+  },
+  photoOverlay: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 12,
+  },
+  photoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    marginBottom: 6,
+  },
+  photoPillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  photoPill: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  photoPillText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '500',
+  },
+  noPhotoHeader: {
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148, 163, 184, 0.2)',
+    marginBottom: 10,
+  },
+  cardBody: {
+    // Container for card content below the hero image
   },
 });

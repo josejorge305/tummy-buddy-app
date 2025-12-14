@@ -236,12 +236,17 @@ async function apiPostDish(path: string, body: any) {
       body: JSON.stringify(body),
     });
 
+    const text = await res.text();
+
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
       throw new Error(`Dish API error ${res.status}: ${text.slice(0, 200)}`);
     }
 
-    return await res.json();
+    try {
+      return JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error(`Dish API returned invalid JSON: ${text.slice(0, 200)}`);
+    }
   } catch (error) {
     console.error('Dish API error:', error);
     throw error;
@@ -579,7 +584,32 @@ export async function startApifyScrape(
 
   try {
     const res = await fetch(url);
-    const data = await res.json();
+    const text = await res.text();
+
+    // Guard against non-JSON responses (HTML error pages, etc.)
+    if (!res.ok) {
+      console.error('TB startApifyScrape HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        jobId: '',
+        status: 'started',
+        message: `HTTP ${res.status}: ${text.slice(0, 100)}`,
+      };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB startApifyScrape JSON parse error:', parseErr?.message, text.slice(0, 200));
+      return {
+        ok: false,
+        jobId: '',
+        status: 'started',
+        message: `Invalid JSON response: ${text.slice(0, 100)}`,
+      };
+    }
+
     console.log('TB startApifyScrape response:', data);
     return data as ApifyJobStartResponse;
   } catch (e: any) {
@@ -604,7 +634,30 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
 
   try {
     const res = await fetch(url);
-    const data = await res.json();
+    const text = await res.text();
+
+    // Guard against non-JSON responses (HTML error pages, etc.)
+    if (!res.ok) {
+      console.error('TB getApifyJobStatus HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        status: 'failed',
+        error: `HTTP ${res.status}: ${text.slice(0, 100)}`,
+      };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB getApifyJobStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      return {
+        ok: false,
+        status: 'failed',
+        error: `Invalid JSON response: ${text.slice(0, 100)}`,
+      };
+    }
+
     console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 200));
     return data as ApifyJobStatusResponse;
   } catch (e: any) {

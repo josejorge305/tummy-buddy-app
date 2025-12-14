@@ -209,7 +209,8 @@ function organSentence(organ: string, score: number | null, severity: OrganSever
 function mapOrganLevelToSeverity(level: string | undefined): OrganSeverity {
   if (!level) return "neutral";
   const l = level.toLowerCase();
-  if (l.includes("severe")) return "high";
+  // Handle both negative and positive severity levels
+  if (l.includes("high") || l.includes("severe")) return "high";
   if (l.includes("moderate")) return "medium";
   if (l.includes("mild")) return "low";
   return "neutral";

@@ -521,18 +521,34 @@ export default function RestaurantScreen() {
                     return null;
                   }
 
-                  const important = organLines.filter(
-                    (l: any) => l.severity === 'high' || l.severity === 'medium'
+                  // Build comprehensive summary from all organ sentences
+                  // Filter to organs with non-neutral severity or meaningful sentences
+                  const withSentences = organLines.filter(
+                    (l: any) => l.sentence && l.sentence.length > 20 && l.severity !== 'neutral'
                   );
-                  if (important.length === 0) {
+
+                  if (withSentences.length === 0) {
                     return 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
                   }
 
-                  const names = important.map((l: any) => l.organLabel).join(', ');
-                  if (organOverallLevel === 'high') {
-                    return `Stronger impact on ${names}, while other organs remain closer to neutral.`;
-                  }
-                  return `Mild impact on ${names}, with other organs generally neutral.`;
+                  // Prioritize high/medium, then take some low
+                  const highMed = withSentences.filter(
+                    (l: any) => l.severity === 'high' || l.severity === 'medium'
+                  );
+                  const low = withSentences.filter((l: any) => l.severity === 'low');
+
+                  // Take all high/medium + up to 2 low, max 5 total
+                  const selected = [...highMed, ...low.slice(0, Math.max(0, 5 - highMed.length))].slice(0, 5);
+
+                  // Combine sentences into a paragraph
+                  const paragraph = selected
+                    .map((l: any) => {
+                      const s = (l.sentence || '').trim().replace(/\.+$/, '');
+                      return s + '.';
+                    })
+                    .join(' ');
+
+                  return paragraph || 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
                 })();
                 const hasPlateComponents = !!(
                   viewModel?.plateComponents && viewModel.plateComponents.length > 0
@@ -1011,22 +1027,25 @@ export default function RestaurantScreen() {
                                         <OrganImpactSection
                                           showHeader={false}
                                           showSummary={false}
+                                          showToggle={false}
                                           impacts={
-                                            viewModel.organLines.map((line, idx) => ({
-                                              id: line.organKey || String(idx),
-                                              organId: line.organKey || 'organ',
-                                              label: line.organLabel,
-                                              level:
-                                                line.severity === 'high'
-                                                  ? 'high'
-                                                  : line.severity === 'medium'
-                                                  ? 'medium'
-                                                  : 'low',
-                                              score:
-                                                typeof line.score === 'number' ? line.score : null,
-                                              description:
-                                                line.sentence || 'Organ impact details to follow.',
-                                            })) as OrganImpactEntry[]
+                                            viewModel.organLines
+                                              .filter((line) => line.severity !== 'neutral')
+                                              .map((line, idx) => ({
+                                                id: line.organKey || String(idx),
+                                                organId: line.organKey || 'organ',
+                                                label: line.organLabel,
+                                                level:
+                                                  line.severity === 'high'
+                                                    ? 'high'
+                                                    : line.severity === 'medium'
+                                                    ? 'medium'
+                                                    : 'low',
+                                                score:
+                                                  typeof line.score === 'number' ? line.score : null,
+                                                description:
+                                                  line.sentence || 'Organ impact details to follow.',
+                                              })) as OrganImpactEntry[]
                                           }
                                         />
                                       )}
