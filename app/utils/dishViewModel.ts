@@ -516,9 +516,15 @@ export function buildDishViewModel(
       })
     : undefined;
 
-  // Allergen smart sentence from organs.flags.allergens if present
+  // Allergen smart sentence - prefer backend's allergen_summary (includes lactose levels)
   let allergenSentence: string | null = null;
-  if (allergenFlags.length > 0) {
+
+  // First priority: use the smart summary from the API (includes lactose levels, per-component details)
+  if (analysis.allergen_summary) {
+    allergenSentence = analysis.allergen_summary;
+  }
+  // Fallback: build from allergen flags if no summary provided
+  else if (allergenFlags.length > 0) {
     const contains: string[] = [];
     const mayContain: string[] = [];
     for (const flag of allergenFlags) {
@@ -544,11 +550,20 @@ export function buildDishViewModel(
     allergenSentence = `Contains ${allergenPills.map((a) => a.name).join(", ")}.`;
   }
 
-  // 2. FODMAP (prefer LLM flag, fallback to legacy)
+  // 2. FODMAP - prefer backend's fodmap_summary (includes contextual guidance)
   const fodmapFlag = chooseFodmapFlag(analysis, flags, summary);
   const fodmapLevel = fodmapFlag?.level ?? null;
-  let fodmapSentence: string | null = fodmapFlag?.reason ?? null;
-  if (!fodmapSentence && fodmapLevel) {
+  let fodmapSentence: string | null = null;
+
+  // First priority: use the smart summary from the API
+  if (analysis.fodmap_summary) {
+    fodmapSentence = analysis.fodmap_summary;
+  }
+  // Fallback: use reason from flag or build generic sentence
+  else if (fodmapFlag?.reason) {
+    fodmapSentence = fodmapFlag.reason;
+  }
+  else if (fodmapLevel) {
     fodmapSentence = `FODMAP level ${fodmapLevel.toLowerCase()}.`;
   }
 
@@ -685,13 +700,17 @@ export function buildDishViewModel(
     });
   }
 
+  // Only append plate component info if we're NOT using the API's smart summaries
+  // (the API summaries already include contextual details)
   if (plateComponentsSummary) {
-    if (allergenSentence) {
+    // Only append to allergen sentence if we didn't get API summary
+    if (allergenSentence && !analysis.allergen_summary) {
       allergenSentence = allergenSentence.trim().endsWith(".")
         ? `${allergenSentence} This analysis considers the whole plate, including: ${plateComponentsSummary}.`
         : `${allergenSentence}. This analysis considers the whole plate, including: ${plateComponentsSummary}.`;
     }
-    if (fodmapSentence) {
+    // Only append to fodmap sentence if we didn't get API summary
+    if (fodmapSentence && !analysis.fodmap_summary) {
       fodmapSentence = fodmapSentence.trim().endsWith(".")
         ? `${fodmapSentence} This analysis considers the whole plate, including: ${plateComponentsSummary}.`
         : `${fodmapSentence}. This analysis considers the whole plate, including: ${plateComponentsSummary}.`;

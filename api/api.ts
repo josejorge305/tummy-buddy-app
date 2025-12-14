@@ -171,7 +171,9 @@ export interface AnalyzeDishResponse {
 
   // Whole-dish level flags / nutrition
   allergen_flags?: AllergenFlag[];
+  allergen_summary?: string | null;
   fodmap_flags?: FodmapFlag | null;
+  fodmap_summary?: string | null;
   lactose_flags?: LactoseFlag | null;
   nutrition_summary?: NutritionSummary | null;
   nutrition_badges?: string[] | null;
