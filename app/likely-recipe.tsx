@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Image,
+  Linking,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import {
@@ -20,42 +21,52 @@ import {
 } from '../api/api';
 
 const BG = '#020617';
+const CARD_BG = '#0f172a';
 const TEAL = '#14b8a6';
 const ORANGE = '#f97316';
+const TEXT_PRIMARY = '#f8fafc';
+const TEXT_SECONDARY = '#94a3b8';
+const TEXT_MUTED = '#64748b';
+const DIVIDER = '#1e293b';
 
-// Cooking method icons
-const getCookingMethodIcon = (method?: string | null): string => {
-  if (!method) return 'flame-outline';
+// Cooking method display
+const getCookingMethodDisplay = (method?: string | null): { icon: string; label: string } => {
+  if (!method) return { icon: 'flame-outline', label: 'Prepared' };
   const m = method.toLowerCase();
-  if (m.includes('grill')) return 'flame';
-  if (m.includes('fry') || m.includes('fried')) return 'flame';
-  if (m.includes('bake') || m.includes('baked')) return 'cube-outline';
-  if (m.includes('steam')) return 'water-outline';
-  if (m.includes('roast')) return 'flame';
-  if (m.includes('boil')) return 'water';
-  if (m.includes('raw')) return 'leaf-outline';
-  return 'restaurant-outline';
+  if (m.includes('grill')) return { icon: 'flame', label: 'Grilled' };
+  if (m.includes('fry') || m.includes('fried')) return { icon: 'flame', label: 'Fried' };
+  if (m.includes('bake') || m.includes('baked')) return { icon: 'cube-outline', label: 'Baked' };
+  if (m.includes('steam')) return { icon: 'water-outline', label: 'Steamed' };
+  if (m.includes('roast')) return { icon: 'flame', label: 'Roasted' };
+  if (m.includes('boil')) return { icon: 'water', label: 'Boiled' };
+  if (m.includes('raw')) return { icon: 'leaf-outline', label: 'Raw' };
+  if (m.includes('sauté') || m.includes('saute')) return { icon: 'flame', label: 'Sautéed' };
+  return { icon: 'restaurant-outline', label: method.charAt(0).toUpperCase() + method.slice(1) };
 };
 
-// Ingredient category emojis
-const getIngredientEmoji = (category?: string | null): string => {
-  if (!category) return '•';
-  const c = category.toLowerCase();
-  if (c.includes('meat') || c === 'red_meat') return '🥩';
-  if (c.includes('poultry') || c === 'chicken') return '🍗';
-  if (c.includes('seafood') || c.includes('fish')) return '🐟';
-  if (c.includes('dairy') || c.includes('cheese')) return '🧀';
-  if (c.includes('vegetable') || c === 'veggie') return '🥬';
-  if (c.includes('fruit')) return '🍅';
-  if (c.includes('grain') || c.includes('bread') || c.includes('bun')) return '🍞';
-  if (c.includes('sauce') || c.includes('condiment')) return '🥫';
-  if (c.includes('spice') || c.includes('herb')) return '🌶️';
-  return '•';
+// Format ingredient for cookbook display
+const formatIngredient = (ing: LikelyIngredient): string => {
+  const parts: string[] = [];
+
+  if (ing.quantity) {
+    parts.push(String(ing.quantity));
+  }
+  if (ing.unit) {
+    parts.push(ing.unit);
+  }
+  parts.push(ing.name || 'Unknown');
+
+  return parts.join(' ');
 };
 
 export default function LikelyRecipeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+
+  // Collapsible state
+  const [nutritionExpanded, setNutritionExpanded] = useState(false);
+  const [allergensExpanded, setAllergensExpanded] = useState(false);
+  const [fodmapExpanded, setFodmapExpanded] = useState(false);
 
   // Parse the data passed via params
   const dishName = params.dishName as string | undefined;
@@ -84,305 +95,309 @@ export default function LikelyRecipeScreen() {
     (a) => a.present === 'yes' || a.present === 'maybe'
   );
 
+  const cookingMethod = getCookingMethodDisplay(likelyRecipe?.cooking_method);
+  const isVisionEnhanced = nutritionSource === 'fatsecret_image';
+  const isFatSecretNutrition = nutritionSource?.includes('fatsecret');
+  const isUSDANutrition = nutritionSource?.includes('usda');
+
+  // Build attribution list for data providers
+  const attributions: { name: string; role: string; url?: string }[] = [];
+
+  // Recipe source attribution
+  if (likelyRecipe?.source) {
+    const s = likelyRecipe.source.toLowerCase();
+    if (s.includes('edamam')) {
+      attributions.push({
+        name: 'Edamam',
+        role: 'Recipe data',
+        url: 'https://www.edamam.com',
+      });
+    } else if (s.includes('spoonacular')) {
+      attributions.push({
+        name: 'Spoonacular',
+        role: 'Recipe data',
+        url: 'https://spoonacular.com',
+      });
+    }
+  }
+
+  // Nutrition source attribution
+  if (isFatSecretNutrition || isVisionEnhanced) {
+    attributions.push({
+      name: 'FatSecret',
+      role: 'Nutrition data',
+      url: 'https://www.fatsecret.com',
+    });
+  } else if (isUSDANutrition) {
+    attributions.push({
+      name: 'USDA FoodData Central',
+      role: 'Nutrition data',
+      url: 'https://fdc.nal.usda.gov',
+    });
+  }
+
+  // Build simple source display for header
+  const sourceParts: string[] = [];
+  if (likelyRecipe?.source) {
+    const s = likelyRecipe.source.toLowerCase();
+    if (s.includes('edamam')) sourceParts.push('Edamam');
+    else if (s.includes('spoonacular')) sourceParts.push('Spoonacular');
+    else if (s.includes('openai')) sourceParts.push('OpenAI');
+  }
+  if (isVisionEnhanced) sourceParts.push('Vision');
+  const sourceDisplay = sourceParts.length > 0 ? sourceParts.join(' + ') : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-          {/* Back Button */}
-          <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={20} color={TEAL} />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        {/* Back Button */}
+        <Pressable
+          style={({ pressed }) => [styles.backRow, pressed && { opacity: 0.6 }]}
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={20} color={TEAL} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
 
-          {/* Hero Image */}
-          {imageUrl ? (
-            <Image source={{ uri: imageUrl }} style={styles.heroImage} />
-          ) : (
-            <View style={styles.heroPlaceholder}>
-              <Ionicons name="restaurant-outline" size={48} color="#4b5563" />
-            </View>
-          )}
+        {/* Hero Image */}
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.heroImage} />
+        ) : (
+          <View style={styles.heroPlaceholder}>
+            <Ionicons name="restaurant-outline" size={48} color={TEXT_MUTED} />
+          </View>
+        )}
 
-          {/* Title & Badges */}
-          <View style={styles.titleSection}>
-            <Text style={styles.dishName}>{dishName || 'Unknown Dish'}</Text>
+        {/* Title Section */}
+        <View style={styles.titleSection}>
+          <Text style={styles.dishName}>{dishName || likelyRecipe?.title || 'Recipe'}</Text>
 
-            <View style={styles.badgeRow}>
-              <View style={styles.recipeBadge}>
-                <Ionicons name="sparkles" size={12} color="#fff" />
-                <Text style={styles.recipeBadgeText}>Likely Recipe</Text>
-              </View>
-              {nutritionSource === 'fatsecret_image' && (
-                <View style={[styles.recipeBadge, { backgroundColor: ORANGE }]}>
-                  <Ionicons name="eye" size={12} color="#fff" />
-                  <Text style={styles.recipeBadgeText}>Vision Enhanced</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Cooking Method */}
-            {likelyRecipe?.cooking_method && (
-              <View style={styles.cookingMethodCard}>
-                <View style={styles.cookingMethodHeader}>
-                  <Ionicons
-                    name={getCookingMethodIcon(likelyRecipe.cooking_method) as any}
-                    size={18}
-                    color={ORANGE}
-                  />
-                  <Text style={styles.cookingMethodText}>
-                    {likelyRecipe.cooking_method.charAt(0).toUpperCase() +
-                      likelyRecipe.cooking_method.slice(1)}
-                  </Text>
-                  {likelyRecipe.cooking_method_confidence && (
-                    <Text style={styles.confidenceText}>
-                      ({Math.round(likelyRecipe.cooking_method_confidence * 100)}%)
-                    </Text>
-                  )}
-                </View>
-                {likelyRecipe.cooking_method_reason && (
-                  <Text style={styles.cookingMethodReason}>
-                    {likelyRecipe.cooking_method_reason}
-                  </Text>
-                )}
-              </View>
+          {/* Cooking Method & Source */}
+          <View style={styles.metaRow}>
+            <Ionicons name={cookingMethod.icon as any} size={16} color={ORANGE} />
+            <Text style={styles.cookingMethod}>{cookingMethod.label}</Text>
+            {likelyRecipe?.cooking_method_confidence && (
+              <Text style={styles.confidence}>
+                {Math.round(likelyRecipe.cooking_method_confidence * 100)}%
+              </Text>
             )}
           </View>
 
-          {/* Nutrition Facts */}
-          {nutrition && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Nutrition Facts</Text>
-              <View style={styles.nutritionGrid}>
-                <View style={styles.nutritionItem}>
-                  <Ionicons name="flame" size={16} color={ORANGE} />
-                  <Text style={styles.nutritionValue}>
-                    {nutrition.energyKcal ? Math.round(nutrition.energyKcal) : '-'}
-                  </Text>
-                  <Text style={styles.nutritionLabel}>kcal</Text>
-                </View>
-                <View style={styles.nutritionDivider} />
-                <View style={styles.nutritionItem}>
-                  <Text style={styles.nutritionValue}>
-                    {nutrition.protein_g ? `${Math.round(nutrition.protein_g)}g` : '-'}
-                  </Text>
-                  <Text style={styles.nutritionLabel}>Protein</Text>
-                </View>
-                <View style={styles.nutritionDivider} />
-                <View style={styles.nutritionItem}>
-                  <Text style={styles.nutritionValue}>
-                    {nutrition.carbs_g ? `${Math.round(nutrition.carbs_g)}g` : '-'}
-                  </Text>
-                  <Text style={styles.nutritionLabel}>Carbs</Text>
-                </View>
-                <View style={styles.nutritionDivider} />
-                <View style={styles.nutritionItem}>
-                  <Text style={styles.nutritionValue}>
-                    {nutrition.fat_g ? `${Math.round(nutrition.fat_g)}g` : '-'}
-                  </Text>
-                  <Text style={styles.nutritionLabel}>Fat</Text>
-                </View>
-              </View>
-            </View>
+          {sourceDisplay && (
+            <Text style={styles.sourceText}>Source: {sourceDisplay}</Text>
           )}
+        </View>
 
-          {/* Allergen Warnings */}
-          {presentAllergens.length > 0 && (
-            <View style={styles.allergenSection}>
-              <View style={styles.allergenHeader}>
-                <Ionicons name="warning" size={18} color="#f59e0b" />
-                <Text style={styles.allergenTitle}>Allergen Warnings</Text>
-              </View>
-              {presentAllergens.map((allergen, idx) => (
-                <View key={idx} style={styles.allergenRow}>
-                  <View
-                    style={[
-                      styles.allergenDot,
-                      {
-                        backgroundColor:
-                          allergen.present === 'maybe' ? '#facc15' : '#ef4444',
-                      },
-                    ]}
-                  />
-                  <Text style={styles.allergenText}>
-                    {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
-                  </Text>
-                  {allergen.present === 'maybe' && (
-                    <Text style={styles.allergenMaybe}>(possible)</Text>
-                  )}
+        <View style={styles.divider} />
+
+        {/* INGREDIENTS SECTION */}
+        {likelyRecipe?.ingredients && likelyRecipe.ingredients.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>INGREDIENTS</Text>
+            <View style={styles.ingredientsList}>
+              {likelyRecipe.ingredients.map((ing, idx) => (
+                <View key={idx} style={styles.ingredientItem}>
+                  <Text style={styles.bullet}>•</Text>
+                  <Text style={styles.ingredientText}>{formatIngredient(ing)}</Text>
                 </View>
               ))}
             </View>
-          )}
+          </View>
+        )}
 
-          {/* FODMAP Notice */}
-          {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
-            <View style={styles.fodmapSection}>
-              <View style={styles.fodmapHeader}>
-                <Ionicons
-                  name="leaf"
-                  size={18}
-                  color={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
-                />
-                <Text style={styles.fodmapTitle}>
-                  {fodmap.level.toUpperCase()} FODMAP
-                </Text>
-              </View>
-              {fodmap.reason && (
-                <Text style={styles.fodmapReason}>{fodmap.reason}</Text>
-              )}
+        {/* INSTRUCTIONS SECTION */}
+        {likelyRecipe?.instructions && likelyRecipe.instructions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>INSTRUCTIONS</Text>
+            <View style={styles.instructionsList}>
+              {likelyRecipe.instructions.map((inst, idx) => (
+                <View key={idx} style={styles.instructionItem}>
+                  <Text style={styles.stepNumber}>{idx + 1}.</Text>
+                  <Text style={styles.instructionText}>{inst.text}</Text>
+                </View>
+              ))}
             </View>
-          )}
+          </View>
+        )}
 
-          {/* Ingredients */}
-          {likelyRecipe?.ingredients && likelyRecipe.ingredients.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.ingredientHeaderRow}>
-                <Text style={styles.sectionTitle}>Ingredients</Text>
-                {likelyRecipe.ingredient_stats?.total && (
-                  <Text style={styles.ingredientCount}>
-                    ({likelyRecipe.ingredient_stats.total} items)
-                  </Text>
+        {/* NOTES SECTION */}
+        {likelyRecipe?.notes && likelyRecipe.notes.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>CHEF'S NOTES</Text>
+            <View style={styles.notesContainer}>
+              {likelyRecipe.notes.map((note, idx) => (
+                <Text key={idx} style={styles.noteText}>{note}</Text>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Divider before collapsibles */}
+        <View style={styles.collapsibleDivider} />
+
+        {/* COLLAPSIBLE: Nutrition */}
+        {nutrition && (
+          <Pressable
+            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
+            onPress={() => setNutritionExpanded(!nutritionExpanded)}
+          >
+            <View style={styles.collapsibleLeft}>
+              <Ionicons name="flame-outline" size={18} color={TEXT_SECONDARY} />
+              <Text style={styles.collapsibleTitle}>Nutrition</Text>
+              <Text style={styles.collapsiblePreview}>
+                {nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : ''}
+              </Text>
+            </View>
+            <Ionicons
+              name={nutritionExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={TEXT_MUTED}
+            />
+          </Pressable>
+        )}
+        {nutritionExpanded && nutrition && (
+          <View style={styles.collapsibleContent}>
+            <View style={styles.nutritionRow}>
+              <NutritionItem label="Calories" value={nutrition.energyKcal} unit="kcal" />
+              <NutritionItem label="Protein" value={nutrition.protein_g} unit="g" />
+              <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
+              <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
+            </View>
+          </View>
+        )}
+
+        {/* COLLAPSIBLE: Allergens */}
+        {presentAllergens.length > 0 && (
+          <Pressable
+            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
+            onPress={() => setAllergensExpanded(!allergensExpanded)}
+          >
+            <View style={styles.collapsibleLeft}>
+              <Ionicons name="warning-outline" size={18} color="#f59e0b" />
+              <Text style={styles.collapsibleTitle}>Allergens</Text>
+              <Text style={[styles.collapsiblePreview, { color: '#f59e0b' }]}>
+                {presentAllergens.length} warning{presentAllergens.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Ionicons
+              name={allergensExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={TEXT_MUTED}
+            />
+          </Pressable>
+        )}
+        {allergensExpanded && presentAllergens.length > 0 && (
+          <View style={styles.collapsibleContent}>
+            {presentAllergens.map((allergen, idx) => (
+              <View key={idx} style={styles.allergenRow}>
+                <View
+                  style={[
+                    styles.allergenDot,
+                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                  ]}
+                />
+                <Text style={styles.allergenText}>
+                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
+                </Text>
+                {allergen.present === 'maybe' && (
+                  <Text style={styles.allergenMaybe}>(possible)</Text>
                 )}
               </View>
+            ))}
+          </View>
+        )}
 
-              {/* Stats pills */}
-              {likelyRecipe.ingredient_stats && (
-                <View style={styles.statsPillRow}>
-                  {(likelyRecipe.ingredient_stats.from_recipe ?? 0) > 0 && (
-                    <View style={[styles.statPill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
-                      <Text style={[styles.statPillText, { color: '#3b82f6' }]}>
-                        {likelyRecipe.ingredient_stats.from_recipe} Recipe
-                      </Text>
-                    </View>
-                  )}
-                  {(likelyRecipe.ingredient_stats.from_vision ?? 0) > 0 && (
-                    <View style={[styles.statPill, { backgroundColor: 'rgba(20, 184, 166, 0.15)' }]}>
-                      <Text style={[styles.statPillText, { color: TEAL }]}>
-                        {likelyRecipe.ingredient_stats.from_vision} Vision
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              <View style={styles.ingredientList}>
-                {likelyRecipe.ingredients.map((ing, idx) => (
-                  <IngredientRow key={idx} ingredient={ing} />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Instructions */}
-          {likelyRecipe?.instructions && likelyRecipe.instructions.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Instructions</Text>
-              <View style={styles.instructionList}>
-                {likelyRecipe.instructions.map((inst, idx) => (
-                  <InstructionRow key={idx} step={idx + 1} instruction={inst} />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Notes */}
-          {likelyRecipe?.notes && likelyRecipe.notes.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Notes</Text>
-              <View style={styles.notesCard}>
-                {likelyRecipe.notes.map((note, idx) => (
-                  <View key={idx} style={styles.noteRow}>
-                    <Ionicons name="information-circle-outline" size={16} color="#9ca3af" />
-                    <Text style={styles.noteText}>{note}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <View style={{ height: 120 }} />
-        </ScrollView>
-
-        {/* Bottom Nav */}
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push('/')}>
-            <Ionicons name="home" size={22} color="#ffffff" />
-            <Text style={styles.bottomNavText}>Home</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.bottomNavItem}
-            onPress={() => router.push('/(tabs)/explore')}
+        {/* COLLAPSIBLE: FODMAP */}
+        {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
+          <Pressable
+            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
+            onPress={() => setFodmapExpanded(!fodmapExpanded)}
           >
-            <Ionicons name="bar-chart-outline" size={22} color="#ffffff" />
-            <Text style={styles.bottomNavText}>Tracker</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push('/profile')}>
-            <Ionicons name="person-circle" size={22} color="#ffffff" />
-            <Text style={styles.bottomNavText}>Profile</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+            <View style={styles.collapsibleLeft}>
+              <Ionicons
+                name="leaf-outline"
+                size={18}
+                color={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
+              />
+              <Text style={styles.collapsibleTitle}>FODMAP</Text>
+              <Text
+                style={[
+                  styles.collapsiblePreview,
+                  { color: fodmap.level === 'high' ? '#ef4444' : '#f59e0b' },
+                ]}
+              >
+                {fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
+              </Text>
+            </View>
+            <Ionicons
+              name={fodmapExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={TEXT_MUTED}
+            />
+          </Pressable>
+        )}
+        {fodmapExpanded && fodmap && (
+          <View style={styles.collapsibleContent}>
+            {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
+          </View>
+        )}
+
+        {/* Data Attribution Section */}
+        {attributions.length > 0 && (
+          <View style={styles.attributionSection}>
+            <Text style={styles.attributionTitle}>Data provided by</Text>
+            <View style={styles.attributionList}>
+              {attributions.map((attr, idx) => (
+                <Pressable
+                  key={idx}
+                  style={({ pressed }) => [
+                    styles.attributionItem,
+                    pressed && attr.url && { opacity: 0.6 },
+                  ]}
+                  onPress={() => {
+                    if (attr.url) {
+                      Linking.openURL(attr.url);
+                    }
+                  }}
+                  disabled={!attr.url}
+                >
+                  <View style={styles.attributionBadge}>
+                    <Text style={styles.attributionName}>{attr.name}</Text>
+                  </View>
+                  <Text style={styles.attributionRole}>{attr.role}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.attributionDisclaimer}>
+              Nutrition information is estimated and may vary based on preparation methods and portion sizes.
+            </Text>
+          </View>
+        )}
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Sub-components
-function IngredientRow({ ingredient }: { ingredient: LikelyIngredient }) {
-  const isVision = ingredient.source === 'vision' || ingredient.source === 'vision_nutrition';
-  const quantityDisplay = ingredient.quantity
-    ? `${ingredient.quantity}${ingredient.unit ? ` ${ingredient.unit}` : ''}`
-    : null;
-
-  return (
-    <View style={styles.ingredientRow}>
-      <View style={styles.ingredientMain}>
-        <Text style={styles.ingredientEmoji}>{getIngredientEmoji(ingredient.category)}</Text>
-        <Text style={styles.ingredientName}>{ingredient.name || 'Unknown'}</Text>
-        {quantityDisplay && (
-          <Text style={styles.ingredientQty}>{quantityDisplay}</Text>
-        )}
-      </View>
-      <View style={styles.ingredientMeta}>
-        {isVision && (
-          <View style={styles.visionBadge}>
-            <Ionicons name="eye" size={10} color={TEAL} />
-            <Text style={styles.visionBadgeText}>Vision</Text>
-          </View>
-        )}
-        {ingredient.vision_confidence && (
-          <Text style={styles.confidenceSmall}>
-            {Math.round(ingredient.vision_confidence * 100)}%
-          </Text>
-        )}
-        {ingredient.energyKcal && ingredient.energyKcal > 0 && (
-          <Text style={styles.ingredientKcal}>{Math.round(ingredient.energyKcal)} kcal</Text>
-        )}
-      </View>
-    </View>
-  );
-}
-
-function InstructionRow({
-  step,
-  instruction,
+// Nutrition item component
+function NutritionItem({
+  label,
+  value,
+  unit,
 }: {
-  step: number;
-  instruction: LikelyInstruction;
+  label: string;
+  value?: number | null;
+  unit: string;
 }) {
   return (
-    <View style={styles.instructionRow}>
-      <View style={styles.stepCircle}>
-        <Text style={styles.stepNumber}>{step}</Text>
-      </View>
-      <View style={styles.instructionContent}>
-        <Text style={styles.instructionText}>{instruction.text}</Text>
-        {instruction.adjusted && (
-          <View style={styles.adjustedBadge}>
-            <Ionicons name="sparkles" size={10} color={TEAL} />
-            <Text style={styles.adjustedText}>Adjusted based on visual analysis</Text>
-          </View>
-        )}
-      </View>
+    <View style={styles.nutritionItem}>
+      <Text style={styles.nutritionValue}>
+        {value ? Math.round(value) : '-'}
+        <Text style={styles.nutritionUnit}>{unit}</Text>
+      </Text>
+      <Text style={styles.nutritionLabel}>{label}</Text>
     </View>
   );
 }
@@ -392,15 +407,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG,
   },
-  screen: {
-    flex: 1,
-    backgroundColor: BG,
-  },
   scrollView: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 12,
   },
   backRow: {
@@ -409,136 +420,185 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: TEAL,
     marginLeft: 4,
   },
   heroImage: {
     width: '100%',
-    height: 200,
+    height: 220,
     borderRadius: 16,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   heroPlaceholder: {
     width: '100%',
-    height: 200,
+    height: 220,
     borderRadius: 16,
-    backgroundColor: '#1e293b',
+    backgroundColor: CARD_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   titleSection: {
     marginBottom: 20,
   },
   dishName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#ffffff',
-    marginBottom: 12,
+    fontSize: 28,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+    letterSpacing: -0.5,
+    marginBottom: 8,
   },
-  badgeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  recipeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TEAL,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  recipeBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  cookingMethodCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 12,
-  },
-  cookingMethodHeader: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 4,
   },
-  cookingMethodText: {
+  cookingMethod: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#ffffff',
+    color: TEXT_PRIMARY,
   },
-  confidenceText: {
+  confidence: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: TEXT_MUTED,
   },
-  cookingMethodReason: {
+  sourceText: {
     fontSize: 13,
-    color: '#9ca3af',
-    marginTop: 6,
+    color: TEXT_MUTED,
+    marginTop: 4,
   },
-  section: {
+  divider: {
+    height: 1,
+    backgroundColor: DIVIDER,
     marginBottom: 24,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 12,
+  section: {
+    marginBottom: 28,
   },
-  nutritionGrid: {
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TEXT_MUTED,
+    letterSpacing: 1.5,
+    marginBottom: 16,
+  },
+  ingredientsList: {
+    gap: 10,
+  },
+  ingredientItem: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  bullet: {
+    fontSize: 18,
+    color: TEXT_SECONDARY,
+    lineHeight: 24,
+  },
+  ingredientText: {
+    fontSize: 16,
+    color: TEXT_PRIMARY,
+    lineHeight: 24,
+    flex: 1,
+  },
+  instructionsList: {
+    gap: 16,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  stepNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TEAL,
+    width: 24,
+    lineHeight: 26,
+  },
+  instructionText: {
+    fontSize: 16,
+    color: TEXT_PRIMARY,
+    lineHeight: 26,
+    flex: 1,
+  },
+  notesContainer: {
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
     padding: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: TEAL,
+  },
+  noteText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  collapsibleDivider: {
+    height: 1,
+    backgroundColor: DIVIDER,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: DIVIDER,
+  },
+  collapsibleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  collapsibleTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TEXT_PRIMARY,
+  },
+  collapsiblePreview: {
+    fontSize: 13,
+    color: TEXT_MUTED,
+    marginLeft: 4,
+  },
+  collapsibleContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  nutritionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   nutritionItem: {
-    flex: 1,
     alignItems: 'center',
-  },
-  nutritionDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#374151',
+    flex: 1,
   },
   nutritionValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#ffffff',
-    marginTop: 4,
+    color: TEXT_PRIMARY,
+  },
+  nutritionUnit: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: TEXT_MUTED,
   },
   nutritionLabel: {
     fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-  allergenSection: {
-    backgroundColor: 'rgba(250, 204, 21, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  allergenHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  allergenTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
+    color: TEXT_MUTED,
+    marginTop: 4,
   },
   allergenRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
+    gap: 10,
+    marginBottom: 8,
   },
   allergenDot: {
     width: 8,
@@ -546,194 +606,64 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   allergenText: {
-    fontSize: 14,
-    color: '#ffffff',
+    fontSize: 15,
+    color: TEXT_PRIMARY,
   },
   allergenMaybe: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  fodmapSection: {
-    backgroundColor: 'rgba(249, 115, 22, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  fodmapHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  fodmapTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontSize: 13,
+    color: TEXT_MUTED,
   },
   fodmapReason: {
     fontSize: 14,
-    color: '#9ca3af',
-  },
-  ingredientHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  ingredientCount: {
-    fontSize: 14,
-    color: '#9ca3af',
-  },
-  statsPillRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  statPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  ingredientList: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  ingredientRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  ingredientMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  ingredientEmoji: {
-    fontSize: 16,
-  },
-  ingredientName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#ffffff',
-    flex: 1,
-  },
-  ingredientQty: {
-    fontSize: 14,
-    color: '#9ca3af',
-  },
-  ingredientMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-  },
-  visionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderWidth: 1,
-    borderColor: TEAL,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  visionBadgeText: {
-    fontSize: 10,
-    color: TEAL,
-    fontWeight: '500',
-  },
-  confidenceSmall: {
-    fontSize: 11,
-    color: '#9ca3af',
-  },
-  ingredientKcal: {
-    fontSize: 11,
-    color: ORANGE,
-  },
-  instructionList: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    paddingVertical: 8,
-  },
-  instructionRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  stepCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: TEAL,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNumber: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  instructionContent: {
-    flex: 1,
-  },
-  instructionText: {
-    fontSize: 15,
-    color: '#ffffff',
+    color: TEXT_SECONDARY,
     lineHeight: 22,
   },
-  adjustedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-  },
-  adjustedText: {
-    fontSize: 11,
-    color: TEAL,
-  },
-  notesCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 16,
-  },
-  noteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 8,
-  },
-  noteText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    flex: 1,
-    lineHeight: 20,
-  },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 12,
-    paddingBottom: 28,
-    backgroundColor: '#0f172a',
+  attributionSection: {
+    marginTop: 24,
+    paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: DIVIDER,
   },
-  bottomNavItem: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  bottomNavText: {
+  attributionTitle: {
     fontSize: 11,
-    color: '#ffffff',
-    fontWeight: '500',
+    fontWeight: '600',
+    color: TEXT_MUTED,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  attributionList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  attributionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  attributionBadge: {
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+  },
+  attributionName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TEXT_PRIMARY,
+  },
+  attributionRole: {
+    fontSize: 11,
+    color: TEXT_MUTED,
+  },
+  attributionDisclaimer: {
+    fontSize: 11,
+    color: TEXT_MUTED,
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
 });

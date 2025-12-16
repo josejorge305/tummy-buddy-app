@@ -75,7 +75,6 @@ type SearchMode = 'restaurant' | 'dish' | 'photo';
 const DUMMY_DISH = {
   id: 'dish-1',
   name: 'Mediterranean Salmon Bowl',
-  barometer: 76,
   allergens: ['Fish', 'Onion', 'Garlic'],
 };
 
@@ -483,7 +482,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.navBar}>
           <View style={styles.navLeft}>
-            <BrandTitle style={styles.brandTitle} />
+            <BrandTitle style={styles.brandTitle} size="medium" showTagline />
           </View>
         </View>
       </SafeAreaView>
@@ -495,8 +494,16 @@ export default function HomeScreen() {
         nestedScrollEnabled={true}
       >
         <View style={styles.mainBody}>
-          <View style={styles.brandTaglineBlock}>
-            <Text style={styles.brandTaglineText}>Smart restaurant & gut insights</Text>
+          {/* Time-based greeting */}
+          <View style={styles.greetingBlock}>
+            <Text style={styles.greetingText}>
+              {(() => {
+                const hour = new Date().getHours();
+                if (hour < 12) return 'Good morning';
+                if (hour < 17) return 'Good afternoon';
+                return 'Good evening';
+              })()}
+            </Text>
           </View>
 
           {/* Search + mode row */}
@@ -619,11 +626,29 @@ export default function HomeScreen() {
         )}
 
         {/* Premium CTA row – navigates to Profile */}
-        <Pressable onPress={() => router.push('/profile')} style={styles.upgradeCard}>
-          <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
-          <Text style={styles.upgradeSubtitle}>
-            Unlock detailed organ analytics & meal history.
-          </Text>
+        <Pressable
+          onPress={() => router.push('/profile')}
+          style={({ pressed }) => [styles.upgradeCard, pressed && { opacity: 0.8 }]}
+        >
+          <LinearGradient
+            colors={['rgba(20, 184, 166, 0.15)', 'rgba(168, 85, 247, 0.15)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.upgradeGradient}
+          >
+            <View style={styles.upgradeContent}>
+              <View style={styles.upgradeIconContainer}>
+                <Ionicons name="sparkles" size={20} color="#a855f7" />
+              </View>
+              <View style={styles.upgradeTextContainer}>
+                <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
+                <Text style={styles.upgradeSubtitle}>
+                  Unlock detailed organ analytics & meal history.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+            </View>
+          </LinearGradient>
         </Pressable>
 
         {/* Nearby restaurants header */}
@@ -759,11 +784,11 @@ export default function HomeScreen() {
                                     <Text style={styles.photoPillText}>{distanceMiles} mi</Text>
                                   </View>
                                 ) : null}
-                                <View style={styles.photoPill}>
-                                  <Text style={styles.photoPillText}>
-                                    {eta?.driving ? `🚗 ${eta.driving}` : "Loading ETA…"}
-                                  </Text>
-                                </View>
+                                {eta?.driving ? (
+                                  <View style={styles.photoPill}>
+                                    <Text style={styles.photoPillText}>🚗 {eta.driving}</Text>
+                                  </View>
+                                ) : null}
                               </View>
                             </View>
                           </View>
@@ -779,11 +804,11 @@ export default function HomeScreen() {
                                   <Text style={styles.photoPillText}>{distanceMiles} mi</Text>
                                 </View>
                               ) : null}
-                              <View style={styles.photoPill}>
-                                <Text style={styles.photoPillText}>
-                                  {eta?.driving ? `🚗 ${eta.driving}` : "Loading ETA…"}
-                                </Text>
-                              </View>
+                              {eta?.driving ? (
+                                <View style={styles.photoPill}>
+                                  <Text style={styles.photoPillText}>🚗 {eta.driving}</Text>
+                                </View>
+                              ) : null}
                             </View>
                           </View>
                         )}
@@ -798,23 +823,20 @@ export default function HomeScreen() {
                             Explore the full menu and organ-friendly options.
                           </Text>
 
-                          <View style={styles.organStripRow}>
-                            <Text style={styles.organChip}>Organ data available on dish page</Text>
-                          </View>
-
-                          <View style={styles.barometerRow}>
-                            <View style={styles.barometerPill}>
-                              <View
-                                style={[
-                                  styles.barometerFill,
-                                  { width: `${50 + Math.floor(Math.random() * 40)}%` },
-                                ]}
-                              />
+                          {/* Feature badges */}
+                          <View style={styles.featureBadgesRow}>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="body-outline" size={14} color="#14b8a6" />
+                              <Text style={styles.featureBadgeText}>Organ insights</Text>
                             </View>
-                            <Text style={styles.barometerScore}>
-                              {70 + Math.floor(Math.random() * 20)}
-                            </Text>
-                            <Text style={styles.barometerLabel}>Tummy Barometer™</Text>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="nutrition-outline" size={14} color="#14b8a6" />
+                              <Text style={styles.featureBadgeText}>Nutrition</Text>
+                            </View>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="warning-outline" size={14} color="#f59e0b" />
+                              <Text style={styles.featureBadgeText}>Allergens</Text>
+                            </View>
                           </View>
 
                           <Pressable
@@ -897,12 +919,16 @@ export default function HomeScreen() {
 
               <Text style={styles.restaurantName}>{DUMMY_DISH.name}</Text>
 
-              <View style={styles.barometerRow}>
-                <View style={styles.barometerPill}>
-                  <View style={styles.barometerFill} />
+              {/* Feature badges for dish mode */}
+              <View style={styles.featureBadgesRow}>
+                <View style={styles.featureBadge}>
+                  <Ionicons name="nutrition-outline" size={14} color="#14b8a6" />
+                  <Text style={styles.featureBadgeText}>Nutrition</Text>
                 </View>
-                <Text style={styles.barometerScore}>{DUMMY_DISH.barometer}</Text>
-                <Text style={styles.barometerLabel}>Tummy Barometer™</Text>
+                <View style={styles.featureBadge}>
+                  <Ionicons name="warning-outline" size={14} color="#f59e0b" />
+                  <Text style={styles.featureBadgeText}>Allergens</Text>
+                </View>
               </View>
 
               <TouchableOpacity style={styles.ctaButton} onPress={openDish}>
@@ -937,12 +963,13 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 24,
   },
-  brandTaglineBlock: {
-    marginBottom: 8,
+  greetingBlock: {
+    marginBottom: 12,
   },
-  brandTaglineText: {
-    fontSize: 12,
-    color: '#9ca3af',
+  greetingText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#f9fafb',
   },
   safeArea: {
     backgroundColor: '#020617',
@@ -951,8 +978,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 2,
-    paddingBottom: 4,
+    paddingTop: 8,
+    paddingBottom: 12,
     backgroundColor: '#020617',
   },
   navLeft: {
@@ -1077,17 +1104,35 @@ const styles = StyleSheet.create({
   },
   upgradeCard: {
     marginBottom: 16,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: '#020617',
+    borderRadius: 16,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.35)',
+    borderColor: 'rgba(168, 85, 247, 0.3)',
+  },
+  upgradeGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  upgradeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  upgradeIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  upgradeTextContainer: {
+    flex: 1,
   },
   upgradeTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#e5e7eb',
+    color: '#f9fafb',
   },
   upgradeSubtitle: {
     marginTop: 2,
@@ -1099,7 +1144,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   section: {
-    marginBottom: 12,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 13,
@@ -1141,34 +1186,25 @@ const styles = StyleSheet.create({
     color: '#777',
     marginBottom: 10,
   },
-  organStripRow: {
+  featureBadgesRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 12,
   },
-  organChip: {
-    backgroundColor: '#1f1f26',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 6,
-    marginBottom: 6,
-    fontSize: 11,
-    color: '#ddd',
-  },
-  barometerRow: {
+  featureBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    marginTop: 4,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
   },
-  barometerPill: {
-    flex: 1,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#333',
-    overflow: 'hidden',
-    marginRight: 8,
+  featureBadgeText: {
+    fontSize: 12,
+    color: '#e5e7eb',
+    fontWeight: '500',
   },
   barometerFill: {
     width: '70%',
@@ -1213,14 +1249,14 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 16,
     backgroundColor: '#020617',
-    marginTop: 8,
+    marginTop: 4,
     borderWidth: 1,
     borderColor: '#2a2a33',
   },
   carouselContainer: {
     width: SCREEN_WIDTH,
     alignSelf: 'center',
-    paddingTop: 8,
+    paddingTop: 0,
     paddingBottom: 16,
   },
   restaurantTitle: {
