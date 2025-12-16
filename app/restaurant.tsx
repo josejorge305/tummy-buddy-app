@@ -121,6 +121,10 @@ export default function RestaurantScreen() {
   );
   const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
   const [showOrganDetails, setShowOrganDetails] = useState(false);
+  const [showAllergenDetails, setShowAllergenDetails] = useState(false);
+  const [showFodmapDetails, setShowFodmapDetails] = useState(false);
+  const [showOrganImpactDetails, setShowOrganImpactDetails] = useState(false);
+  const [showNutritionNumbers, setShowNutritionNumbers] = useState(false);
   const [showPlateBreakdown, setShowPlateBreakdown] = useState(false);
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
@@ -874,22 +878,33 @@ export default function RestaurantScreen() {
                                               {pill.name}
                                             </Text>
                                           </View>
-                                        );
-                                      })}
-                                    </View>
+                                    );
+                                  })}
+                                </View>
+                                <TouchableOpacity onPress={() => setShowAllergenDetails((v) => !v)}>
+                                  <Text style={styles.showMoreText}>
+                                    {showAllergenDetails ? 'Hide details' : 'Show details'}
+                                  </Text>
+                                </TouchableOpacity>
+
+                                {showAllergenDetails ? (
+                                  <>
                                     {activeAllergenSentence ? (
                                       <Text style={styles.sectionBody}>
                                         {activeAllergenSentence}
                                       </Text>
                                     ) : null}
+
                                     <Text style={styles.allergenDisclaimer}>
                                       Based on recipe analysis and external ingredient data.
                                       Ingredients may vary by restaurant—always confirm if you have
                                       a severe allergy.
                                     </Text>
-                                  </View>
+                                  </>
+                                ) : null}
+                              </View>
 
-                                  {/* 2) FODMAP row */}
+                              {/* 2) FODMAP row */}
                                   <View style={styles.sectionBlock}>
                                     <View style={styles.sectionHeaderRow}>
                                       <Text style={styles.sectionTitle}>
@@ -924,14 +939,25 @@ export default function RestaurantScreen() {
                                         ))}
                                       </View>
                                     ) : null}
-                                    {activeFodmapSentence ? (
-                                      <Text style={styles.sectionBody}>{activeFodmapSentence}</Text>
-                                    ) : null}
-                                    {isWholePlateFocus && sideFodmapWarning && (
-                                      <Text style={styles.sideFodmapWarningText}>
-                                        {sideFodmapWarning}
+                                    <TouchableOpacity onPress={() => setShowFodmapDetails((v) => !v)}>
+                                      <Text style={styles.showMoreText}>
+                                        {showFodmapDetails ? 'Hide details' : 'Show details'}
                                       </Text>
-                                    )}
+                                    </TouchableOpacity>
+
+                                    {showFodmapDetails ? (
+                                      <>
+                                        {activeFodmapSentence ? (
+                                          <Text style={styles.sectionBody}>{activeFodmapSentence}</Text>
+                                        ) : null}
+
+                                        {isWholePlateFocus && sideFodmapWarning ? (
+                                          <Text style={styles.sideFodmapWarningText}>
+                                            {sideFodmapWarning}
+                                          </Text>
+                                        ) : null}
+                                      </>
+                                    ) : null}
                                   </View>
 
                                   {/* 2.5) Diet & lifestyle */}
@@ -988,67 +1014,76 @@ export default function RestaurantScreen() {
                                   {/* 3) Organ impact – only show for whole plate (no per-component data yet) */}
                                   {organOverallLevel && isWholePlateFocus && (
                                     <View style={styles.sectionBlock}>
-                                      <View style={styles.sectionHeaderRow}>
-                                        <Text style={styles.sectionTitle}>
-                                          Organ impact
+                                      <Text style={styles.sectionTitle}>
+                                        Organ impact
+                                      </Text>
+
+                                      <View
+                                        style={[
+                                          styles.fodmapLevelBadge,
+                                          {
+                                            borderWidth: 1,
+                                            borderColor:
+                                              getFodmapLevelBorderColor(organOverallLevel),
+                                            marginTop: 4,
+                                            marginBottom: 4,
+                                          },
+                                        ]}
+                                      >
+                                        <Text style={styles.fodmapLevelText}>
+                                          {organOverallLevel.charAt(0).toUpperCase() +
+                                            organOverallLevel.slice(1)}
                                         </Text>
-                                        <View
-                                          style={[
-                                            styles.fodmapLevelBadge,
-                                            {
-                                              borderWidth: 1,
-                                              borderColor:
-                                                getFodmapLevelBorderColor(organOverallLevel),
-                                            },
-                                          ]}
-                                        >
-                                          <Text style={styles.fodmapLevelText}>
-                                            {organOverallLevel.charAt(0).toUpperCase() +
-                                              organOverallLevel.slice(1)}
-                                          </Text>
-                                        </View>
                                       </View>
 
-                                      {organSummary ? (
-                                        <Text style={styles.sectionBody}>{organSummary}</Text>
-                                      ) : null}
-
-                                      <TouchableOpacity
-                                        onPress={() => setShowOrganDetails((prev) => !prev)}
-                                      >
+                                      <TouchableOpacity onPress={() => setShowOrganImpactDetails((v) => !v)}>
                                         <Text style={styles.showMoreText}>
-                                          {showOrganDetails
-                                            ? 'Hide organ details'
-                                            : 'Show organ details'}
+                                          {showOrganImpactDetails ? 'Hide details' : 'Show details'}
                                         </Text>
                                       </TouchableOpacity>
 
-                                      {showOrganDetails && (
-                                        <OrganImpactSection
-                                          showHeader={false}
-                                          showSummary={false}
-                                          showToggle={false}
-                                          impacts={
-                                            viewModel.organLines
-                                              .filter((line) => line.severity !== 'neutral')
-                                              .map((line, idx) => ({
-                                                id: line.organKey || String(idx),
-                                                organId: line.organKey || 'organ',
-                                                label: line.organLabel,
-                                                level:
-                                                  line.severity === 'high'
-                                                    ? 'high'
-                                                    : line.severity === 'medium'
-                                                    ? 'medium'
-                                                    : 'low',
-                                                score:
-                                                  typeof line.score === 'number' ? line.score : null,
-                                                description:
-                                                  line.sentence || 'Organ impact details to follow.',
-                                              })) as OrganImpactEntry[]
-                                          }
-                                        />
-                                      )}
+                                      {showOrganImpactDetails ? (
+                                        <>
+                                          {organSummary ? <Text style={styles.sectionBody}>{organSummary}</Text> : null}
+
+                                          <TouchableOpacity
+                                            onPress={() => setShowOrganDetails((prev) => !prev)}
+                                          >
+                                            <Text style={styles.showMoreText}>
+                                              {showOrganDetails
+                                                ? 'Hide organ details'
+                                                : 'Show organ details'}
+                                            </Text>
+                                          </TouchableOpacity>
+
+                                          {showOrganDetails && (
+                                            <OrganImpactSection
+                                              showHeader={false}
+                                              showSummary={false}
+                                              showToggle={false}
+                                              impacts={
+                                                viewModel.organLines
+                                                  .filter((line) => line.severity !== 'neutral')
+                                                  .map((line, idx) => ({
+                                                    id: line.organKey || String(idx),
+                                                    organId: line.organKey || 'organ',
+                                                    label: line.organLabel,
+                                                    level:
+                                                      line.severity === 'high'
+                                                        ? 'high'
+                                                        : line.severity === 'medium'
+                                                        ? 'medium'
+                                                        : 'low',
+                                                    score:
+                                                      typeof line.score === 'number' ? line.score : null,
+                                                    description:
+                                                      line.sentence || 'Organ impact details to follow.',
+                                                  })) as OrganImpactEntry[]
+                                              }
+                                            />
+                                          )}
+                                        </>
+                                      ) : null}
                                     </View>
                                   )}
 
@@ -1065,69 +1100,113 @@ export default function RestaurantScreen() {
                                       : null}
                                     {activeNutrition ? (
                                       <>
-                                        <View style={styles.nutritionGrid}>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Calories</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.calories != null
-                                                ? Math.round(activeNutrition.calories)
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Protein</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.protein != null
-                                                ? `${Math.round(activeNutrition.protein)} g`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Carbs</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.carbs != null
-                                                ? `${Math.round(activeNutrition.carbs)} g`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Fat</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.fat != null
-                                                ? `${Math.round(activeNutrition.fat)} g`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Sugar</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.sugar != null
-                                                ? `${Math.round(activeNutrition.sugar)} g`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Fiber</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.fiber != null
-                                                ? `${Math.round(activeNutrition.fiber)} g`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.nutritionTile}>
-                                            <Text style={styles.nutritionLabel}>Sodium</Text>
-                                            <Text style={styles.nutritionValue}>
-                                              {activeNutrition.sodium != null
-                                                ? `${Math.round(activeNutrition.sodium)} mg`
-                                                : '--'}
-                                            </Text>
-                                          </View>
-                                        </View>
-
-                                        {viewModel.nutritionSourceLabel ? (
-                                          <Text style={styles.nutritionSourceLabel}>
-                                            {viewModel.nutritionSourceLabel}
+                                        <TouchableOpacity onPress={() => setShowNutritionNumbers((v) => !v)}>
+                                          <Text style={styles.showMoreText}>
+                                            {showNutritionNumbers ? 'Hide nutrition numbers' : 'Show nutrition numbers'}
                                           </Text>
+                                        </TouchableOpacity>
+
+                                        {showNutritionNumbers ? (
+                                          <>
+                                            <View style={styles.nutritionGrid}>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Calories</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.calories != null
+                                                    ? Math.round(activeNutrition.calories)
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Protein</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.protein != null
+                                                    ? `${Math.round(activeNutrition.protein)} g`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Carbs</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.carbs != null
+                                                    ? `${Math.round(activeNutrition.carbs)} g`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Fat</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.fat != null
+                                                    ? `${Math.round(activeNutrition.fat)} g`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Sugar</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.sugar != null
+                                                    ? `${Math.round(activeNutrition.sugar)} g`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Fiber</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.fiber != null
+                                                    ? `${Math.round(activeNutrition.fiber)} g`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                              <View style={styles.nutritionTile}>
+                                                <Text style={styles.nutritionLabel}>Sodium</Text>
+                                                <Text style={styles.nutritionValue}>
+                                                  {activeNutrition.sodium != null
+                                                    ? `${Math.round(activeNutrition.sodium)} mg`
+                                                    : '--'}
+                                                </Text>
+                                              </View>
+                                            </View>
+
+                                            {viewModel.nutritionSourceLabel ? (
+                                              <Text style={styles.nutritionSourceLabel}>
+                                                {viewModel.nutritionSourceLabel}
+                                              </Text>
+                                            ) : null}
+
+                                            {/* Portion info now lives under Nutrition */}
+                                            {viewModel?.portion &&
+                                              viewModel.portion.effectiveFactor !== 1 && (
+                                                <View style={{ marginTop: 6 }}>
+                                                  <Text style={{ fontSize: 12, opacity: 0.8 }}>
+                                                    Portion (AI estimate):{' '}
+                                                    <Text style={{ fontWeight: '600' }}>
+                                                      {viewModel.portion.effectiveFactor.toFixed(2)}×
+                                                      typical serving
+                                                    </Text>
+                                                  </Text>
+                                                </View>
+                                              )}
+                                            {viewModel?.portionVision && (
+                                              <View style={{ marginTop: 4 }}>
+                                                <Text style={{ fontSize: 11, opacity: 0.6 }}>
+                                                  {viewModel.portionVision.hasImage
+                                                    ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(
+                                                        2
+                                                      )}× · ${Math.round(
+                                                        viewModel.portionVision.confidence * 100
+                                                      )}% confidence`
+                                                    : `Estimated portion: ${viewModel.portionVision.factor.toFixed(
+                                                        2
+                                                      )}×`}
+                                                </Text>
+                                                {viewModel.portionVision.reason ? (
+                                                  <Text style={{ fontSize: 11, opacity: 0.5 }}>
+                                                    {viewModel.portionVision.reason}
+                                                  </Text>
+                                                ) : null}
+                                              </View>
+                                            )}
+                                          </>
                                         ) : null}
 
                                         {viewModel.nutritionInsights ? (
@@ -1159,40 +1238,6 @@ export default function RestaurantScreen() {
                                               ))}
                                           </View>
                                         ) : null}
-
-                                        {/* Portion info now lives under Nutrition */}
-                                        {viewModel?.portion &&
-                                          viewModel.portion.effectiveFactor !== 1 && (
-                                            <View style={{ marginTop: 6 }}>
-                                              <Text style={{ fontSize: 12, opacity: 0.8 }}>
-                                                Portion (AI estimate):{' '}
-                                                <Text style={{ fontWeight: '600' }}>
-                                                  {viewModel.portion.effectiveFactor.toFixed(2)}×
-                                                  typical serving
-                                                </Text>
-                                              </Text>
-                                            </View>
-                                          )}
-                                        {viewModel?.portionVision && (
-                                          <View style={{ marginTop: 4 }}>
-                                            <Text style={{ fontSize: 11, opacity: 0.6 }}>
-                                              {viewModel.portionVision.hasImage
-                                                ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(
-                                                    2
-                                                  )}× · ${Math.round(
-                                                    viewModel.portionVision.confidence * 100
-                                                  )}% confidence`
-                                                : `Estimated portion: ${viewModel.portionVision.factor.toFixed(
-                                                    2
-                                                  )}×`}
-                                            </Text>
-                                            {viewModel.portionVision.reason ? (
-                                              <Text style={{ fontSize: 11, opacity: 0.5 }}>
-                                                {viewModel.portionVision.reason}
-                                              </Text>
-                                            ) : null}
-                                          </View>
-                                        )}
                                       </>
                                     ) : (
                                       <Text style={styles.nutritionUnavailable}>
@@ -1300,7 +1345,26 @@ export default function RestaurantScreen() {
                           <TouchableOpacity
                             style={styles.secondaryButton}
                             onPress={() => {
-                              console.log('Likely recipe coming soon for dish:', item?.name);
+                              router.push({
+                                pathname: '/likely-recipe',
+                                params: {
+                                  dishName: item?.name || 'Unknown Dish',
+                                  imageUrl: item?.imageUrl || '',
+                                  likelyRecipe: analysis?.likely_recipe
+                                    ? JSON.stringify(analysis.likely_recipe)
+                                    : '',
+                                  nutrition: analysis?.nutrition_summary
+                                    ? JSON.stringify(analysis.nutrition_summary)
+                                    : '',
+                                  allergens: analysis?.allergen_flags
+                                    ? JSON.stringify(analysis.allergen_flags)
+                                    : '[]',
+                                  fodmap: analysis?.fodmap_flags
+                                    ? JSON.stringify(analysis.fodmap_flags)
+                                    : '',
+                                  nutritionSource: analysis?.nutrition_source || '',
+                                },
+                              });
                             }}
                           >
                             <Text style={styles.secondaryButtonText}>Likely recipe</Text>
@@ -1540,9 +1604,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   sectionBody: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#9ca3af',
+    marginTop: 8,
+    marginBottom: 12,
+    fontSize: 16,
+    lineHeight: 24,
+    color: 'rgba(255, 255, 255, 0.82)',
+    letterSpacing: 0,
   },
   sectionBlock: {
     marginTop: 10,
@@ -1804,9 +1871,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   nutritionInsightsSummary: {
-    color: '#e5e7eb',
-    fontSize: 13,
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 12,
+    color: 'rgba(255, 255, 255, 0.82)',
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: 0,
   },
   nutritionInsightsHighlight: {
     color: '#cbd5e1',

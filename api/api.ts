@@ -156,6 +156,48 @@ export interface ComponentAllergenBreakdown {
   lactose_flags?: LactoseFlag | null;
 }
 
+// Likely Recipe types
+export interface LikelyIngredient {
+  name?: string;
+  quantity?: number | string | null;
+  unit?: string | null;
+  source?: 'recipe' | 'vision' | 'vision_nutrition';
+  category?: string | null;
+  vision_confidence?: number | null;
+  vision_evidence?: string | null;
+  vision_confirmed?: boolean;
+  energyKcal?: number | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carbs_g?: number | null;
+}
+
+export interface LikelyInstruction {
+  text?: string;
+  adjusted?: boolean;
+  original?: string | null;
+}
+
+export interface IngredientStats {
+  total?: number;
+  from_recipe?: number;
+  from_vision?: number;
+  vision_confirmed?: number;
+}
+
+export interface LikelyRecipe {
+  title?: string | null;
+  source?: string | null;
+  cooking_method?: string | null;
+  cooking_method_confidence?: number | null;
+  cooking_method_reason?: string | null;
+  cooking_method_adjusted?: boolean;
+  ingredients?: LikelyIngredient[];
+  instructions?: LikelyInstruction[];
+  notes?: string[];
+  ingredient_stats?: IngredientStats;
+}
+
 export interface AnalyzeDishResponse {
   ok: boolean;
   apiVersion?: string;
@@ -190,6 +232,9 @@ export interface AnalyzeDishResponse {
   selection_default?: SelectionResult | null;
   selection_components?: Record<string, SelectionResult> | null;
   selection_custom?: SelectionResult | null;
+
+  // Likely recipe (merged recipe + vision ingredients)
+  likely_recipe?: LikelyRecipe | null;
 }
 
 export interface AnalyzeDishCardResponse {
