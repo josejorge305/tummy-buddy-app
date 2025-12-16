@@ -129,6 +129,34 @@ export async function fetchNearbyPlaces(
     );
 }
 
+// Search for places/restaurants by text query
+export async function searchPlaces(query: string): Promise<any[]> {
+  if (!query.trim()) return [];
+
+  const url =
+    'https://maps.googleapis.com/maps/api/place/textsearch/json' +
+    `?query=${encodeURIComponent(query + ' restaurant')}` +
+    '&type=restaurant' +
+    `&key=${GOOGLE_PLACES_API_KEY}`;
+
+  console.log('Calling Google Text Search:', url);
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('Text Search API error:', res.status, text.slice(0, 200));
+    throw new Error(`Text Search API error ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (!Array.isArray(json.results)) {
+    console.warn('Unexpected Text Search response:', json);
+    return [];
+  }
+
+  return json.results;
+}
+
 export async function checkIfRestaurantAnalyzed(
   placeId: string
 ): Promise<'green' | 'orange'> {

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -21,6 +22,8 @@ import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/Org
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { buildDishViewModel } from './utils/dishViewModel';
+
+const LAST_RESTAURANT_KEY = '@restaurant_ai_last_restaurant';
 
 const BG = '#020617';
 const TEAL = '#14b8a6';
@@ -714,6 +717,8 @@ export default function RestaurantScreen() {
   const [showOrganImpactDetails, setShowOrganImpactDetails] = useState(false);
   const [showNutritionNumbers, setShowNutritionNumbers] = useState(false);
   const [showDietTags, setShowDietTags] = useState(false);
+  const [showPlateBreakdown, setShowPlateBreakdown] = useState(false);
+  const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -802,6 +807,30 @@ export default function RestaurantScreen() {
     fetchGooglePhoto();
   }, [placeIdValue]);
 
+  // Save restaurant to cache for the Restaurant tab
+  useEffect(() => {
+    async function saveToCache() {
+      if (!placeIdValue || !restaurantNameValue) return;
+      try {
+        const latStr = latValue as string | undefined;
+        const lngStr = lngValue as string | undefined;
+        const cachedRestaurant = {
+          placeId: placeIdValue,
+          name: restaurantNameValue,
+          address: addressValue || '',
+          lat: latStr ? parseFloat(latStr) : undefined,
+          lng: lngStr ? parseFloat(lngStr) : undefined,
+          visitedAt: Date.now(),
+        };
+        await AsyncStorage.setItem(LAST_RESTAURANT_KEY, JSON.stringify(cachedRestaurant));
+        console.log('[RestaurantScreen] Saved restaurant to cache:', restaurantNameValue);
+      } catch (e) {
+        console.log('[RestaurantScreen] Failed to save restaurant to cache:', e);
+      }
+    }
+    saveToCache();
+  }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue]);
+
   const runAnalysisForItem = async ({
     itemId,
     item,
@@ -818,13 +847,13 @@ export default function RestaurantScreen() {
     try {
       const result = await analyzeDish({
         dishName: item?.name,
-        restaurantName: restaurant?.name || restaurantNameValue || restaurantName || null,
+        restaurantName: restaurant?.name || restaurantNameValue || null,
         // Send both menuDescription and description so the backend can rely on either
         menuDescription: descriptionText,
         description: descriptionText,
         menuSection: sectionName || '',
         priceText: item?.priceText || '',
-        placeId: placeIdValue || placeId || null,
+        placeId: placeIdValue || null,
         source: 'edamam_recipe_card',
         restaurantCalories: item?.restaurantCalories,
         imageUrl: item?.imageUrl ?? null,
@@ -1277,6 +1306,72 @@ export default function RestaurantScreen() {
 
                         {!isAnalysisLoading && viewModel && (
                           <>
+                            {/* Plate Components Selector - allows switching between whole plate and individual components */}
+                            {viewModel.plateComponents && viewModel.plateComponents.length > 1 && (
+                              <View style={styles.plateComponentsSection}>
+                                <Text style={styles.plateComponentsLabel}>Analyze by component:</Text>
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={styles.plateComponentPillsRow}
+                                >
+                                  {/* Whole Plate pill */}
+                                  <TouchableOpacity
+                                    onPress={() => setFocusedComponentIndex(null)}
+                                    style={[
+                                      styles.plateComponentPill,
+                                      focusedComponentIndex === null && styles.plateComponentPillActive,
+                                    ]}
+                                  >
+                                    <Ionicons
+                                      name="restaurant"
+                                      size={14}
+                                      color={focusedComponentIndex === null ? '#fff' : '#9ca3af'}
+                                      style={{ marginRight: 4 }}
+                                    />
+                                    <Text
+                                      style={[
+                                        styles.plateComponentPillText,
+                                        focusedComponentIndex === null && styles.plateComponentPillTextActive,
+                                      ]}
+                                    >
+                                      Whole Plate
+                                    </Text>
+                                  </TouchableOpacity>
+                                  {/* Individual component pills */}
+                                  {viewModel.plateComponents.map((comp, idx) => (
+                                    <TouchableOpacity
+                                      key={`plate-comp-${idx}`}
+                                      onPress={() => setFocusedComponentIndex(idx)}
+                                      style={[
+                                        styles.plateComponentPill,
+                                        focusedComponentIndex === idx && styles.plateComponentPillActive,
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.plateComponentPillText,
+                                          focusedComponentIndex === idx && styles.plateComponentPillTextActive,
+                                        ]}
+                                      >
+                                        {comp.component}
+                                      </Text>
+                                      {comp.role && comp.role !== 'unknown' && (
+                                        <Text
+                                          style={[
+                                            styles.plateComponentRoleText,
+                                            focusedComponentIndex === idx && { color: 'rgba(255,255,255,0.7)' },
+                                          ]}
+                                        >
+                                          {' '}({comp.role})
+                                        </Text>
+                                      )}
+                                    </TouchableOpacity>
+                                  ))}
+                                </ScrollView>
+                              </View>
+                            )}
+
                             {(() => {
                               const hasComponents =
                                 viewModel.plateComponents && viewModel.plateComponents.length > 0;
@@ -1919,54 +2014,52 @@ export default function RestaurantScreen() {
 
           return (
             <View style={styles.stickyActionBar}>
-              <View style={styles.stickyActionContent}>
-                <Text style={styles.stickyActionDishName} numberOfLines={1}>
-                  {expandedItem.name}
-                </Text>
-                <View style={styles.stickyActionButtons}>
-                  <TouchableOpacity
-                    style={styles.stickyPrimaryButton}
-                    onPress={() => {
-                      console.log('Log meal pressed', {
-                        name: expandedItem?.name,
-                        placeId: placeIdValue,
-                        restaurantName: restaurantNameValue,
-                      });
-                    }}
-                  >
-                    <Ionicons name="add-circle" size={18} color="#020617" style={{ marginRight: 6 }} />
-                    <Text style={styles.stickyPrimaryButtonText}>Log Meal</Text>
-                  </TouchableOpacity>
+              <Text style={styles.stickyActionDishName} numberOfLines={1}>
+                {expandedItem.name}
+              </Text>
+              <View style={styles.stickyActionButtons}>
+                <TouchableOpacity
+                  style={styles.stickyPrimaryButton}
+                  onPress={() => {
+                    console.log('Log meal pressed', {
+                      name: expandedItem?.name,
+                      placeId: placeIdValue,
+                      restaurantName: restaurantNameValue,
+                    });
+                  }}
+                >
+                  <Ionicons name="add-circle" size={16} color="#020617" style={{ marginRight: 5 }} />
+                  <Text style={styles.stickyPrimaryButtonText}>Log Meal</Text>
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.stickySecondaryButton}
-                    onPress={() => {
-                      router.push({
-                        pathname: '/likely-recipe',
-                        params: {
-                          dishName: expandedItem?.name || 'Unknown Dish',
-                          imageUrl: expandedItem?.imageUrl || '',
-                          likelyRecipe: expandedAnalysis?.likely_recipe
-                            ? JSON.stringify(expandedAnalysis.likely_recipe)
-                            : '',
-                          nutrition: expandedAnalysis?.nutrition_summary
-                            ? JSON.stringify(expandedAnalysis.nutrition_summary)
-                            : '',
-                          allergens: expandedAnalysis?.allergen_flags
-                            ? JSON.stringify(expandedAnalysis.allergen_flags)
-                            : '[]',
-                          fodmap: expandedAnalysis?.fodmap_flags
-                            ? JSON.stringify(expandedAnalysis.fodmap_flags)
-                            : '',
-                          nutritionSource: expandedAnalysis?.nutrition_source || '',
-                        },
-                      });
-                    }}
-                  >
-                    <Ionicons name="restaurant-outline" size={16} color={TEAL} style={{ marginRight: 6 }} />
-                    <Text style={styles.stickySecondaryButtonText}>Recipe</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.stickySecondaryButton}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/likely-recipe',
+                      params: {
+                        dishName: expandedItem?.name || 'Unknown Dish',
+                        imageUrl: expandedItem?.imageUrl || '',
+                        likelyRecipe: expandedAnalysis?.likely_recipe
+                          ? JSON.stringify(expandedAnalysis.likely_recipe)
+                          : '',
+                        nutrition: expandedAnalysis?.nutrition_summary
+                          ? JSON.stringify(expandedAnalysis.nutrition_summary)
+                          : '',
+                        allergens: expandedAnalysis?.allergen_flags
+                          ? JSON.stringify(expandedAnalysis.allergen_flags)
+                          : '[]',
+                        fodmap: expandedAnalysis?.fodmap_flags
+                          ? JSON.stringify(expandedAnalysis.fodmap_flags)
+                          : '',
+                        nutritionSource: expandedAnalysis?.nutrition_source || '',
+                      },
+                    });
+                  }}
+                >
+                  <Ionicons name="restaurant-outline" size={14} color={TEAL} style={{ marginRight: 5 }} />
+                  <Text style={styles.stickySecondaryButtonText}>Recipe</Text>
+                </TouchableOpacity>
               </View>
             </View>
           );
@@ -2385,6 +2478,45 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 2,
   },
+  plateComponentsSection: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  plateComponentsLabel: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  plateComponentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    marginRight: 8,
+  },
+  plateComponentPillActive: {
+    backgroundColor: TEAL,
+    borderColor: TEAL,
+  },
+  plateComponentPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#d1d5db',
+  },
+  plateComponentPillTextActive: {
+    color: '#ffffff',
+  },
+  plateComponentRoleText: {
+    fontSize: 11,
+    color: '#6b7280',
+  },
   plateComponentFodmapText: {
     fontSize: 11,
     color: '#9ca3af',
@@ -2714,54 +2846,51 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#1e293b',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     shadowColor: '#000',
     shadowOpacity: 0.4,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -4 },
     elevation: 8,
-  },
-  stickyActionContent: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   stickyActionDishName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#e2e8f0',
-    marginRight: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#f1f5f9',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   stickyActionButtons: {
     flexDirection: 'row',
-    gap: 10,
+    justifyContent: 'center',
+    gap: 12,
   },
   stickyPrimaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 20,
     backgroundColor: TEAL,
   },
   stickyPrimaryButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#020617',
   },
   stickySecondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: TEAL,
     backgroundColor: 'transparent',
   },
   stickySecondaryButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: TEAL,
   },

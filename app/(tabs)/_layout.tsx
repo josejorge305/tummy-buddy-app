@@ -26,6 +26,9 @@ export default function TabsLayout() {
           if (route.name === 'index') {
             // Home tab
             iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'saved-restaurant') {
+            // Restaurant tab
+            iconName = focused ? 'restaurant' : 'restaurant-outline';
           } else if (route.name === 'explore') {
             // Tracker tab
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
@@ -44,6 +47,12 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
+        }}
+      />
+      <Tabs.Screen
+        name="saved-restaurant"
+        options={{
+          title: 'Restaurant',
         }}
       />
       <Tabs.Screen
