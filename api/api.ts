@@ -198,11 +198,83 @@ export interface LikelyRecipe {
   ingredient_stats?: IngredientStats;
 }
 
+// Full Recipe types (cookbook-style with LLM)
+export interface FullRecipeIngredient {
+  amount?: string;
+  item?: string;
+  prep_note?: string | null;
+}
+
+export interface FullRecipeIngredientGroup {
+  group_name?: string | null;
+  ingredients?: FullRecipeIngredient[];
+}
+
+export interface FullRecipeInstruction {
+  step?: number;
+  phase?: 'prep' | 'cook' | 'assemble' | 'serve';
+  action?: string; // The action verb (Preheat, Combine, Whisk, etc.)
+  title?: string;
+  detail?: string;
+  time_minutes?: number | null;
+  tip?: string | null;
+}
+
+export interface AllergenSubstitution {
+  allergen?: string;
+  original?: string;
+  substitute?: string;
+  note?: string | null;
+}
+
+export interface AllergenInfo {
+  contains?: string[];
+  substitutions?: AllergenSubstitution[];
+}
+
+export interface FullRecipeData {
+  title?: string;
+  introduction?: string; // Brief appetizing description/anecdote
+  description?: string; // Backwards compatible alias for introduction
+  yield?: string; // e.g., "Serves 4" or "Makes 24 cookies"
+  difficulty?: 'Easy' | 'Medium' | 'Hard';
+  prep_time_minutes?: number;
+  cook_time_minutes?: number;
+  total_time_minutes?: number;
+  servings?: number;
+  ingredient_groups?: FullRecipeIngredientGroup[]; // Grouped ingredients (e.g., "For the crust:", "For the filling:")
+  ingredients?: FullRecipeIngredient[]; // Flat list for backwards compatibility
+  equipment?: string[];
+  instructions?: FullRecipeInstruction[];
+  chef_notes?: string[];
+  allergen_info?: AllergenInfo; // Allergens and substitutions
+  allergen_warnings?: string[]; // Legacy field
+  storage?: string | null;
+  make_ahead?: string | null; // Make-ahead tips
+  wine_pairing?: string | null;
+}
+
+export interface FullRecipeResponse {
+  ok: boolean;
+  full_recipe?: FullRecipeData | null;
+  generation_method?: string;
+  model_used?: string;
+  reason?: string;
+}
+
+export interface SpellCorrection {
+  original: string;
+  corrected: string;
+  confidence?: number | null;
+}
+
 export interface AnalyzeDishResponse {
   ok: boolean;
   apiVersion?: string;
   source?: string;
   dishName?: string;
+  dishNameOriginal?: string;
+  spell_correction?: SpellCorrection | null;
   restaurantName?: string;
   summary?: DishSummary | null;
   recipe?: any;
@@ -235,6 +307,45 @@ export interface AnalyzeDishResponse {
 
   // Likely recipe (merged recipe + vision ingredients)
   likely_recipe?: LikelyRecipe | null;
+
+  // Full recipe (cookbook-style with LLM instructions)
+  full_recipe?: FullRecipeResponse | null;
+
+  // Recipe image from provider (Spoonacular/Edamam)
+  recipe_image?: string | null;
+}
+
+// Dish image lookup response
+export interface DishImageResponse {
+  ok: boolean;
+  dish?: string;
+  image?: string;
+  provider?: string;
+  error?: string;
+}
+
+/**
+ * Fetch dish image from providers (Spoonacular/Edamam)
+ * This is a lightweight endpoint that only returns an image URL
+ */
+export async function fetchDishImage(dishName: string): Promise<DishImageResponse> {
+  const url = `${API_BASE_URL}/api/dish-image?dish=${encodeURIComponent(dishName)}`;
+  console.log('TB fetchDishImage calling:', url);
+
+  try {
+    const res = await fetch(url);
+    const text = await res.text();
+
+    try {
+      const data = JSON.parse(text);
+      return data as DishImageResponse;
+    } catch {
+      return { ok: false, error: 'Invalid response' };
+    }
+  } catch (e: any) {
+    console.error('fetchDishImage error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Failed to fetch image' };
+  }
 }
 
 export interface AnalyzeDishCardResponse {
@@ -504,6 +615,9 @@ export interface AnalyzeDishPayload {
   // New: unified image + selection contract
   imageUrl?: string | null;
   selection_component_ids?: string[];
+
+  // Request full cookbook-style recipe with LLM instructions
+  fullRecipe?: boolean;
 }
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
@@ -754,4 +868,82 @@ export async function pollApifyJob(
     status: 'failed',
     error: 'Polling timed out',
   };
+}
+
+// ============================================================
+// Dish Autocomplete / Spell Suggest API
+// ============================================================
+
+export interface DishSuggestion {
+  id: number;
+  name: string;
+  cuisine: string | null;
+  category: string | null;
+  similarity: number;
+  score: number;
+}
+
+export interface DishSuggestResponse {
+  ok: boolean;
+  query: string;
+  suggestions: DishSuggestion[];
+  count: number;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Get dish name suggestions with typo tolerance.
+ * Uses FTS5 + Levenshtein distance for fuzzy matching.
+ *
+ * @param query - User's search query (can be misspelled)
+ * @param options - Optional filters: limit, cuisine
+ * @returns Array of dish suggestions sorted by relevance
+ *
+ * @example
+ * const suggestions = await getDishSuggestions('chiken parm');
+ * // Returns: [{ name: 'Chicken Parmesan', similarity: 0.93, ... }]
+ */
+export async function getDishSuggestions(
+  query: string,
+  options?: { limit?: number; cuisine?: string }
+): Promise<DishSuggestResponse> {
+  const params = new URLSearchParams();
+  params.set('q', query);
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.cuisine) params.set('cuisine', options.cuisine);
+
+  const url = `${API_BASE_URL}/api/dish-suggest?${params.toString()}`;
+  console.log('getDishSuggestions calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getDishSuggestions HTTP error:', res.status);
+      return {
+        ok: false,
+        query,
+        suggestions: [],
+        count: 0,
+        error: data?.error || `HTTP ${res.status}`,
+      };
+    }
+
+    return data as DishSuggestResponse;
+  } catch (e: any) {
+    console.error('getDishSuggestions error:', e?.message || e);
+    return {
+      ok: false,
+      query,
+      suggestions: [],
+      count: 0,
+      error: e?.message || 'Network error',
+    };
+  }
 }

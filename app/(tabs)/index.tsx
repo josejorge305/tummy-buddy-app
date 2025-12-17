@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Easing,
   Dimensions,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -26,8 +27,15 @@ import {
   fetchPlaceDetails,
   PlaceSuggestion,
 } from '../../api/places';
-import { API_BASE_URL } from '../../api/api';
+import { API_BASE_URL, getDishSuggestions, DishSuggestion } from '../../api/api';
 import { useMenuPrefetch } from '../../context/MenuPrefetchContext';
+import {
+  searchCachedDishes,
+  getRecentDishSearches,
+  addToRecentDishSearches,
+  CachedDish,
+  RecentDishSearch,
+} from '../../utils/dishCache';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -102,9 +110,161 @@ export default function HomeScreen() {
     Record<string, { driving?: string; walking?: string } | null>
   >({});
 
+  // Dish search state
+  const [dishSearchResults, setDishSearchResults] = useState<CachedDish[]>([]);
+  const [apiDishSuggestions, setApiDishSuggestions] = useState<DishSuggestion[]>([]);
+  const [recentDishes, setRecentDishes] = useState<RecentDishSearch[]>([]);
+  const [isDishSearching, setIsDishSearching] = useState(false);
+  const [showDishDropdown, setShowDishDropdown] = useState(false);
+  const dishSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Load recent dishes on mount and when switching to dish mode
+  useEffect(() => {
+    if (searchMode === 'dish') {
+      loadRecentDishes();
+    }
+  }, [searchMode]);
+
+  const loadRecentDishes = async () => {
+    const recent = await getRecentDishSearches();
+    setRecentDishes(recent);
+  };
+
+  // Debounced dish search - searches both local cache AND API for suggestions
+  const handleDishSearch = useCallback((text: string) => {
+    if (dishSearchTimeout.current) {
+      clearTimeout(dishSearchTimeout.current);
+    }
+
+    if (!text.trim()) {
+      setDishSearchResults([]);
+      setApiDishSuggestions([]);
+      setShowDishDropdown(recentDishes.length > 0);
+      return;
+    }
+
+    setIsDishSearching(true);
+    setShowDishDropdown(true);
+
+    dishSearchTimeout.current = setTimeout(async () => {
+      try {
+        // Search local cache (instant, previously analyzed dishes)
+        const cachedResults = await searchCachedDishes(text);
+        setDishSearchResults(cachedResults);
+
+        // Also fetch API suggestions for typo-tolerant matching
+        // This runs in parallel and updates when complete
+        if (text.trim().length >= 2) {
+          const apiResponse = await getDishSuggestions(text.trim(), { limit: 8 });
+          if (apiResponse.ok && apiResponse.suggestions.length > 0) {
+            // Filter out suggestions that are already in cached results
+            const cachedNames = new Set(cachedResults.map(c => c.dishName.toLowerCase()));
+            const newSuggestions = apiResponse.suggestions.filter(
+              s => !cachedNames.has(s.name.toLowerCase())
+            );
+            setApiDishSuggestions(newSuggestions);
+          } else {
+            setApiDishSuggestions([]);
+          }
+        } else {
+          setApiDishSuggestions([]);
+        }
+      } catch (e) {
+        console.error('Dish search error:', e);
+        setDishSearchResults([]);
+        setApiDishSuggestions([]);
+      } finally {
+        setIsDishSearching(false);
+      }
+    }, 300);
+  }, [recentDishes]);
+
+  // Handle dish selection from dropdown (cached dish or recent search)
+  const handleDishSelect = async (dish: CachedDish | { dishName: string; hasCache: boolean }) => {
+    const dishName = 'analysis' in dish ? dish.dishName : dish.dishName;
+    const isCached = 'analysis' in dish;
+
+    // Add to recent searches
+    await addToRecentDishSearches(dishName, {
+      restaurantName: isCached ? (dish as CachedDish).restaurantName : undefined,
+      restaurantAddress: isCached ? (dish as CachedDish).restaurantAddress : undefined,
+      hasCache: isCached,
+    });
+
+    setShowDishDropdown(false);
+    setQuery('');
+    setApiDishSuggestions([]);
+
+    // Navigate to dish screen
+    router.push({
+      pathname: '/dish',
+      params: {
+        dishName,
+        ...(isCached && (dish as CachedDish).restaurantName
+          ? { restaurantName: (dish as CachedDish).restaurantName }
+          : {}),
+        ...(isCached && (dish as CachedDish).restaurantAddress
+          ? { restaurantAddress: (dish as CachedDish).restaurantAddress }
+          : {}),
+        ...(isCached && (dish as CachedDish).placeId
+          ? { placeId: (dish as CachedDish).placeId }
+          : {}),
+        ...(isCached && (dish as CachedDish).imageUrl
+          ? { imageUrl: (dish as CachedDish).imageUrl }
+          : {}),
+        fromCache: isCached ? 'true' : 'false',
+      },
+    });
+  };
+
+  // Handle API suggestion selection (typo-corrected dish from server)
+  const handleApiSuggestionSelect = async (suggestion: DishSuggestion) => {
+    // Add to recent searches with the corrected name
+    await addToRecentDishSearches(suggestion.name, { hasCache: false });
+
+    setShowDishDropdown(false);
+    setQuery('');
+    setApiDishSuggestions([]);
+
+    // Navigate to dish screen with the corrected name
+    router.push({
+      pathname: '/dish',
+      params: {
+        dishName: suggestion.name,
+        fromCache: 'false',
+      },
+    });
+  };
+
+  // Handle dish search submit (when user types a new dish name)
+  const handleDishSearchSubmit = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    // Add to recent and navigate
+    await addToRecentDishSearches(trimmed, { hasCache: false });
+
+    setShowDishDropdown(false);
+    setQuery('');
+
+    router.push({
+      pathname: '/dish',
+      params: {
+        dishName: trimmed,
+        fromCache: 'false',
+      },
+    });
+  };
+
   const handleSearchSubmit = async () => {
     const trimmed = query.trim();
     if (!trimmed) return;
+
+    // Handle dish search mode
+    if (searchMode === 'dish') {
+      handleDishSearchSubmit();
+      return;
+    }
 
     if (searchMode !== 'restaurant') {
       return;
@@ -316,12 +476,13 @@ export default function HomeScreen() {
   const setMode = (mode: SearchMode) => {
     setSearchMode(mode);
     setPlaceResults([]);
+    setSearchResults([]);
+    setDishSearchResults([]);
+    setShowDishDropdown(false);
     setError(null);
+    setQuery('');
   };
 
-  const toggleFiltersExpanded = () => {
-    setFiltersExpanded((prev) => !prev);
-  };
 
   const handleCameraPress = () => {
     // TODO: hook up camera flow later
@@ -516,16 +677,24 @@ export default function HomeScreen() {
               />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search for restaurants or dishes"
+                placeholder={searchMode === 'dish' ? "Search for dishes (e.g. Margherita Pizza)" : "Search for restaurants or dishes"}
                 placeholderTextColor="#b3b8c4"
                 value={query}
                 onChangeText={(text) => {
-              setQuery(text);
-              setError(null);
-            }}
-            returnKeyType="search"
-            onSubmitEditing={handleSearchSubmit}
-          />
+                  setQuery(text);
+                  setError(null);
+                  if (searchMode === 'dish') {
+                    handleDishSearch(text);
+                  }
+                }}
+                onFocus={() => {
+                  if (searchMode === 'dish' && !query.trim()) {
+                    setShowDishDropdown(recentDishes.length > 0);
+                  }
+                }}
+                returnKeyType="search"
+                onSubmitEditing={handleSearchSubmit}
+              />
             </View>
 
             {/* Mode toggle */}
@@ -583,7 +752,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {searchResults.length > 0 && (
+          {searchResults.length > 0 && searchMode === 'restaurant' && (
             <View style={styles.searchResultsContainer}>
               {searchResults.map((item: any, index: number) => (
                 <TouchableOpacity
@@ -597,6 +766,122 @@ export default function HomeScreen() {
                   ) : null}
                 </TouchableOpacity>
               ))}
+            </View>
+          )}
+
+          {/* Dish search dropdown */}
+          {searchMode === 'dish' && showDishDropdown && (
+            <View style={styles.dishDropdown}>
+              {/* Loading indicator */}
+              {isDishSearching && (
+                <View style={styles.dishDropdownLoading}>
+                  <ActivityIndicator size="small" color={TEAL} />
+                  <Text style={styles.dishDropdownLoadingText}>Searching...</Text>
+                </View>
+              )}
+
+              {/* Cached dish results */}
+              {!isDishSearching && dishSearchResults.length > 0 && (
+                <>
+                  <Text style={styles.dishDropdownSectionTitle}>Cached Dishes</Text>
+                  {dishSearchResults.slice(0, 5).map((dish, index) => (
+                    <TouchableOpacity
+                      key={`cached-${dish.normalizedName}-${index}`}
+                      style={styles.dishDropdownItem}
+                      onPress={() => handleDishSelect(dish)}
+                    >
+                      <View style={styles.dishDropdownItemContent}>
+                        <Text style={styles.dishDropdownItemName}>{dish.dishName}</Text>
+                        {dish.restaurantName && (
+                          <View style={styles.dishDropdownRestaurantBadge}>
+                            <Ionicons name="restaurant-outline" size={12} color={TEAL} />
+                            <Text style={styles.dishDropdownRestaurantName}>{dish.restaurantName}</Text>
+                          </View>
+                        )}
+                        {dish.restaurantAddress && (
+                          <Text style={styles.dishDropdownAddress} numberOfLines={1}>
+                            {dish.restaurantAddress}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.dishDropdownCachedBadge}>
+                        <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Recent searches (when no query) */}
+              {!isDishSearching && !query.trim() && recentDishes.length > 0 && (
+                <>
+                  <Text style={styles.dishDropdownSectionTitle}>Recent Dishes</Text>
+                  {recentDishes.slice(0, 5).map((dish, index) => (
+                    <TouchableOpacity
+                      key={`recent-${dish.normalizedName}-${index}`}
+                      style={styles.dishDropdownItem}
+                      onPress={() => handleDishSelect({ dishName: dish.dishName, hasCache: dish.hasCache })}
+                    >
+                      <View style={styles.dishDropdownItemContent}>
+                        <Text style={styles.dishDropdownItemName}>{dish.dishName}</Text>
+                        {dish.restaurantName && (
+                          <Text style={styles.dishDropdownRestaurantName}>
+                            {dish.restaurantName}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="time-outline" size={16} color="#6b7280" />
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* API suggestions (typo-corrected dishes from server) */}
+              {!isDishSearching && query.trim() && apiDishSuggestions.length > 0 && (
+                <>
+                  <Text style={styles.dishDropdownSectionTitle}>
+                    {dishSearchResults.length > 0 ? 'Did you mean...' : 'Suggestions'}
+                  </Text>
+                  {apiDishSuggestions.slice(0, 5).map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={`api-${suggestion.id}-${index}`}
+                      style={styles.dishDropdownItem}
+                      onPress={() => handleApiSuggestionSelect(suggestion)}
+                    >
+                      <View style={styles.dishDropdownItemContent}>
+                        <Text style={styles.dishDropdownItemName}>{suggestion.name}</Text>
+                        <View style={styles.dishDropdownSuggestionMeta}>
+                          {suggestion.cuisine && (
+                            <Text style={styles.dishDropdownCuisineTag}>
+                              {suggestion.cuisine}
+                            </Text>
+                          )}
+                          {suggestion.similarity < 1 && (
+                            <Text style={styles.dishDropdownMatchScore}>
+                              {Math.round(suggestion.similarity * 100)}% match
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <Ionicons name="sparkles-outline" size={16} color={TEAL} />
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Search prompt when query entered */}
+              {!isDishSearching && query.trim() && (
+                <TouchableOpacity
+                  style={styles.dishDropdownSearchNew}
+                  onPress={handleDishSearchSubmit}
+                >
+                  <Ionicons name="search-outline" size={18} color={TEAL} />
+                  <Text style={styles.dishDropdownSearchNewText}>
+                    Search for "{query.trim()}"
+                  </Text>
+                  <Ionicons name="arrow-forward" size={16} color={TEAL} />
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1414,5 +1699,110 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     // Container for card content below the hero image
+  },
+  // Dish search dropdown styles
+  dishDropdown: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#1f2937',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  dishDropdownLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  dishDropdownLoadingText: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  dishDropdownSectionTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  dishDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  dishDropdownItemContent: {
+    flex: 1,
+  },
+  dishDropdownItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#f9fafb',
+    marginBottom: 2,
+  },
+  dishDropdownRestaurantBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  dishDropdownRestaurantName: {
+    fontSize: 12,
+    color: TEAL,
+  },
+  dishDropdownAddress: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  dishDropdownCachedBadge: {
+    marginLeft: 8,
+  },
+  dishDropdownSearchNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  dishDropdownSearchNewText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TEAL,
+    flex: 1,
+  },
+  dishDropdownSuggestionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  dishDropdownCuisineTag: {
+    fontSize: 11,
+    color: '#9ca3af',
+    textTransform: 'capitalize',
+    backgroundColor: '#1e293b',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  dishDropdownMatchScore: {
+    fontSize: 11,
+    color: TEAL,
+    fontWeight: '500',
   },
 });

@@ -857,6 +857,7 @@ export default function RestaurantScreen() {
         source: 'edamam_recipe_card',
         restaurantCalories: item?.restaurantCalories,
         imageUrl: item?.imageUrl ?? null,
+        fullRecipe: true,
       });
 
       setAnalysisByItemId((prev) => ({
@@ -2035,13 +2036,18 @@ export default function RestaurantScreen() {
                 <TouchableOpacity
                   style={styles.stickySecondaryButton}
                   onPress={() => {
+                    // Use item image, or recipe_image from API, as fallback
+                    const recipeImageUrl = expandedItem?.imageUrl || expandedAnalysis?.recipe_image || '';
                     router.push({
                       pathname: '/likely-recipe',
                       params: {
                         dishName: expandedItem?.name || 'Unknown Dish',
-                        imageUrl: expandedItem?.imageUrl || '',
+                        imageUrl: recipeImageUrl,
                         likelyRecipe: expandedAnalysis?.likely_recipe
                           ? JSON.stringify(expandedAnalysis.likely_recipe)
+                          : '',
+                        fullRecipe: expandedAnalysis?.full_recipe
+                          ? JSON.stringify(expandedAnalysis.full_recipe)
                           : '',
                         nutrition: expandedAnalysis?.nutrition_summary
                           ? JSON.stringify(expandedAnalysis.nutrition_summary)

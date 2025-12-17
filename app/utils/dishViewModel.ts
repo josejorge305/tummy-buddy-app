@@ -3,6 +3,7 @@ import {
   DishOrganFlags,
   DishSummary,
   NutritionInsights,
+  LikelyRecipe,
 } from "../../api/api";
 import type { AllergenFlag, FodmapFlag, LactoseFlag } from "../../api/api";
 
@@ -50,6 +51,7 @@ export interface DishViewModel {
   plateComponents?: PlateComponentVM[];
   plateComponentsSummary?: string;
   componentAllergens?: ComponentAllergenVM[];
+  likelyRecipe?: LikelyRecipe | null;
 }
 
 type OrganSeverity = "low" | "medium" | "high" | "neutral";
@@ -734,5 +736,6 @@ export function buildDishViewModel(
     plateComponents,
     plateComponentsSummary,
     componentAllergens,
+    likelyRecipe: analysis.likely_recipe || null,
   };
 }
