@@ -1319,17 +1319,19 @@ const styles = StyleSheet.create({
   quickStatItem: {
     alignItems: 'center',
     flex: 1,
+    minWidth: 60,
   },
   quickStatValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
   },
   quickStatLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#9ca3af',
     marginTop: 2,
     textTransform: 'uppercase',
+    textAlign: 'center',
   },
   quickStatDivider: {
     width: 1,
@@ -1500,7 +1502,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#1e293b',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingBottom: 24,
+    paddingBottom: 34,
   },
   stickyActionButtons: {
     flexDirection: 'row',

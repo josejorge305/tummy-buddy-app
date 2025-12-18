@@ -8,10 +8,15 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useRouter } from 'expo-router';
+
+// App-wide theme colors
+const TEAL = '#14b8a6';
+const BG = '#020617';
 
 type WeeklyPoint = {
   label: string;
@@ -26,7 +31,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
 function CircleProgress({ percent, size = 56, label }: { percent: number; size?: number; label?: string }) {
   const clamped = Math.max(0, Math.min(100, percent));
   const ringColor =
-    clamped >= 85 ? '#22c55e' : clamped >= 65 ? '#fbbf24' : clamped >= 45 ? '#f97316' : '#ef4444';
+    clamped >= 85 ? TEAL : clamped >= 65 ? '#fbbf24' : clamped >= 45 ? '#f97316' : '#ef4444';
 
   return (
     <View style={styles.circleContainer}>
@@ -53,7 +58,7 @@ function MacroBar({
   current,
   target,
   unit = 'g',
-  color = '#22c55e',
+  color = TEAL,
 }: {
   label: string;
   current: number;
@@ -94,7 +99,7 @@ function BarChart({ data }: { data: WeeklyPoint[] }) {
     <View style={styles.barChart}>
       {data.map((d, index) => {
         const heightPct = Math.max(8, (d.score / max) * 100);
-        const barColor = d.score >= 80 ? '#22c55e' : d.score >= 60 ? '#fbbf24' : '#f97316';
+        const barColor = d.score >= 80 ? TEAL : d.score >= 60 ? '#fbbf24' : '#f97316';
         return (
           <View key={`${d.label}-${index}`} style={styles.barItem}>
             <View style={[styles.bar, { height: `${heightPct}%`, backgroundColor: barColor }]} />
@@ -217,16 +222,16 @@ export default function TummyTracker() {
   const hasData = meals.length > 0 || (summary && summary.meals_logged > 0);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView
-        style={{ flex: 1 }}
+        style={styles.scrollView}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#22c55e"
-            colors={['#22c55e']}
+            tintColor={TEAL}
+            colors={[TEAL]}
           />
         }
       >
@@ -285,7 +290,7 @@ export default function TummyTracker() {
             <MacroBar label="Protein" current={proteinConsumed} target={proteinTarget} color="#3b82f6" />
             <MacroBar label="Carbs" current={carbsConsumed} target={carbsTarget} color="#f59e0b" />
             <MacroBar label="Fat" current={fatConsumed} target={fatTarget} color="#ef4444" />
-            <MacroBar label="Fiber" current={fiberConsumed} target={fiberTarget} color="#22c55e" />
+            <MacroBar label="Fiber" current={fiberConsumed} target={fiberTarget} color={TEAL} />
           </View>
         </Card>
 
@@ -406,7 +411,7 @@ export default function TummyTracker() {
       {/* Loading Overlay */}
       {isTrackerLoading && !refreshing && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator color="#22c55e" size="large" />
+          <ActivityIndicator color={TEAL} size="large" />
         </View>
       )}
 
@@ -418,18 +423,21 @@ export default function TummyTracker() {
       >
         <Ionicons name="add" size={22} color="#ffffff" />
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: BG,
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 32,
+    paddingTop: 16,
     paddingBottom: 120,
     gap: 0,
   },
@@ -453,12 +461,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#22c55e33',
+    backgroundColor: 'rgba(20, 184, 166, 0.2)',
     borderWidth: 1,
-    borderColor: '#22c55e',
+    borderColor: TEAL,
   },
   badgeText: {
-    color: '#22c55e',
+    color: TEAL,
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.4,
@@ -500,7 +508,7 @@ const styles = StyleSheet.create({
   tummyScore: {
     fontSize: 40,
     fontWeight: '800',
-    color: '#22c55e',
+    color: TEAL,
   },
   subtle: {
     color: '#e5e7eb',
@@ -511,7 +519,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0b0b0f',
+    backgroundColor: BG,
   },
   circleText: {
     color: '#fefefe',
@@ -590,7 +598,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   mealTag: {
-    color: '#34d399',
+    color: TEAL,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -613,7 +621,7 @@ const styles = StyleSheet.create({
   bar: {
     width: '70%',
     borderRadius: 6,
-    backgroundColor: '#22c55e',
+    backgroundColor: TEAL,
   },
   barLabel: {
     color: '#9ca3af',
@@ -652,13 +660,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   setupButton: {
-    backgroundColor: '#22c55e',
+    backgroundColor: TEAL,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 10,
   },
   setupButtonText: {
-    color: '#0b0b0f',
+    color: '#020617',
     fontWeight: '700',
     fontSize: 14,
   },
@@ -675,8 +683,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
-    backgroundColor: '#22c55e',
+    bottom: 100,
+    backgroundColor: TEAL,
     borderRadius: 999,
     padding: 16,
     shadowColor: '#000',

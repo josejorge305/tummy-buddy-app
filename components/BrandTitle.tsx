@@ -52,10 +52,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    flexShrink: 1,
   },
   textContainer: {
     flexDirection: "column",
     marginTop: 8,
+    flexShrink: 1,
   },
   base: {
     fontWeight: "700",
@@ -72,6 +74,7 @@ const styles = StyleSheet.create({
   tagline: {
     color: "#9ca3af",
     marginTop: 2,
+    flexShrink: 1,
   },
 });
 

@@ -9,8 +9,12 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// App-wide theme color
+const TEAL = '#14b8a6';
 import { useUserPrefs } from '../../context/UserPrefsContext';
 
 const ACTIVITY_LEVELS = [
@@ -209,8 +213,9 @@ export default function ProfileScreen() {
   const conditionAllergens = allergenDefinitions.filter(a => a.category === 'condition');
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Profile</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Profile</Text>
       <Text style={styles.subtitle}>
         Personalize your nutrition targets and health scoring.
       </Text>
@@ -516,31 +521,35 @@ export default function ProfileScreen() {
             <Switch
               value={isPro}
               onValueChange={setIsPro}
-              thumbColor={isPro ? '#22c55e' : '#888'}
-              trackColor={{ false: '#333', true: '#22c55e55' }}
+              thumbColor={isPro ? TEAL : '#888'}
+              trackColor={{ false: '#333', true: 'rgba(20, 184, 166, 0.3)' }}
             />
           </View>
         </View>
         <Text style={styles.linkText}>Manage billing (coming soon)</Text>
       </View>
+      </ScrollView>
 
       {/* Loading Overlay */}
       {isProfileLoading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator color="#22c55e" size="large" />
+          <ActivityIndicator color={TEAL} size="large" />
         </View>
       )}
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: '#020617',
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
-    paddingTop: 50,
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
@@ -575,13 +584,13 @@ const styles = StyleSheet.create({
     color: '#fefefe',
   },
   targetBadge: {
-    backgroundColor: '#22c55e33',
+    backgroundColor: 'rgba(20, 184, 166, 0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   targetBadgeText: {
-    color: '#22c55e',
+    color: TEAL,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -618,7 +627,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a22',
   },
   unitButtonActive: {
-    backgroundColor: '#22c55e',
+    backgroundColor: TEAL,
   },
   unitButtonText: {
     color: '#888',
@@ -653,8 +662,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   selectButtonActive: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: TEAL,
+    borderColor: TEAL,
   },
   selectButtonText: {
     color: '#ccc',
@@ -700,8 +709,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a22',
   },
   activityButtonActive: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: TEAL,
+    borderColor: TEAL,
   },
   activityLabel: {
     color: '#fefefe',
@@ -736,8 +745,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   goalButtonActive: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: TEAL,
+    borderColor: TEAL,
   },
   goalLabel: {
     color: '#ccc',
@@ -770,7 +779,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   targetValue: {
-    color: '#22c55e',
+    color: TEAL,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -781,7 +790,7 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 20,
-    backgroundColor: '#22c55e',
+    backgroundColor: TEAL,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -808,8 +817,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   pillSelected: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: TEAL,
+    borderColor: TEAL,
   },
   pillCondition: {
     borderColor: '#f59e0b55',
@@ -834,8 +843,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   organPillSelected: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: TEAL,
+    borderColor: TEAL,
   },
   row: {
     flexDirection: 'row',
