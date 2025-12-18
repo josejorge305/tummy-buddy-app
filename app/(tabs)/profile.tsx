@@ -224,9 +224,9 @@ export default function ProfileScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.sectionTitle}>Body Metrics</Text>
-          {targets?.calories_target && (
+          {targets?.calories && (
             <View style={styles.targetBadge}>
-              <Text style={styles.targetBadgeText}>{targets.calories_target} cal/day</Text>
+              <Text style={styles.targetBadgeText}>{targets.calories} cal/day</Text>
             </View>
           )}
         </View>
@@ -379,19 +379,19 @@ export default function ProfileScreen() {
             <Text style={styles.targetsTitle}>Your Daily Targets</Text>
             <View style={styles.targetsRow}>
               <View style={styles.targetItem}>
-                <Text style={styles.targetValue}>{targets.calories_target || '--'}</Text>
+                <Text style={styles.targetValue}>{targets.calories || '--'}</Text>
                 <Text style={styles.targetLabel}>Calories</Text>
               </View>
               <View style={styles.targetItem}>
-                <Text style={styles.targetValue}>{targets.protein_target_g || '--'}g</Text>
+                <Text style={styles.targetValue}>{targets.protein_g || '--'}g</Text>
                 <Text style={styles.targetLabel}>Protein</Text>
               </View>
               <View style={styles.targetItem}>
-                <Text style={styles.targetValue}>{targets.carbs_target_g || '--'}g</Text>
+                <Text style={styles.targetValue}>{targets.carbs_g || '--'}g</Text>
                 <Text style={styles.targetLabel}>Carbs</Text>
               </View>
               <View style={styles.targetItem}>
-                <Text style={styles.targetValue}>{targets.fat_target_g || '--'}g</Text>
+                <Text style={styles.targetValue}>{targets.fat_g || '--'}g</Text>
                 <Text style={styles.targetLabel}>Fat</Text>
               </View>
             </View>
