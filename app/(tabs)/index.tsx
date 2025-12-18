@@ -14,11 +14,13 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandTitle from '../../components/BrandTitle';
@@ -27,12 +29,13 @@ import {
   fetchPlaceDetails,
   PlaceSuggestion,
 } from '../../api/places';
-import { API_BASE_URL, getDishSuggestions, DishSuggestion } from '../../api/api';
+import { API_BASE_URL, getDishSuggestions, DishSuggestion, uploadDishImage } from '../../api/api';
 import { useMenuPrefetch } from '../../context/MenuPrefetchContext';
 import {
   searchCachedDishes,
   getRecentDishSearches,
   addToRecentDishSearches,
+  getCachedDish,
   CachedDish,
   RecentDishSearch,
 } from '../../utils/dishCache';
@@ -114,9 +117,12 @@ export default function HomeScreen() {
   const [dishSearchResults, setDishSearchResults] = useState<CachedDish[]>([]);
   const [apiDishSuggestions, setApiDishSuggestions] = useState<DishSuggestion[]>([]);
   const [recentDishes, setRecentDishes] = useState<RecentDishSearch[]>([]);
+  const [recentDishesWithCache, setRecentDishesWithCache] = useState<CachedDish[]>([]);
   const [isDishSearching, setIsDishSearching] = useState(false);
   const [showDishDropdown, setShowDishDropdown] = useState(false);
   const dishSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const dishListRef = useRef<FlatList<any> | null>(null);
+  const [selectedDishIndex, setSelectedDishIndex] = useState(0);
 
   // Load recent dishes on mount and when switching to dish mode
   useEffect(() => {
@@ -128,6 +134,16 @@ export default function HomeScreen() {
   const loadRecentDishes = async () => {
     const recent = await getRecentDishSearches();
     setRecentDishes(recent);
+
+    // Load full cached data for recent dishes (for carousel with images)
+    const dishesWithCache: CachedDish[] = [];
+    for (const r of recent) {
+      const cached = await getCachedDish(r.dishName);
+      if (cached) {
+        dishesWithCache.push(cached);
+      }
+    }
+    setRecentDishesWithCache(dishesWithCache);
   };
 
   // Debounced dish search - searches both local cache AND API for suggestions
@@ -139,7 +155,7 @@ export default function HomeScreen() {
     if (!text.trim()) {
       setDishSearchResults([]);
       setApiDishSuggestions([]);
-      setShowDishDropdown(recentDishes.length > 0);
+      setShowDishDropdown(false); // Recent dishes now shown in carousel
       return;
     }
 
@@ -484,9 +500,114 @@ export default function HomeScreen() {
   };
 
 
+  // Photo analysis state
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
   const handleCameraPress = () => {
-    // TODO: hook up camera flow later
-    console.log('Camera pressed');
+    Alert.alert(
+      'Analyze Dish Photo',
+      'How would you like to add a photo?',
+      [
+        {
+          text: 'Take Photo',
+          onPress: () => pickImage('camera'),
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: () => pickImage('gallery'),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  const pickImage = async (source: 'camera' | 'gallery') => {
+    try {
+      // Request permissions
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Camera permission is required to take photos.');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Gallery permission is required to select photos.');
+          return;
+        }
+      }
+
+      // Launch camera or gallery
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+            base64: true,
+          });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (!asset.base64) {
+        Alert.alert('Error', 'Failed to process image. Please try again.');
+        return;
+      }
+
+      // Directly upload and analyze - backend will auto-detect the dish using GPT-4o vision
+      await handlePhotoUpload(asset.base64!, asset.mimeType || 'image/jpeg', asset.uri);
+
+    } catch (err: any) {
+      console.error('pickImage error:', err);
+      Alert.alert('Error', err?.message || 'Failed to pick image');
+    }
+  };
+
+  const handlePhotoUpload = async (base64: string, mimeType: string, localUri: string) => {
+    setIsUploadingPhoto(true);
+
+    try {
+      console.log('Uploading dish photo for auto-detection...');
+      const uploadResult = await uploadDishImage(base64, mimeType);
+
+      if (!uploadResult.ok || !uploadResult.url) {
+        throw new Error(uploadResult.error || 'Upload failed');
+      }
+
+      console.log('Photo uploaded:', uploadResult.url);
+
+      // Navigate to dish analysis screen with image URL
+      // Backend will auto-detect the dish name using GPT-4o vision
+      // URL encode the imageUrl to prevent truncation in router params
+      router.push({
+        pathname: '/dish',
+        params: {
+          dishName: 'Photo Analysis', // Placeholder - backend will detect actual dish
+          imageUrl: encodeURIComponent(uploadResult.url),
+          fromPhoto: 'true',
+        },
+      });
+
+    } catch (err: any) {
+      console.error('handlePhotoUpload error:', err);
+      Alert.alert('Upload Failed', err?.message || 'Could not upload photo. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const loadRestaurantsAround = async (lat: number, lng: number) => {
@@ -688,9 +809,8 @@ export default function HomeScreen() {
                   }
                 }}
                 onFocus={() => {
-                  if (searchMode === 'dish' && !query.trim()) {
-                    setShowDishDropdown(recentDishes.length > 0);
-                  }
+                  // Dropdown only shows when there's active search, not for recent dishes
+                  // Recent dishes are now shown in the carousel below
                 }}
                 returnKeyType="search"
                 onSubmitEditing={handleSearchSubmit}
@@ -812,29 +932,7 @@ export default function HomeScreen() {
                 </>
               )}
 
-              {/* Recent searches (when no query) */}
-              {!isDishSearching && !query.trim() && recentDishes.length > 0 && (
-                <>
-                  <Text style={styles.dishDropdownSectionTitle}>Recent Dishes</Text>
-                  {recentDishes.slice(0, 5).map((dish, index) => (
-                    <TouchableOpacity
-                      key={`recent-${dish.normalizedName}-${index}`}
-                      style={styles.dishDropdownItem}
-                      onPress={() => handleDishSelect({ dishName: dish.dishName, hasCache: dish.hasCache })}
-                    >
-                      <View style={styles.dishDropdownItemContent}>
-                        <Text style={styles.dishDropdownItemName}>{dish.dishName}</Text>
-                        {dish.restaurantName && (
-                          <Text style={styles.dishDropdownRestaurantName}>
-                            {dish.restaurantName}
-                          </Text>
-                        )}
-                      </View>
-                      <Ionicons name="time-outline" size={16} color="#6b7280" />
-                    </TouchableOpacity>
-                  ))}
-                </>
-              )}
+              {/* Recent dishes are now shown in the carousel below - removed from dropdown */}
 
               {/* API suggestions (typo-corrected dishes from server) */}
               {!isDishSearching && query.trim() && apiDishSuggestions.length > 0 && (
@@ -909,6 +1007,7 @@ export default function HomeScreen() {
             )}
           </>
         )}
+        </View>
 
         {/* Premium CTA row – navigates to Profile */}
         <Pressable
@@ -936,12 +1035,15 @@ export default function HomeScreen() {
           </LinearGradient>
         </Pressable>
 
-        {/* Nearby restaurants header */}
+        {/* Section header - varies by mode */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Nearby restaurants</Text>
+          <Text style={styles.sectionTitle}>
+            {searchMode === 'photo' ? 'Photo Analysis' : searchMode === 'dish' ? 'Recent Dishes' : 'Nearby restaurants'}
+          </Text>
         </View>
 
-        {/* Map */}
+        {/* Map (restaurant mode only) */}
+        {searchMode === 'restaurant' && (
         <View style={styles.section}>
           <View style={styles.mapContainer}>
             <MapView
@@ -1009,11 +1111,59 @@ export default function HomeScreen() {
             </MapView>
           </View>
         </View>
-        </View>
+        )}
 
         {/* Preview card section */}
         <View style={styles.carouselContainer}>
-          {searchMode === 'restaurant' ? (
+          {searchMode === 'photo' ? (
+            /* Photo mode - show camera prompt */
+            <View style={styles.restaurantCardWrapper}>
+              <View style={styles.restaurantCard}>
+                <View style={styles.photoModeContainer}>
+                  {isUploadingPhoto ? (
+                    <>
+                      <ActivityIndicator size="large" color={TEAL} />
+                      <Text style={styles.photoModeTitle}>Uploading photo...</Text>
+                      <Text style={styles.photoModeSubtitle}>
+                        Please wait while we process your image
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.photoModeIconContainer}>
+                        <Ionicons name="camera" size={64} color={TEAL} />
+                      </View>
+                      <Text style={styles.photoModeTitle}>Analyze Your Meal</Text>
+                      <Text style={styles.photoModeSubtitle}>
+                        Take a photo of your dish to get instant nutritional analysis, allergen detection, and health insights
+                      </Text>
+                      <Pressable
+                        style={styles.photoModeButton}
+                        onPress={handleCameraPress}
+                      >
+                        <Ionicons name="camera-outline" size={20} color="#020617" />
+                        <Text style={styles.photoModeButtonText}>Take or Select Photo</Text>
+                      </Pressable>
+                      <View style={styles.photoModeFeatures}>
+                        <View style={styles.photoModeFeature}>
+                          <Ionicons name="nutrition-outline" size={16} color="#9ca3af" />
+                          <Text style={styles.photoModeFeatureText}>Nutrition facts</Text>
+                        </View>
+                        <View style={styles.photoModeFeature}>
+                          <Ionicons name="warning-outline" size={16} color="#9ca3af" />
+                          <Text style={styles.photoModeFeatureText}>Allergen alerts</Text>
+                        </View>
+                        <View style={styles.photoModeFeature}>
+                          <Ionicons name="body-outline" size={16} color="#9ca3af" />
+                          <Text style={styles.photoModeFeatureText}>Organ impact</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            </View>
+          ) : searchMode === 'restaurant' ? (
             <FlatList
               ref={restaurantListRef}
               data={nearbyRestaurants}
@@ -1191,34 +1341,154 @@ export default function HomeScreen() {
                 }
               }}
             />
+          ) : recentDishesWithCache.length > 0 ? (
+            /* Recent Dishes Carousel */
+            <FlatList
+              ref={dishListRef}
+              data={recentDishesWithCache}
+              keyExtractor={(item, index) => `${item.normalizedName}-${index}`}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={SCREEN_WIDTH}
+              decelerationRate="fast"
+              renderItem={({ item, index }) => {
+                const isSelected = index === selectedDishIndex;
+                const analysis = item.analysis;
+                const allergenCount = analysis?.allergen_flags?.filter((a: { present?: string }) => a.present === 'yes').length || 0;
+                const calories = analysis?.nutrition_summary?.calories;
+
+                return (
+                  <View style={{ width: SCREEN_WIDTH }}>
+                    <View style={styles.restaurantCardWrapper}>
+                      <View style={styles.restaurantCard}>
+                        {/* Hero Photo Header */}
+                        {(item.imageUrl || analysis?.recipe_image) ? (
+                          <View style={styles.photoHeader}>
+                            <Image
+                              source={{ uri: item.imageUrl || analysis?.recipe_image }}
+                              style={styles.heroPhoto}
+                              contentFit="cover"
+                              transition={200}
+                            />
+                            {/* Gradient scrim overlay */}
+                            <LinearGradient
+                              colors={['transparent', 'rgba(2, 6, 23, 0.95)']}
+                              style={styles.photoScrim}
+                            />
+                            {/* Name and pills on top of photo */}
+                            <View style={styles.photoOverlay}>
+                              <Text style={styles.photoTitle} numberOfLines={1}>
+                                {item.dishName}
+                              </Text>
+                              <View style={styles.photoPillsRow}>
+                                {calories ? (
+                                  <View style={styles.photoPill}>
+                                    <Text style={styles.photoPillText}>{Math.round(calories)} cal</Text>
+                                  </View>
+                                ) : null}
+                                {allergenCount > 0 ? (
+                                  <View style={[styles.photoPill, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
+                                    <Text style={[styles.photoPillText, { color: '#f59e0b' }]}>{allergenCount} allergen{allergenCount > 1 ? 's' : ''}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                            </View>
+                          </View>
+                        ) : (
+                          /* Fallback: No photo - show name in dark header */
+                          <View style={styles.noPhotoHeader}>
+                            <Text style={styles.restaurantTitle}>
+                              {item.dishName}
+                            </Text>
+                            <View style={styles.photoPillsRow}>
+                              {calories ? (
+                                <View style={styles.photoPill}>
+                                  <Text style={styles.photoPillText}>{Math.round(calories)} cal</Text>
+                                </View>
+                              ) : null}
+                              {allergenCount > 0 ? (
+                                <View style={[styles.photoPill, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
+                                  <Text style={[styles.photoPillText, { color: '#f59e0b' }]}>{allergenCount} allergen{allergenCount > 1 ? 's' : ''}</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                          </View>
+                        )}
+
+                        {/* Card body content */}
+                        <View style={styles.cardBody}>
+                          {item.restaurantName ? (
+                            <Text style={styles.restaurantAddress} numberOfLines={1}>
+                              from {item.restaurantName}
+                            </Text>
+                          ) : null}
+
+                          <Text style={styles.restaurantDescription}>
+                            View full nutrition analysis, organ impact scores, and more.
+                          </Text>
+
+                          {/* Feature badges */}
+                          <View style={styles.featureBadgesRow}>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="body-outline" size={14} color="#14b8a6" />
+                              <Text style={styles.featureBadgeText}>Organ insights</Text>
+                            </View>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="nutrition-outline" size={14} color="#14b8a6" />
+                              <Text style={styles.featureBadgeText}>Nutrition</Text>
+                            </View>
+                            <View style={styles.featureBadge}>
+                              <Ionicons name="warning-outline" size={14} color="#f59e0b" />
+                              <Text style={styles.featureBadgeText}>Allergens</Text>
+                            </View>
+                          </View>
+
+                          <Pressable
+                            style={styles.viewRestaurantButton}
+                            onPress={() => {
+                              router.push({
+                                pathname: '/dish',
+                                params: {
+                                  dishName: item.dishName,
+                                  ...(item.restaurantName ? { restaurantName: item.restaurantName } : {}),
+                                  ...(item.restaurantAddress ? { restaurantAddress: item.restaurantAddress } : {}),
+                                  ...(item.placeId ? { placeId: item.placeId } : {}),
+                                  ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+                                  fromCache: 'true',
+                                },
+                              });
+                            }}
+                          >
+                            <Text style={styles.viewRestaurantButtonText}>View Dish Details</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              }}
+              onMomentumScrollEnd={(e) => {
+                if (recentDishesWithCache.length === 0) return;
+
+                const rawIndex = e.nativeEvent.contentOffset.x / SCREEN_WIDTH;
+                let index = Math.round(rawIndex);
+                if (Number.isNaN(index)) return;
+
+                index = Math.max(0, Math.min(index, recentDishesWithCache.length - 1));
+                setSelectedDishIndex(index);
+              }}
+            />
           ) : (
+            /* Empty state when no recent dishes */
             <View style={styles.card}>
-              <View style={styles.dishImageWrapper}>
-                <Image
-                  style={styles.dishImage}
-                  source={{
-                    uri: 'https://via.placeholder.com/600x400.png?text=Dish+Image',
-                  }}
-                />
+              <View style={styles.emptyDishState}>
+                <Ionicons name="restaurant-outline" size={48} color="#4b5563" />
+                <Text style={styles.emptyDishTitle}>No recent dishes</Text>
+                <Text style={styles.emptyDishSubtitle}>
+                  Search for a dish above to get started with nutritional analysis
+                </Text>
               </View>
-
-              <Text style={styles.restaurantName}>{DUMMY_DISH.name}</Text>
-
-              {/* Feature badges for dish mode */}
-              <View style={styles.featureBadgesRow}>
-                <View style={styles.featureBadge}>
-                  <Ionicons name="nutrition-outline" size={14} color="#14b8a6" />
-                  <Text style={styles.featureBadgeText}>Nutrition</Text>
-                </View>
-                <View style={styles.featureBadge}>
-                  <Ionicons name="warning-outline" size={14} color="#f59e0b" />
-                  <Text style={styles.featureBadgeText}>Allergens</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.ctaButton} onPress={openDish}>
-                <Text style={styles.ctaButtonText}>View Dish Details</Text>
-              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1525,6 +1795,86 @@ const styles = StyleSheet.create({
   dishImage: {
     width: '100%',
     height: 160,
+  },
+  emptyDishState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyDishTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#9ca3af',
+    marginTop: 16,
+  },
+  // Photo mode styles
+  photoModeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+  },
+  photoModeIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  photoModeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f9fafb',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  photoModeSubtitle: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+    paddingHorizontal: 10,
+  },
+  photoModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TEAL,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    gap: 8,
+    marginBottom: 24,
+  },
+  photoModeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#020617',
+  },
+  photoModeFeatures: {
+    flexDirection: 'row',
+    gap: 16,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  photoModeFeature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoModeFeatureText: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  emptyDishSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
   restaurantCardWrapper: {
     width: SCREEN_WIDTH - 32,

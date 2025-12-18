@@ -50,7 +50,18 @@ const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
 ];
 
-function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?: string }) {
+// Loading messages for photo analysis (different flow with auto-detection)
+const PHOTO_ANALYSIS_LOADING_MESSAGES = [
+  { icon: 'eye-outline', text: 'Recognizing your dish...' },
+  { icon: 'fast-food-outline', text: 'Identifying what you\'re eating...' },
+  { icon: 'search-outline', text: 'Finding recipe match...' },
+  { icon: 'warning-outline', text: 'Scanning for allergens...' },
+  { icon: 'nutrition-outline', text: 'Calculating nutrition...' },
+  { icon: 'fitness-outline', text: 'Analyzing body impact...' },
+  { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
+];
+
+function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string; imageUrl?: string; fromPhoto?: boolean }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
@@ -76,12 +87,14 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
     return () => pulse.stop();
   }, [pulseAnim]);
 
+  const loadingMessages = fromPhoto ? PHOTO_ANALYSIS_LOADING_MESSAGES : ANALYSIS_LOADING_MESSAGES;
+
   useEffect(() => {
     const messageTimer = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % ANALYSIS_LOADING_MESSAGES.length);
+      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
     }, 3000);
     return () => clearInterval(messageTimer);
-  }, []);
+  }, [loadingMessages.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -90,7 +103,7 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
     return () => clearInterval(timer);
   }, []);
 
-  const currentMessage = ANALYSIS_LOADING_MESSAGES[messageIndex];
+  const currentMessage = loadingMessages[messageIndex];
   const showLongWait = elapsedSeconds > 15;
 
   return (
@@ -132,7 +145,7 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
               styles.progressFill,
               {
                 width: `${Math.min(
-                  ((messageIndex + 1) / ANALYSIS_LOADING_MESSAGES.length) * 100,
+                  ((messageIndex + 1) / loadingMessages.length) * 100,
                   95
                 )}%`,
               },
@@ -176,8 +189,15 @@ export default function DishScreen() {
   const restaurantName = params.restaurantName as string | undefined;
   const restaurantAddress = params.restaurantAddress as string | undefined;
   const placeId = params.placeId as string | undefined;
-  const imageUrl = params.imageUrl as string | undefined;
+  const rawImageUrl = params.imageUrl as string | undefined;
   const fromCache = params.fromCache === 'true';
+  const fromPhoto = params.fromPhoto === 'true';
+
+  // Decode imageUrl if it was encoded (for photo analysis)
+  const imageUrl = rawImageUrl ? decodeURIComponent(rawImageUrl) : undefined;
+
+  // Debug logging for photo analysis
+  console.log('DishScreen params:', { dishName, imageUrl: imageUrl?.slice(0, 80), fromPhoto, fromCache });
 
   const [isLoading, setIsLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalyzeDishResponse | null>(null);
@@ -230,30 +250,34 @@ export default function DishScreen() {
       setFetchedImageUrl(null);
       setImageProvider(null);
 
-      // Check cache first
-      const cached = await getCachedDish(dishName, placeId);
-      if (cached && cached.analysis) {
-        console.log('Using cached dish analysis:', dishName);
-        setAnalysis(cached.analysis);
-        setIsLoading(false);
+      // Check cache first (skip for photo analysis - always need fresh detection)
+      if (!fromPhoto) {
+        const cached = await getCachedDish(dishName, placeId);
+        if (cached && cached.analysis) {
+          console.log('Using cached dish analysis:', dishName);
+          setAnalysis(cached.analysis);
+          setIsLoading(false);
 
-        // Check if we need to fetch image (cache might not have it)
-        const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
-        if (!imageUrl && !cachedImage) {
-          fetchImageIfNeeded(null);
+          // Check if we need to fetch image (cache might not have it)
+          const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
+          if (!imageUrl && !cachedImage) {
+            fetchImageIfNeeded(null);
+          }
+          return;
         }
-        return;
       }
 
       // Fetch fresh analysis using the same pipeline as restaurant page
+      console.log('Calling analyzeDish with:', { dishName, imageUrl, fromPhoto });
       const result = await analyzeDish({
         dishName,
         restaurantName: restaurantName || null,
         placeId: placeId || null,
-        source: 'standalone_dish_search',
+        source: fromPhoto ? 'photo_analysis' : 'standalone_dish_search',
         imageUrl: imageUrl || null,
         fullRecipe: true,
       });
+      console.log('analyzeDish result:', result.ok, result.dishName);
 
       if (result.ok) {
         setAnalysis(result);
@@ -328,7 +352,7 @@ export default function DishScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <DishLoadingScreen dishName={dishName} imageUrl={imageUrl} />
+        <DishLoadingScreen dishName={dishName} imageUrl={imageUrl} fromPhoto={fromPhoto} />
       </SafeAreaView>
     );
   }

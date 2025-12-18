@@ -871,6 +871,70 @@ export async function pollApifyJob(
 }
 
 // ============================================================
+// Image Upload API (for photo analysis)
+// ============================================================
+
+export interface UploadImageResponse {
+  ok: boolean;
+  url?: string;
+  key?: string;
+  size?: number;
+  mimeType?: string;
+  error?: string;
+}
+
+/**
+ * Upload a base64-encoded image to the server for dish analysis.
+ * Returns a public URL that can be used with analyzeDish.
+ *
+ * @param base64Image - Base64-encoded image (with or without data URL prefix)
+ * @param mimeType - Image MIME type (default: 'image/jpeg')
+ * @returns Upload result with public URL
+ *
+ * @example
+ * const result = await uploadDishImage(base64String, 'image/jpeg');
+ * if (result.ok) {
+ *   const analysis = await analyzeDish({ dishName: 'Unknown Dish', imageUrl: result.url });
+ * }
+ */
+export async function uploadDishImage(
+  base64Image: string,
+  mimeType: string = 'image/jpeg'
+): Promise<UploadImageResponse> {
+  const url = `${API_BASE_URL}/api/upload-image`;
+  console.log('uploadDishImage calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: base64Image,
+        mimeType,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('uploadDishImage HTTP error:', res.status);
+      return {
+        ok: false,
+        error: data?.error || `HTTP ${res.status}`,
+      };
+    }
+
+    return data as UploadImageResponse;
+  } catch (e: any) {
+    console.error('uploadDishImage error:', e?.message || e);
+    return {
+      ok: false,
+      error: e?.message || 'Network error',
+    };
+  }
+}
+
+// ============================================================
 // Dish Autocomplete / Spell Suggest API
 // ============================================================
 
