@@ -12,6 +12,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AnalyzeDishResponse, analyzeDish, fetchDishImage } from '../api/api';
@@ -20,6 +21,7 @@ import { buildDishViewModel } from './utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish, CachedDish } from '../utils/dishCache';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import BrandTitle from '../components/BrandTitle';
+import * as Haptics from 'expo-haptics';
 
 const RestaurantAIIcon = require('../assets/images/REstaurant AI Icon.png');
 
@@ -39,7 +41,6 @@ const COLORS = {
   cardBorder: 'rgba(255,255,255,0.08)',
 };
 
-// Loading messages for dish analysis
 const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'search-outline', text: 'Finding recipe match...' },
   { icon: 'list-outline', text: 'Identifying ingredients...' },
@@ -170,7 +171,7 @@ function getAllergenPillColors(present: string, isUserAllergen?: boolean) {
 export default function DishScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { selectedAllergens = [] } = useUserPrefs();
+  const { selectedAllergens = [], logMealAction } = useUserPrefs();
 
   const dishName = params.dishName as string;
   const restaurantName = params.restaurantName as string | undefined;
@@ -184,13 +185,14 @@ export default function DishScreen() {
   const [error, setError] = useState<string | null>(null);
   const [fetchedImageUrl, setFetchedImageUrl] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<string | null>(null);
+  const [isLoggingMeal, setIsLoggingMeal] = useState(false);
+  const [mealLogged, setMealLogged] = useState(false);
 
-  // UI toggle states - auto-expand all sections except organ details (2nd level)
   const [showAllergenDetails, setShowAllergenDetails] = useState(true);
   const [showFodmapDetails, setShowFodmapDetails] = useState(true);
   const [showNutritionNumbers, setShowNutritionNumbers] = useState(true);
   const [showOrganImpactDetails, setShowOrganImpactDetails] = useState(true);
-  const [showOrganDetails, setShowOrganDetails] = useState(false); // Keep collapsed - 2nd level expansion
+  const [showOrganDetails, setShowOrganDetails] = useState(false);
   const [showDietTags, setShowDietTags] = useState(true);
   const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
 
@@ -198,9 +200,7 @@ export default function DishScreen() {
     loadDishAnalysis();
   }, [dishName]);
 
-  // Fetch dish image if not available from cache or API response
   const fetchImageIfNeeded = async (currentImageUrl: string | null | undefined) => {
-    // Already have an image, no need to fetch
     if (currentImageUrl) return;
 
     try {
@@ -213,7 +213,6 @@ export default function DishScreen() {
       }
     } catch (e) {
       console.log('Failed to fetch dish image:', e);
-      // Silent fail - image is optional
     }
   };
 
@@ -230,14 +229,12 @@ export default function DishScreen() {
       setFetchedImageUrl(null);
       setImageProvider(null);
 
-      // Check cache first
       const cached = await getCachedDish(dishName, placeId);
       if (cached && cached.analysis) {
         console.log('Using cached dish analysis:', dishName);
         setAnalysis(cached.analysis);
         setIsLoading(false);
 
-        // Check if we need to fetch image (cache might not have it)
         const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
         if (!imageUrl && !cachedImage) {
           fetchImageIfNeeded(null);
@@ -245,7 +242,6 @@ export default function DishScreen() {
         return;
       }
 
-      // Fetch fresh analysis using the same pipeline as restaurant page
       const result = await analyzeDish({
         dishName,
         restaurantName: restaurantName || null,
@@ -258,11 +254,8 @@ export default function DishScreen() {
       if (result.ok) {
         setAnalysis(result);
 
-        // Use corrected dish name from API if spell correction occurred
         const correctedDishName = result.dishName || dishName;
 
-        // Cache the result under the CORRECTED name (not the misspelled input)
-        // This prevents caching "matloaf" separately from "meatloaf"
         const cacheImageUrl = imageUrl || result.recipe_image || undefined;
         await cacheDishAnalysis(correctedDishName, result, {
           restaurantName,
@@ -272,7 +265,6 @@ export default function DishScreen() {
           source: restaurantName ? 'restaurant' : 'standalone',
         });
 
-        // If no image from params or API response, fetch separately
         if (!imageUrl && !result.recipe_image) {
           fetchImageIfNeeded(null);
         }
@@ -288,6 +280,84 @@ export default function DishScreen() {
   };
 
   const viewModel = analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
+
+  const handleLogMeal = async () => {
+    if (!analysis || isLoggingMeal) return;
+
+    setIsLoggingMeal(true);
+    try {
+      const organImpacts: Record<string, number> = {};
+      if (analysis.organs?.organs) {
+        for (const org of analysis.organs.organs) {
+          if (org.organ && typeof org.score === 'number') {
+            organImpacts[org.organ.toLowerCase()] = org.score;
+          }
+        }
+      }
+
+      const riskFlags: string[] = [];
+      if (analysis.allergen_flags) {
+        for (const flag of analysis.allergen_flags) {
+          if (flag.present === 'yes') {
+            riskFlags.push(`allergen_${flag.kind}`);
+          }
+        }
+      }
+      if (analysis.fodmap_flags?.level === 'high') {
+        riskFlags.push('high_fodmap');
+      }
+      if (analysis.nutrition_summary?.sodium_mg && analysis.nutrition_summary.sodium_mg > 1000) {
+        riskFlags.push('high_sodium');
+      }
+
+      const result = await logMealAction({
+        dish_name: analysis.dishName || dishName,
+        dish_id: `${dishName}-${Date.now()}`,
+        restaurant_name: restaurantName,
+        calories: analysis.nutrition_summary?.energyKcal || undefined,
+        protein_g: analysis.nutrition_summary?.protein_g || undefined,
+        carbs_g: analysis.nutrition_summary?.carbs_g || undefined,
+        fat_g: analysis.nutrition_summary?.fat_g || undefined,
+        fiber_g: analysis.nutrition_summary?.fiber_g || undefined,
+        sugar_g: analysis.nutrition_summary?.sugar_g || undefined,
+        sodium_mg: analysis.nutrition_summary?.sodium_mg || undefined,
+        organ_impacts: Object.keys(organImpacts).length > 0 ? organImpacts : undefined,
+        risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
+        full_analysis: analysis,
+      });
+
+      if (result.success) {
+        setMealLogged(true);
+        try {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {}
+
+        if (result.duplicate) {
+          Alert.alert(
+            'Already Logged',
+            'This dish was already logged today. Your daily totals remain unchanged.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            'Meal Logged!',
+            `${analysis.dishName || dishName} has been added to your tracker.`,
+            [
+              { text: 'View Tracker', onPress: () => router.push('/(tabs)/explore' as any) },
+              { text: 'OK' },
+            ]
+          );
+        }
+      } else {
+        Alert.alert('Error', 'Failed to log meal. Please try again.');
+      }
+    } catch (e) {
+      console.error('Log meal error:', e);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setIsLoggingMeal(false);
+    }
+  };
 
   const organLines = viewModel?.organLines || [];
   const organOverallLevel: 'high' | 'medium' | 'low' | null = organLines.length
@@ -322,7 +392,6 @@ export default function DishScreen() {
 
   const activeNutrition = viewModel?.nutrition || null;
 
-  // Determine dish image: priority is passed imageUrl > recipe_image from API > fetched image
   const dishImageUrl = imageUrl || analysis?.recipe_image || fetchedImageUrl || null;
 
   if (isLoading) {
@@ -353,7 +422,6 @@ export default function DishScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backIconButton}>
           <Ionicons name="arrow-back" size={24} color="#ffffff" />
@@ -365,7 +433,6 @@ export default function DishScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Hero Image (only shown if available) */}
         {dishImageUrl && (
           <View style={styles.dishImageContainer}>
             <Image source={{ uri: dishImageUrl }} style={styles.dishImage} />
@@ -376,14 +443,11 @@ export default function DishScreen() {
           </View>
         )}
 
-        {/* Dish Card */}
         <View style={styles.dishCard}>
-          {/* Show corrected name if spelling was corrected */}
           <Text style={styles.dishName}>
             {analysis?.dishName || dishName}
           </Text>
 
-          {/* Spell correction notice */}
           {analysis?.spell_correction && (
             <View style={styles.spellCorrectionBadge}>
               <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
@@ -393,7 +457,6 @@ export default function DishScreen() {
             </View>
           )}
 
-          {/* Restaurant context badge */}
           {restaurantName && (
             <View style={styles.restaurantBadge}>
               <Ionicons name="restaurant-outline" size={14} color={TEAL} />
@@ -408,7 +471,6 @@ export default function DishScreen() {
             </View>
           )}
 
-          {/* Health Insight */}
           {viewModel?.nutritionInsights?.summary && (
             <View style={styles.healthInsightCallout}>
               <View style={styles.healthInsightIcon}>
@@ -423,7 +485,6 @@ export default function DishScreen() {
 
         {viewModel && (
           <>
-            {/* Plate Components Selector */}
             {viewModel.plateComponents && viewModel.plateComponents.length > 1 && (
               <View style={styles.plateComponentsSection}>
                 <Text style={styles.plateComponentsLabel}>Analyze by component:</Text>
@@ -477,7 +538,6 @@ export default function DishScreen() {
               </View>
             )}
 
-            {/* Allergens Card */}
             <View style={styles.analysisCard}>
               <View style={styles.cardHeader}>
                 <Ionicons name="warning-outline" size={18} color={COLORS.caution} />
@@ -520,7 +580,6 @@ export default function DishScreen() {
               )}
             </View>
 
-            {/* FODMAP Card */}
             <View style={styles.analysisCard}>
               <View style={styles.cardHeader}>
                 <Ionicons
@@ -584,7 +643,6 @@ export default function DishScreen() {
               )}
             </View>
 
-            {/* Nutrition Card */}
             <View style={styles.analysisCard}>
               <View style={styles.cardHeader}>
                 <Ionicons name="nutrition-outline" size={18} color={COLORS.calories} />
@@ -672,7 +730,6 @@ export default function DishScreen() {
               )}
             </View>
 
-            {/* Body Impact Card */}
             {organOverallLevel && (
               <View style={styles.analysisCard}>
                 <TouchableOpacity
@@ -825,7 +882,6 @@ export default function DishScreen() {
               </View>
             )}
 
-            {/* Diet Tags */}
             {viewModel.dietTags && viewModel.dietTags.length > 0 && (
               <View style={styles.analysisCard}>
                 <TouchableOpacity
@@ -865,23 +921,39 @@ export default function DishScreen() {
           </>
         )}
 
-        {/* Spacer for bottom buttons */}
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Sticky Action Bar */}
       <View style={styles.stickyActionBar}>
         <View style={styles.stickyActionButtons}>
-          <TouchableOpacity style={styles.stickyPrimaryButton}>
-            <Ionicons name="add-circle" size={18} color="#020617" style={{ marginRight: 6 }} />
-            <Text style={styles.stickyPrimaryButtonText}>Log Meal</Text>
+          <TouchableOpacity
+            style={[
+              styles.stickyPrimaryButton,
+              mealLogged && styles.stickyPrimaryButtonLogged,
+              isLoggingMeal && styles.stickyPrimaryButtonDisabled,
+            ]}
+            onPress={handleLogMeal}
+            disabled={isLoggingMeal || !analysis}
+          >
+            {isLoggingMeal ? (
+              <ActivityIndicator size="small" color="#020617" style={{ marginRight: 6 }} />
+            ) : (
+              <Ionicons
+                name={mealLogged ? 'checkmark-circle' : 'add-circle'}
+                size={18}
+                color="#020617"
+                style={{ marginRight: 6 }}
+              />
+            )}
+            <Text style={styles.stickyPrimaryButtonText}>
+              {mealLogged ? 'Logged!' : isLoggingMeal ? 'Logging...' : 'Log Meal'}
+            </Text>
           </TouchableOpacity>
 
           {analysis?.likely_recipe && (
             <TouchableOpacity
               style={styles.stickySecondaryButton}
               onPress={() => {
-                // Ensure we pass the best available image (dishImageUrl includes all fallbacks)
                 const recipeImageUrl = dishImageUrl || analysis?.recipe_image || '';
                 router.push({
                   pathname: '/likely-recipe',
@@ -951,7 +1023,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
-  // Loading screen
   loadingContainer: {
     flex: 1,
   },
@@ -1040,7 +1111,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
   },
-  // Error screen
   errorContainer: {
     flex: 1,
     alignItems: 'center',
@@ -1080,7 +1150,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9ca3af',
   },
-  // Dish card
   dishImageContainer: {
     height: 200,
     marginHorizontal: -16,
@@ -1171,7 +1240,6 @@ const styles = StyleSheet.create({
     color: '#fcd34d',
     lineHeight: 18,
   },
-  // Analysis cards
   analysisCard: {
     backgroundColor: '#1e293b',
     borderRadius: 16,
@@ -1232,7 +1300,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  // Nutrition
   quickStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1315,7 +1382,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ffffff',
   },
-  // Organ cards
   organCardsContainer: {
     paddingVertical: 8,
     gap: 10,
@@ -1352,7 +1418,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
-  // Diet tags
   countBadge: {
     backgroundColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: 8,
@@ -1383,7 +1448,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#ffffff',
   },
-  // Plate components
   plateComponentsSection: {
     marginBottom: 16,
   },
@@ -1419,7 +1483,6 @@ const styles = StyleSheet.create({
   plateComponentPillTextActive: {
     color: '#ffffff',
   },
-  // Sticky action bar
   stickyActionBar: {
     position: 'absolute',
     left: 0,
@@ -1444,6 +1507,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 24,
     backgroundColor: TEAL,
+  },
+  stickyPrimaryButtonLogged: {
+    backgroundColor: '#22c55e',
+  },
+  stickyPrimaryButtonDisabled: {
+    opacity: 0.7,
   },
   stickyPrimaryButtonText: {
     fontSize: 15,
