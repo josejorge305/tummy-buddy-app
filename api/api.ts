@@ -947,3 +947,648 @@ export async function getDishSuggestions(
     };
   }
 }
+
+// ============================================================
+// User Tracking & Meal Logging API
+// ============================================================
+
+// Get today's date in YYYY-MM-DD format (local timezone)
+export function getTodayDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// User Profile Types
+export interface UserProfile {
+  user_id: string;
+  sex?: 'male' | 'female' | null;
+  birth_year?: number | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  activity_level?: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active' | null;
+  primary_goal?: 'lose_weight' | 'maintain' | 'build_muscle' | 'improve_health' | 'manage_condition' | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserDailyTargets {
+  user_id: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  sugar_g: number;
+  sodium_mg: number;
+  source: 'calculated' | 'manual';
+  bmr?: number | null;
+  tdee?: number | null;
+}
+
+export interface UserAllergen {
+  user_id: string;
+  allergen_code: string;
+  severity: 'avoid' | 'limit' | 'monitor';
+  display_name?: string;
+  category?: string;
+}
+
+export interface UserOrganPriority {
+  user_id: string;
+  organ_code: string;
+  priority_rank?: number;
+  is_starred: boolean;
+  display_name?: string;
+}
+
+export interface LoggedMeal {
+  id: number;
+  user_id: string;
+  date: string;
+  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  dish_name: string;
+  dish_id?: string | null;
+  restaurant_name?: string | null;
+  portion_factor: number;
+  calories?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  fat_g?: number | null;
+  fiber_g?: number | null;
+  sugar_g?: number | null;
+  sodium_mg?: number | null;
+  organ_impacts?: Record<string, number> | null;
+  risk_flags?: string[] | null;
+  logged_at: string;
+}
+
+export interface DailySummary {
+  user_id: string;
+  date: string;
+  total_calories: number;
+  total_protein_g: number;
+  total_carbs_g: number;
+  total_fat_g: number;
+  total_fiber_g: number;
+  total_sugar_g: number;
+  total_sodium_mg: number;
+  meal_count: number;
+  organ_scores?: Record<string, number> | null;
+}
+
+export interface WeightEntry {
+  id: number;
+  user_id: string;
+  weight_kg: number;
+  recorded_at: string;
+}
+
+export interface SavedDish {
+  id: number;
+  user_id: string;
+  dish_name: string;
+  dish_id?: string | null;
+  restaurant_name?: string | null;
+  saved_at: string;
+  full_analysis?: any | null;
+}
+
+export interface AllergenDefinition {
+  allergen_code: string;
+  display_name: string;
+  category: string;
+  description?: string | null;
+}
+
+// API Response Types
+interface UserProfileResponse {
+  ok: boolean;
+  profile?: UserProfile | null;
+  targets?: UserDailyTargets | null;
+  allergens?: UserAllergen[];
+  organPriorities?: UserOrganPriority[];
+  error?: string;
+}
+
+interface UpdateProfileResponse {
+  ok: boolean;
+  profile?: UserProfile | null;
+  targets?: UserDailyTargets | null;
+  error?: string;
+}
+
+interface AllergensResponse {
+  ok: boolean;
+  allergens?: UserAllergen[];
+  targets?: UserDailyTargets | null;
+  error?: string;
+}
+
+interface OrganPrioritiesResponse {
+  ok: boolean;
+  organPriorities?: UserOrganPriority[];
+  error?: string;
+}
+
+interface WeightResponse {
+  ok: boolean;
+  entry?: WeightEntry | null;
+  profile?: UserProfile | null;
+  error?: string;
+}
+
+interface LogMealResponse {
+  ok: boolean;
+  meal?: LoggedMeal | null;
+  duplicate?: boolean;
+  error?: string;
+}
+
+interface MealsResponse {
+  ok: boolean;
+  meals?: LoggedMeal[];
+  error?: string;
+}
+
+interface DeleteMealResponse {
+  ok: boolean;
+  error?: string;
+}
+
+interface DailyTrackerResponse {
+  ok: boolean;
+  date: string;
+  summary?: DailySummary | null;
+  meals?: LoggedMeal[];
+  targets?: UserDailyTargets | null;
+  error?: string;
+}
+
+interface WeeklyTrackerResponse {
+  ok: boolean;
+  summaries?: DailySummary[];
+  weeklyAverages?: {
+    avg_calories: number;
+    avg_protein_g: number;
+    avg_carbs_g: number;
+    avg_fat_g: number;
+    days_logged: number;
+  } | null;
+  error?: string;
+}
+
+interface AllergenDefinitionsResponse {
+  ok: boolean;
+  allergens?: AllergenDefinition[];
+  error?: string;
+}
+
+// ============================================================
+// User Profile API Functions
+// ============================================================
+
+/**
+ * Get user profile, targets, allergens, and organ priorities
+ */
+export async function getUserProfile(userId: string): Promise<UserProfileResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/profile`;
+  console.log('getUserProfile calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getUserProfile HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as UserProfileResponse;
+  } catch (e: any) {
+    console.error('getUserProfile error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Update user profile (sex, birth_year, height, weight, activity_level, goal)
+ */
+export async function updateUserProfile(
+  userId: string,
+  profileData: Partial<UserProfile>
+): Promise<UpdateProfileResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/profile`;
+  console.log('updateUserProfile calling:', url, profileData);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(profileData),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('updateUserProfile HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as UpdateProfileResponse;
+  } catch (e: any) {
+    console.error('updateUserProfile error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Set user allergens (replaces all existing allergens)
+ */
+export async function setUserAllergens(
+  userId: string,
+  allergens: Array<{ allergen_code: string; severity: 'avoid' | 'limit' | 'monitor' }>
+): Promise<AllergensResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/allergens`;
+  console.log('setUserAllergens calling:', url, allergens);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ allergens }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('setUserAllergens HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AllergensResponse;
+  } catch (e: any) {
+    console.error('setUserAllergens error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Set user organ priorities (replaces all existing priorities)
+ */
+export async function setUserOrganPriorities(
+  userId: string,
+  organs: Array<{ organ_code: string; priority_rank?: number; is_starred?: boolean }>
+): Promise<OrganPrioritiesResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/organs`;
+  console.log('setUserOrganPriorities calling:', url, organs);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ organs }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('setUserOrganPriorities HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as OrganPrioritiesResponse;
+  } catch (e: any) {
+    console.error('setUserOrganPriorities error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Add a weight entry and update profile
+ */
+export async function addWeightEntry(
+  userId: string,
+  weightKg: number
+): Promise<WeightResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/weight`;
+  console.log('addWeightEntry calling:', url, { weight_kg: weightKg });
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ weight_kg: weightKg }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('addWeightEntry HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as WeightResponse;
+  } catch (e: any) {
+    console.error('addWeightEntry error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
+// Meal Logging API Functions
+// ============================================================
+
+/**
+ * Log a meal for the user
+ */
+export async function logMeal(
+  userId: string,
+  mealData: {
+    dish_name: string;
+    dish_id?: string;
+    restaurant_name?: string;
+    meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    portion_factor?: number;
+    calories?: number;
+    protein_g?: number;
+    carbs_g?: number;
+    fat_g?: number;
+    fiber_g?: number;
+    sugar_g?: number;
+    sodium_mg?: number;
+    organ_impacts?: Record<string, number>;
+    risk_flags?: string[];
+    full_analysis?: any;
+  }
+): Promise<LogMealResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals`;
+  console.log('logMeal calling:', url, mealData);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(mealData),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('logMeal HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as LogMealResponse;
+  } catch (e: any) {
+    console.error('logMeal error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get meals for a specific date
+ */
+export async function getMeals(
+  userId: string,
+  date?: string
+): Promise<MealsResponse> {
+  const targetDate = date || getTodayDate();
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals?date=${targetDate}`;
+  console.log('getMeals calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getMeals HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as MealsResponse;
+  } catch (e: any) {
+    console.error('getMeals error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Delete a logged meal
+ */
+export async function deleteMeal(
+  userId: string,
+  mealId: number
+): Promise<DeleteMealResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals/${mealId}`;
+  console.log('deleteMeal calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('deleteMeal HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as DeleteMealResponse;
+  } catch (e: any) {
+    console.error('deleteMeal error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
+// Daily & Weekly Tracker API Functions
+// ============================================================
+
+/**
+ * Get daily tracker data (summary, meals, targets) for a specific date
+ */
+export async function getDailyTracker(
+  userId: string,
+  date?: string
+): Promise<DailyTrackerResponse> {
+  const targetDate = date || getTodayDate();
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/tracker/daily?date=${targetDate}`;
+  console.log('getDailyTracker calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getDailyTracker HTTP error:', res.status);
+      return { ok: false, date: targetDate, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return { ...data, date: targetDate } as DailyTrackerResponse;
+  } catch (e: any) {
+    console.error('getDailyTracker error:', e?.message || e);
+    return { ok: false, date: targetDate, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get weekly tracker data (daily summaries + averages for last 7 days)
+ */
+export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerResponse> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/tracker/weekly`;
+  console.log('getWeeklyTracker calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getWeeklyTracker HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as WeeklyTrackerResponse;
+  } catch (e: any) {
+    console.error('getWeeklyTracker error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
+// Allergen Definitions API
+// ============================================================
+
+/**
+ * Get all available allergen definitions
+ */
+export async function getAllergenDefinitions(): Promise<AllergenDefinitionsResponse> {
+  const url = `${API_BASE_URL}/api/allergens`;
+  console.log('getAllergenDefinitions calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getAllergenDefinitions HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AllergenDefinitionsResponse;
+  } catch (e: any) {
+    console.error('getAllergenDefinitions error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
+// Saved Dishes API Functions
+// ============================================================
+
+/**
+ * Save a dish to user's favorites
+ */
+export async function saveDish(
+  userId: string,
+  dishData: {
+    dish_name: string;
+    dish_id?: string;
+    restaurant_name?: string;
+    full_analysis?: any;
+  }
+): Promise<{ ok: boolean; dish?: SavedDish; error?: string }> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/saved-dishes`;
+  console.log('saveDish calling:', url, dishData);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(dishData),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('saveDish HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data;
+  } catch (e: any) {
+    console.error('saveDish error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get user's saved dishes
+ */
+export async function getSavedDishes(
+  userId: string
+): Promise<{ ok: boolean; dishes?: SavedDish[]; error?: string }> {
+  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/saved-dishes`;
+  console.log('getSavedDishes calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getSavedDishes HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data;
+  } catch (e: any) {
+    console.error('getSavedDishes error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
