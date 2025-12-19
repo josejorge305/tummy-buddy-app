@@ -81,7 +81,7 @@ export default function ProfileScreen() {
   const [heightCm, setHeightCm] = useState('');
   const [weight, setWeight] = useState('');
   const [activityLevel, setActivityLevel] = useState('moderate');
-  const [primaryGoal, setPrimaryGoal] = useState('maintain');
+  const [selectedGoals, setSelectedGoals] = useState<string[]>(['maintain']);
   const [selectedAllergenCodes, setSelectedAllergenCodes] = useState<string[]>([]);
   const [selectedOrganCodes, setSelectedOrganCodes] = useState<string[]>(['gut', 'heart']);
   const [isPro, setIsPro] = useState(true);
@@ -93,7 +93,12 @@ export default function ProfileScreen() {
       setUnitSystem(profile.unit_system || 'imperial');
       setSex(profile.biological_sex || null);
       setActivityLevel(profile.activity_level || 'moderate');
-      setPrimaryGoal(profile.primary_goal || 'maintain');
+      // Support both legacy primary_goal and new goals array
+      if (profile.goals && Array.isArray(profile.goals) && profile.goals.length > 0) {
+        setSelectedGoals(profile.goals);
+      } else if (profile.primary_goal) {
+        setSelectedGoals([profile.primary_goal]);
+      }
 
       if (profile.date_of_birth) {
         const year = profile.date_of_birth.split('-')[0];
@@ -169,7 +174,7 @@ export default function ProfileScreen() {
       const profileData: any = {
         biological_sex: sex,
         activity_level: activityLevel,
-        primary_goal: primaryGoal,
+        goals: selectedGoals,
         unit_system: unitSystem,
       };
 
@@ -357,25 +362,38 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* Primary Goal */}
-        <Text style={styles.fieldLabel}>Primary Goal</Text>
+        {/* Goals (Multi-Select) */}
+        <Text style={styles.fieldLabel}>Goals</Text>
+        <Text style={styles.goalsHint}>Select all that apply - targets will be optimized for your goals</Text>
         <View style={styles.goalsGrid}>
-          {GOALS.map(goal => (
-            <TouchableOpacity
-              key={goal.key}
-              style={[styles.goalButton, primaryGoal === goal.key && styles.goalButtonActive]}
-              onPress={() => setPrimaryGoal(goal.key)}
-            >
-              <Ionicons
-                name={goal.icon as any}
-                size={20}
-                color={primaryGoal === goal.key ? '#0b0b0f' : '#ccc'}
-              />
-              <Text style={[styles.goalLabel, primaryGoal === goal.key && styles.goalLabelActive]}>
-                {goal.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {GOALS.map(goal => {
+            const isSelected = selectedGoals.includes(goal.key);
+            return (
+              <TouchableOpacity
+                key={goal.key}
+                style={[styles.goalButton, isSelected && styles.goalButtonActive]}
+                onPress={() => {
+                  if (isSelected) {
+                    // Don't allow deselecting the last goal
+                    if (selectedGoals.length > 1) {
+                      setSelectedGoals(selectedGoals.filter(g => g !== goal.key));
+                    }
+                  } else {
+                    setSelectedGoals([...selectedGoals, goal.key]);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={goal.icon as any}
+                  size={20}
+                  color={isSelected ? '#0b0b0f' : '#ccc'}
+                />
+                <Text style={[styles.goalLabel, isSelected && styles.goalLabelActive]}>
+                  {goal.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Calculated Targets Display */}
@@ -616,6 +634,11 @@ const styles = StyleSheet.create({
     color: '#888',
     marginBottom: 8,
     fontStyle: 'italic',
+  },
+  goalsHint: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 8,
   },
   unitToggle: {
     flexDirection: 'row',

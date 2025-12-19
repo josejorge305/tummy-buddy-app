@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
   Alert,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AnalyzeDishResponse, analyzeDish, fetchDishImage } from '../api/api';
@@ -28,43 +29,49 @@ const RestaurantAIIcon = require('../assets/images/REstaurant AI Icon.png');
 const BG = '#020617';
 const TEAL = '#14b8a6';
 
-// Typography System - Semantic font sizing for consistent design
-const TYPE = {
-  // H1 - Dish name, main titles
-  h1: { fontSize: 28, fontWeight: '700' as const, lineHeight: 34 },
-  // H2 - Section headers (Nutrition, Body Impact, etc.)
-  h2: { fontSize: 18, fontWeight: '700' as const, lineHeight: 24 },
-  // H3 - Subsection headers
-  h3: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
-  // Body - Main content text
-  body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
-  // Body small - Secondary content
-  bodySmall: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-  // Caption - Disclaimers, timestamps
-  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
-  // Label - Nutrition labels, pill text
-  label: { fontSize: 11, fontWeight: '600' as const, lineHeight: 14 },
-  // Link - Interactive text (Show details, etc.)
-  link: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 },
-  // Pill - Chip/badge text
-  pill: { fontSize: 12, fontWeight: '600' as const, lineHeight: 16 },
-  // Stat value - Large numbers
-  statLarge: { fontSize: 20, fontWeight: '700' as const, lineHeight: 24 },
-  // Stat small - Secondary stat values
-  statSmall: { fontSize: 16, fontWeight: '700' as const, lineHeight: 20 },
-};
-
-const COLORS = {
-  safe: '#22c55e',
-  caution: '#f59e0b',
-  avoid: '#ef4444',
-  neutral: '#6b7280',
-  calories: '#f97316',
-  protein: '#3b82f6',
-  carbs: '#a855f7',
-  fat: '#eab308',
-  cardBg: '#1e293b',
-  cardBorder: 'rgba(255,255,255,0.08)',
+// Unified Design System
+const DESIGN = {
+  // Colors - simplified palette
+  colors: {
+    primary: '#14b8a6',      // Teal - main accent
+    background: '#020617',   // Dark blue-black
+    card: '#1e293b',         // Slate card background
+    cardDark: '#0f172a',     // Darker card variant
+    text: '#ffffff',         // Primary text
+    textSecondary: '#9ca3af', // Secondary text
+    textMuted: '#64748b',    // Muted text
+    border: 'rgba(255,255,255,0.08)',
+    // Semantic colors
+    safe: '#22c55e',
+    caution: '#f59e0b',
+    danger: '#ef4444',
+  },
+  // Typography - consistent scale
+  type: {
+    h1: { fontSize: 24, fontWeight: '700' as const, color: '#ffffff' },
+    h2: { fontSize: 18, fontWeight: '700' as const, color: '#ffffff' },
+    h3: { fontSize: 16, fontWeight: '600' as const, color: '#ffffff' },
+    body: { fontSize: 15, fontWeight: '400' as const, color: '#d1d5db', lineHeight: 22 },
+    bodySmall: { fontSize: 14, fontWeight: '400' as const, color: '#9ca3af', lineHeight: 20 },
+    caption: { fontSize: 12, fontWeight: '400' as const, color: '#64748b' },
+    label: { fontSize: 11, fontWeight: '600' as const, color: '#9ca3af', textTransform: 'uppercase' as const },
+    link: { fontSize: 14, fontWeight: '500' as const, color: '#14b8a6' },
+  },
+  // Spacing
+  space: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+  },
+  // Border radius
+  radius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    full: 999,
+  },
 };
 
 // Loading messages for dish analysis
@@ -78,7 +85,7 @@ const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
 ];
 
-// Loading messages for photo analysis (different flow with auto-detection)
+// Loading messages for photo analysis
 const PHOTO_ANALYSIS_LOADING_MESSAGES = [
   { icon: 'eye-outline', text: 'Recognizing your dish...' },
   { icon: 'fast-food-outline', text: 'Identifying what you\'re eating...' },
@@ -89,12 +96,25 @@ const PHOTO_ANALYSIS_LOADING_MESSAGES = [
   { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
 ];
 
+// Truncate text helper
+function truncateText(text: string, maxLength: number): { truncated: string; isTruncated: boolean } {
+  if (!text || text.length <= maxLength) {
+    return { truncated: text || '', isTruncated: false };
+  }
+  const truncated = text.substring(0, maxLength).trim();
+  // Find last space to avoid cutting words
+  const lastSpace = truncated.lastIndexOf(' ');
+  return {
+    truncated: (lastSpace > maxLength * 0.7 ? truncated.substring(0, lastSpace) : truncated) + '...',
+    isTruncated: true,
+  };
+}
+
 function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string; imageUrl?: string; fromPhoto?: boolean }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
 
-  // Select appropriate loading messages based on analysis source
   const loadingMessages = fromPhoto ? PHOTO_ANALYSIS_LOADING_MESSAGES : ANALYSIS_LOADING_MESSAGES;
 
   useEffect(() => {
@@ -138,10 +158,7 @@ function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string
   return (
     <View style={styles.loadingContainer}>
       <View style={styles.heroSection}>
-        <LinearGradient
-          colors={['#0f172a', BG]}
-          style={styles.heroGradientBg}
-        >
+        <LinearGradient colors={['#0f172a', BG]} style={styles.heroGradientBg}>
           <View style={styles.heroIconContainer}>
             <View style={styles.heroIconGlow} />
             <Image source={RestaurantAIIcon} style={styles.heroIcon} resizeMode="contain" />
@@ -153,18 +170,12 @@ function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string
         <BrandTitle size="large" showIcon={false} />
 
         <View style={styles.loaderBox}>
-          <Animated.View
-            style={[styles.spinnerGlow, { opacity: pulseAnim }]}
-          />
+          <Animated.View style={[styles.spinnerGlow, { opacity: pulseAnim }]} />
           <ActivityIndicator size="large" color={TEAL} />
         </View>
 
         <View style={styles.messageRow}>
-          <Ionicons
-            name={currentMessage.icon as any}
-            size={18}
-            color={TEAL}
-          />
+          <Ionicons name={currentMessage.icon as any} size={18} color={TEAL} />
           <Text style={styles.messageText}>{currentMessage.text}</Text>
         </View>
 
@@ -172,41 +183,54 @@ function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string
           <Animated.View
             style={[
               styles.progressFill,
-              {
-                width: `${Math.min(
-                  ((messageIndex + 1) / loadingMessages.length) * 100,
-                  95
-                )}%`,
-              },
+              { width: `${Math.min(((messageIndex + 1) / loadingMessages.length) * 100, 95)}%` },
             ]}
           />
         </View>
 
-        {elapsedSeconds > 5 && (
-          <Text style={styles.elapsedText}>{elapsedSeconds}s</Text>
-        )}
-
+        {elapsedSeconds > 5 && <Text style={styles.elapsedText}>{elapsedSeconds}s</Text>}
         {showLongWait && (
-          <Text style={styles.longWaitText}>
-            This dish requires deeper analysis - hang tight!
-          </Text>
+          <Text style={styles.longWaitText}>This dish requires deeper analysis - hang tight!</Text>
         )}
       </View>
     </View>
   );
 }
 
-function getAllergenPillColors(present: string, isUserAllergen?: boolean) {
-  if (isUserAllergen) {
-    return { bg: 'rgba(239, 68, 68, 0.25)', border: '#ef4444', text: '#fca5a5' };
-  }
-  if (present === 'yes') {
-    return { bg: 'rgba(245, 158, 11, 0.2)', border: '#f59e0b', text: '#fcd34d' };
-  }
-  if (present === 'maybe') {
-    return { bg: 'rgba(107, 114, 128, 0.2)', border: '#6b7280', text: '#9ca3af' };
-  }
-  return { bg: 'rgba(34, 197, 94, 0.2)', border: '#22c55e', text: '#86efac' };
+// Detail Modal Component
+function DetailModal({
+  visible,
+  onClose,
+  title,
+  icon,
+  iconColor,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  icon: string;
+  iconColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleRow}>
+              <Ionicons name={icon as any} size={20} color={iconColor} />
+              <Text style={styles.modalTitle}>{title}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color="#9ca3af" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalBody}>{children}</ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 export default function DishScreen() {
@@ -230,12 +254,12 @@ export default function DishScreen() {
   const [isLoggingMeal, setIsLoggingMeal] = useState(false);
   const [mealLogged, setMealLogged] = useState(false);
 
-  const [showAllergenDetails, setShowAllergenDetails] = useState(true);
-  const [showFodmapDetails, setShowFodmapDetails] = useState(true);
-  const [showNutritionNumbers, setShowNutritionNumbers] = useState(true);
-  const [showOrganImpactDetails, setShowOrganImpactDetails] = useState(true);
+  // UI state
+  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [showAllergenModal, setShowAllergenModal] = useState(false);
+  const [showFodmapModal, setShowFodmapModal] = useState(false);
+  const [showBodyImpact, setShowBodyImpact] = useState(false);
   const [showOrganDetails, setShowOrganDetails] = useState(false);
-  const [showDietTags, setShowDietTags] = useState(true);
   const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -244,12 +268,9 @@ export default function DishScreen() {
 
   const fetchImageIfNeeded = async (currentImageUrl: string | null | undefined) => {
     if (currentImageUrl) return;
-
     try {
-      console.log('Fetching dish image for:', dishName);
       const imageResult = await fetchDishImage(dishName);
       if (imageResult.ok && imageResult.image) {
-        console.log('Got dish image from:', imageResult.provider);
         setFetchedImageUrl(imageResult.image);
         setImageProvider(imageResult.provider || null);
       }
@@ -271,15 +292,11 @@ export default function DishScreen() {
       setFetchedImageUrl(null);
       setImageProvider(null);
 
-      // Check cache first (skip for photo analysis - always need fresh detection)
       if (!fromPhoto) {
         const cached = await getCachedDish(dishName, placeId);
         if (cached && cached.analysis) {
-          console.log('Using cached dish analysis:', dishName);
           setAnalysis(cached.analysis);
           setIsLoading(false);
-
-          // Check if we need to fetch image (cache might not have it)
           const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
           if (!imageUrl && !cachedImage) {
             fetchImageIfNeeded(null);
@@ -288,8 +305,6 @@ export default function DishScreen() {
         }
       }
 
-      // Fetch fresh analysis using the same pipeline as restaurant page
-      console.log('Calling analyzeDish with:', { dishName, imageUrl, fromPhoto });
       const result = await analyzeDish({
         dishName,
         restaurantName: restaurantName || null,
@@ -298,13 +313,10 @@ export default function DishScreen() {
         imageUrl: imageUrl || null,
         fullRecipe: true,
       });
-      console.log('analyzeDish result:', result.ok, result.dishName);
 
       if (result.ok) {
         setAnalysis(result);
-
         const correctedDishName = result.dishName || dishName;
-
         const cacheImageUrl = imageUrl || result.recipe_image || undefined;
         await cacheDishAnalysis(correctedDishName, result, {
           restaurantName,
@@ -313,7 +325,6 @@ export default function DishScreen() {
           imageUrl: cacheImageUrl,
           source: restaurantName ? 'restaurant' : 'standalone',
         });
-
         if (!imageUrl && !result.recipe_image) {
           fetchImageIfNeeded(null);
         }
@@ -382,15 +393,11 @@ export default function DishScreen() {
         } catch {}
 
         if (result.duplicate) {
-          Alert.alert(
-            'Already Logged',
-            'This dish was already logged today. Your daily totals remain unchanged.',
-            [{ text: 'OK' }]
-          );
+          Alert.alert('Already Logged', 'This dish was already logged today.', [{ text: 'OK' }]);
         } else {
           Alert.alert(
-            'Meal Logged Successfully!',
-            `${analysis.dishName || dishName} has been added to your daily tracker.\n\n${analysis.nutrition_summary?.energyKcal ? `+${Math.round(analysis.nutrition_summary.energyKcal)} calories` : ''}`,
+            'Meal Logged!',
+            `${analysis.dishName || dishName} added to tracker.${analysis.nutrition_summary?.energyKcal ? `\n+${Math.round(analysis.nutrition_summary.energyKcal)} cal` : ''}`,
             [
               { text: 'View Tracker', onPress: () => router.push('/(tabs)/explore' as any) },
               { text: 'OK' },
@@ -398,17 +405,16 @@ export default function DishScreen() {
           );
         }
       } else {
-        console.error('Log meal failed:', result);
-        Alert.alert('Error', result.error || 'Failed to log meal. Please try again.');
+        Alert.alert('Error', result.error || 'Failed to log meal.');
       }
     } catch (e: any) {
-      console.error('Log meal error:', e);
-      Alert.alert('Error', e?.message || 'Something went wrong. Please try again.');
+      Alert.alert('Error', e?.message || 'Something went wrong.');
     } finally {
       setIsLoggingMeal(false);
     }
   };
 
+  // Derived data
   const organLines = viewModel?.organLines || [];
   const organOverallLevel: 'high' | 'medium' | 'low' | null = organLines.length
     ? organLines.some((l: any) => l.severity === 'high')
@@ -418,31 +424,17 @@ export default function DishScreen() {
       : 'low'
     : null;
 
-  const organSummary: string | null = (() => {
-    if (!organLines || organLines.length === 0) return null;
-    const withSentences = organLines.filter(
-      (l: any) => l.sentence && l.sentence.length > 20 && l.severity !== 'neutral'
-    );
-    if (withSentences.length === 0) {
-      return 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
-    }
-    const highMed = withSentences.filter(
-      (l: any) => l.severity === 'high' || l.severity === 'medium'
-    );
-    const low = withSentences.filter((l: any) => l.severity === 'low');
-    const selected = [...highMed, ...low.slice(0, Math.max(0, 5 - highMed.length))].slice(0, 5);
-    const paragraph = selected
-      .map((l: any) => {
-        const s = (l.sentence || '').trim().replace(/\.+$/, '');
-        return s + '.';
-      })
-      .join(' ');
-    return paragraph || 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
-  })();
-
   const activeNutrition = viewModel?.nutrition || null;
-
   const dishImageUrl = imageUrl || analysis?.recipe_image || fetchedImageUrl || null;
+
+  // Description handling
+  const rawDescription = analysis?.likely_recipe?.description || '';
+  const { truncated: truncatedDesc, isTruncated: descIsTruncated } = truncateText(rawDescription, 120);
+
+  // Price and calories for header
+  const price = analysis?.likely_recipe?.price;
+  const calories = activeNutrition?.calories;
+  const calorieRange = analysis?.likely_recipe?.calorie_range;
 
   if (isLoading) {
     return (
@@ -456,7 +448,7 @@ export default function DishScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
+          <Ionicons name="alert-circle-outline" size={64} color={DESIGN.colors.danger} />
           <Text style={styles.errorTitle}>Analysis Failed</Text>
           <Text style={styles.errorMessage}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadDishAnalysis}>
@@ -472,335 +464,213 @@ export default function DishScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backIconButton}>
           <Ionicons name="arrow-back" size={24} color="#ffffff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {dishName}
-        </Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{dishName}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Hero Image */}
         {dishImageUrl && (
           <View style={styles.dishImageContainer}>
             <Image source={{ uri: dishImageUrl }} style={styles.dishImage} />
-            <LinearGradient
-              colors={['transparent', BG]}
-              style={styles.dishImageGradient}
-            />
+            <LinearGradient colors={['transparent', BG]} style={styles.dishImageGradient} />
+            <TouchableOpacity style={styles.favoriteButton}>
+              <Ionicons name="heart-outline" size={22} color="#9ca3af" />
+            </TouchableOpacity>
           </View>
         )}
 
-        <View style={styles.dishCard}>
-          <Text style={styles.dishName}>
-            {analysis?.dishName || dishName}
-          </Text>
+        {/* Main Info Card */}
+        <View style={styles.mainCard}>
+          {/* Dish Name */}
+          <Text style={styles.dishName}>{analysis?.dishName || dishName}</Text>
 
-          {analysis?.spell_correction && (
-            <View style={styles.spellCorrectionBadge}>
-              <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
-              <Text style={styles.spellCorrectionText}>
-                Corrected from "{analysis.spell_correction.original}"
+          {/* Price & Calories Row */}
+          <View style={styles.metaRow}>
+            {price && <Text style={styles.priceText}>${price}</Text>}
+            {price && (calories || calorieRange) && <Text style={styles.metaDot}>•</Text>}
+            {calories ? (
+              <Text style={styles.calorieText}>{Math.round(calories)} Cal</Text>
+            ) : calorieRange ? (
+              <Text style={styles.calorieText}>{calorieRange}</Text>
+            ) : null}
+          </View>
+
+          {/* Description with truncation */}
+          {rawDescription && (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>
+                {showFullDescription ? rawDescription : truncatedDesc}
               </Text>
+              {descIsTruncated && (
+                <TouchableOpacity onPress={() => setShowFullDescription(!showFullDescription)}>
+                  <Text style={styles.seeMoreText}>
+                    {showFullDescription ? 'see less' : 'see more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
+          {/* Restaurant Badge */}
           {restaurantName && (
             <View style={styles.restaurantBadge}>
               <Ionicons name="restaurant-outline" size={14} color={TEAL} />
-              <View style={styles.restaurantBadgeText}>
-                <Text style={styles.restaurantName}>{restaurantName}</Text>
-                {restaurantAddress && (
-                  <Text style={styles.restaurantAddress} numberOfLines={1}>
-                    {restaurantAddress}
-                  </Text>
-                )}
-              </View>
-            </View>
-          )}
-
-          {viewModel?.nutritionInsights?.summary && (
-            <View style={styles.healthInsightCallout}>
-              <View style={styles.healthInsightIcon}>
-                <Ionicons name="bulb-outline" size={16} color="#facc15" />
-              </View>
-              <Text style={styles.healthInsightText}>
-                {viewModel.nutritionInsights.summary}
-              </Text>
+              <Text style={styles.restaurantName}>{restaurantName}</Text>
             </View>
           )}
         </View>
 
         {viewModel && (
           <>
-            {viewModel.plateComponents && viewModel.plateComponents.length > 1 && (
-              <View style={styles.plateComponentsSection}>
-                <Text style={styles.plateComponentsLabel}>Analyze by component:</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.plateComponentPillsRow}
-                >
-                  <TouchableOpacity
-                    onPress={() => setFocusedComponentIndex(null)}
-                    style={[
-                      styles.plateComponentPill,
-                      focusedComponentIndex === null && styles.plateComponentPillActive,
-                    ]}
-                  >
-                    <Ionicons
-                      name="restaurant"
-                      size={14}
-                      color={focusedComponentIndex === null ? '#fff' : '#9ca3af'}
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text
-                      style={[
-                        styles.plateComponentPillText,
-                        focusedComponentIndex === null && styles.plateComponentPillTextActive,
-                      ]}
-                    >
-                      Whole Plate
-                    </Text>
+            {/* Pills Row - Allergens & FODMAP (tappable for details) */}
+            <View style={styles.pillsCard}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
+                {/* Allergen Pills */}
+                {viewModel.allergens.length === 0 ? (
+                  <TouchableOpacity style={[styles.pill, styles.pillSafe]} onPress={() => setShowAllergenModal(true)}>
+                    <Ionicons name="checkmark-circle" size={14} color={DESIGN.colors.safe} />
+                    <Text style={[styles.pillText, { color: DESIGN.colors.safe }]}>No allergens</Text>
                   </TouchableOpacity>
-                  {viewModel.plateComponents.map((comp, idx) => (
+                ) : (
+                  viewModel.allergens.map((allergen, idx) => (
                     <TouchableOpacity
-                      key={`plate-comp-${idx}`}
-                      onPress={() => setFocusedComponentIndex(idx)}
+                      key={`allergen-${idx}`}
                       style={[
-                        styles.plateComponentPill,
-                        focusedComponentIndex === idx && styles.plateComponentPillActive,
+                        styles.pill,
+                        allergen.isUserAllergen ? styles.pillDanger : styles.pillCaution,
                       ]}
+                      onPress={() => setShowAllergenModal(true)}
                     >
+                      {allergen.isUserAllergen && (
+                        <Ionicons name="alert-circle" size={14} color={DESIGN.colors.danger} />
+                      )}
                       <Text
                         style={[
-                          styles.plateComponentPillText,
-                          focusedComponentIndex === idx && styles.plateComponentPillTextActive,
+                          styles.pillText,
+                          { color: allergen.isUserAllergen ? DESIGN.colors.danger : DESIGN.colors.caution },
                         ]}
                       >
-                        {comp.component}
+                        {allergen.name}
+                        {allergen.present === 'maybe' ? '?' : ''}
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  ))
+                )}
+
+                {/* FODMAP Pill */}
+                {viewModel.fodmapLevel && (
+                  <TouchableOpacity
+                    style={[
+                      styles.pill,
+                      viewModel.fodmapLevel === 'high'
+                        ? styles.pillDanger
+                        : viewModel.fodmapLevel === 'medium'
+                        ? styles.pillCaution
+                        : styles.pillSafe,
+                    ]}
+                    onPress={() => setShowFodmapModal(true)}
+                  >
+                    <Text
+                      style={[
+                        styles.pillText,
+                        {
+                          color:
+                            viewModel.fodmapLevel === 'high'
+                              ? DESIGN.colors.danger
+                              : viewModel.fodmapLevel === 'medium'
+                              ? DESIGN.colors.caution
+                              : DESIGN.colors.safe,
+                        },
+                      ]}
+                    >
+                      {viewModel.fodmapLevel === 'high'
+                        ? 'High FODMAP'
+                        : viewModel.fodmapLevel === 'medium'
+                        ? 'Med FODMAP'
+                        : 'Low FODMAP'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+              <Text style={styles.pillsHint}>Tap for details</Text>
+            </View>
+
+            {/* Nutrition Card - Unified Colors */}
+            {activeNutrition && (
+              <View style={styles.nutritionCard}>
+                <View style={styles.macroGrid}>
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>
+                      {activeNutrition.calories != null ? Math.round(activeNutrition.calories) : '--'}
+                    </Text>
+                    <Text style={styles.macroLabel}>KCAL</Text>
+                  </View>
+                  <View style={styles.macroDivider} />
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>
+                      {activeNutrition.protein != null ? Math.round(activeNutrition.protein) : '--'}g
+                    </Text>
+                    <Text style={styles.macroLabel}>PROTEIN</Text>
+                  </View>
+                  <View style={styles.macroDivider} />
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>
+                      {activeNutrition.carbs != null ? Math.round(activeNutrition.carbs) : '--'}g
+                    </Text>
+                    <Text style={styles.macroLabel}>CARBS</Text>
+                  </View>
+                  <View style={styles.macroDivider} />
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>
+                      {activeNutrition.fat != null ? Math.round(activeNutrition.fat) : '--'}g
+                    </Text>
+                    <Text style={styles.macroLabel}>FAT</Text>
+                  </View>
+                </View>
+
+                {/* Secondary nutrition - collapsed by default */}
+                <View style={styles.secondaryNutrition}>
+                  <View style={styles.secondaryItem}>
+                    <Text style={styles.secondaryValue}>
+                      {activeNutrition.fiber != null ? Math.round(activeNutrition.fiber) : '--'}g
+                    </Text>
+                    <Text style={styles.secondaryLabel}>fiber</Text>
+                  </View>
+                  <View style={styles.secondaryItem}>
+                    <Text style={styles.secondaryValue}>
+                      {activeNutrition.sugar != null ? Math.round(activeNutrition.sugar) : '--'}g
+                    </Text>
+                    <Text style={styles.secondaryLabel}>sugar</Text>
+                  </View>
+                  <View style={styles.secondaryItem}>
+                    <Text style={styles.secondaryValue}>
+                      {activeNutrition.sodium != null ? Math.round(activeNutrition.sodium) : '--'}mg
+                    </Text>
+                    <Text style={styles.secondaryLabel}>sodium</Text>
+                  </View>
+                </View>
               </View>
             )}
 
-            <View style={styles.analysisCard}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="warning-outline" size={18} color={COLORS.caution} />
-                <Text style={styles.cardTitle}>Allergens</Text>
-              </View>
-              <View style={styles.pillRow}>
-                {viewModel.allergens.length === 0 && (
-                  <View style={[styles.coloredPill, { backgroundColor: COLORS.safe, borderColor: COLORS.safe }]}>
-                    <Ionicons name="checkmark-circle" size={12} color="#fff" style={{ marginRight: 4 }} />
-                    <Text style={styles.coloredPillText}>None detected</Text>
-                  </View>
-                )}
-                {viewModel.allergens.map((pill, idx) => {
-                  const pillColors = getAllergenPillColors(pill.present || 'yes', pill.isUserAllergen);
-                  return (
-                    <View
-                      key={`${pill.name}-${idx}`}
-                      style={[
-                        styles.coloredPill,
-                        { backgroundColor: pillColors.bg, borderColor: pillColors.border },
-                      ]}
-                    >
-                      {pill.isUserAllergen && (
-                        <Ionicons name="alert-circle" size={12} color={pillColors.text} style={{ marginRight: 3 }} />
-                      )}
-                      <Text style={[styles.coloredPillText, { color: pillColors.text }]}>
-                        {pill.name}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-              <TouchableOpacity onPress={() => setShowAllergenDetails((v) => !v)}>
-                <Text style={styles.showMoreText}>
-                  {showAllergenDetails ? 'Hide details' : 'Show details'}
-                </Text>
-              </TouchableOpacity>
-              {showAllergenDetails && viewModel.allergenSentence && (
-                <Text style={styles.sectionBody}>{viewModel.allergenSentence}</Text>
-              )}
-            </View>
-
-            <View style={styles.analysisCard}>
-              <View style={styles.cardHeader}>
-                <Ionicons
-                  name="leaf-outline"
-                  size={18}
-                  color={
-                    viewModel.fodmapLevel === 'high'
-                      ? COLORS.avoid
-                      : viewModel.fodmapLevel === 'medium'
-                      ? COLORS.caution
-                      : COLORS.safe
-                  }
-                />
-                <Text style={styles.cardTitle}>FODMAP / IBS</Text>
-              </View>
-              {viewModel.fodmapLevel && (
-                <View
-                  style={[
-                    styles.coloredPill,
-                    {
-                      backgroundColor:
-                        viewModel.fodmapLevel === 'high'
-                          ? 'rgba(239, 68, 68, 0.2)'
-                          : viewModel.fodmapLevel === 'medium'
-                          ? 'rgba(245, 158, 11, 0.2)'
-                          : 'rgba(34, 197, 94, 0.2)',
-                      borderColor:
-                        viewModel.fodmapLevel === 'high'
-                          ? COLORS.avoid
-                          : viewModel.fodmapLevel === 'medium'
-                          ? COLORS.caution
-                          : COLORS.safe,
-                      alignSelf: 'flex-start',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.coloredPillText,
-                      {
-                        color:
-                          viewModel.fodmapLevel === 'high'
-                            ? '#fca5a5'
-                            : viewModel.fodmapLevel === 'medium'
-                            ? '#fcd34d'
-                            : '#86efac',
-                      },
-                    ]}
-                  >
-                    {viewModel.fodmapLevel.charAt(0).toUpperCase() + viewModel.fodmapLevel.slice(1)}
-                  </Text>
-                </View>
-              )}
-              <TouchableOpacity onPress={() => setShowFodmapDetails((v) => !v)}>
-                <Text style={styles.showMoreText}>
-                  {showFodmapDetails ? 'Hide details' : 'Show details'}
-                </Text>
-              </TouchableOpacity>
-              {showFodmapDetails && viewModel.fodmapSentence && (
-                <Text style={styles.sectionBody}>{viewModel.fodmapSentence}</Text>
-              )}
-            </View>
-
-            <View style={styles.analysisCard}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="nutrition-outline" size={18} color={COLORS.calories} />
-                <Text style={[styles.cardTitle, { flex: 1 }]}>Nutrition</Text>
-                {activeNutrition?.calories != null && (
-                  <View
-                    style={[
-                      styles.levelBadgeSmall,
-                      {
-                        backgroundColor: 'rgba(249, 115, 22, 0.2)',
-                        borderColor: COLORS.calories,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.levelBadgeSmallText, { color: '#fdba74' }]}>
-                      {Math.round(activeNutrition.calories)} kcal
-                    </Text>
-                  </View>
-                )}
-              </View>
-              {activeNutrition && (
-                <>
-                  <View style={styles.quickStatsRow}>
-                    <View style={styles.quickStatItem}>
-                      <Ionicons name="flame" size={16} color={COLORS.calories} />
-                      <Text style={[styles.quickStatValue, { color: COLORS.calories }]}>
-                        {activeNutrition.calories != null ? Math.round(activeNutrition.calories) : '--'}
-                      </Text>
-                      <Text style={styles.quickStatLabel}>kcal</Text>
-                    </View>
-                    <View style={styles.quickStatDivider} />
-                    <View style={styles.quickStatItem}>
-                      <Text style={[styles.quickStatValue, { color: COLORS.protein }]}>
-                        {activeNutrition.protein != null ? Math.round(activeNutrition.protein) : '--'}g
-                      </Text>
-                      <Text style={styles.quickStatLabel}>protein</Text>
-                    </View>
-                    <View style={styles.quickStatDivider} />
-                    <View style={styles.quickStatItem}>
-                      <Text style={[styles.quickStatValue, { color: COLORS.carbs }]}>
-                        {activeNutrition.carbs != null ? Math.round(activeNutrition.carbs) : '--'}g
-                      </Text>
-                      <Text style={styles.quickStatLabel}>carbs</Text>
-                    </View>
-                    <View style={styles.quickStatDivider} />
-                    <View style={styles.quickStatItem}>
-                      <Text style={[styles.quickStatValue, { color: COLORS.fat }]}>
-                        {activeNutrition.fat != null ? Math.round(activeNutrition.fat) : '--'}g
-                      </Text>
-                      <Text style={styles.quickStatLabel}>fat</Text>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity onPress={() => setShowNutritionNumbers((v) => !v)}>
-                    <Text style={styles.showMoreText}>
-                      {showNutritionNumbers ? 'Hide nutrition numbers' : 'Show nutrition numbers'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {showNutritionNumbers && (
-                    <View style={styles.secondaryStatsRow}>
-                      <View style={styles.secondaryStatItem}>
-                        <Text style={styles.secondaryStatValue}>
-                          {activeNutrition.sugar != null ? Math.round(activeNutrition.sugar) : '--'}g
-                        </Text>
-                        <Text style={styles.secondaryStatLabel}>sugar</Text>
-                      </View>
-                      <View style={styles.secondaryStatDivider} />
-                      <View style={styles.secondaryStatItem}>
-                        <Text style={styles.secondaryStatValue}>
-                          {activeNutrition.fiber != null ? Math.round(activeNutrition.fiber) : '--'}g
-                        </Text>
-                        <Text style={styles.secondaryStatLabel}>fiber</Text>
-                      </View>
-                      <View style={styles.secondaryStatDivider} />
-                      <View style={styles.secondaryStatItem}>
-                        <Text style={styles.secondaryStatValue}>
-                          {activeNutrition.sodium != null ? Math.round(activeNutrition.sodium) : '--'}
-                        </Text>
-                        <Text style={styles.secondaryStatLabel}>sodium (mg)</Text>
-                      </View>
-                    </View>
-                  )}
-                </>
-              )}
-            </View>
-
+            {/* Body Impact - Collapsible */}
             {organOverallLevel && (
-              <View style={styles.analysisCard}>
-                <TouchableOpacity
-                  onPress={() => setShowOrganImpactDetails((v) => !v)}
-                  style={styles.cardHeader}
-                >
-                  <Ionicons
-                    name="body-outline"
-                    size={18}
-                    color={
-                      organOverallLevel === 'high'
-                        ? COLORS.avoid
-                        : organOverallLevel === 'medium'
-                        ? COLORS.caution
-                        : COLORS.safe
-                    }
-                  />
-                  <Text style={[styles.cardTitle, { flex: 1 }]}>Body Impact</Text>
+              <TouchableOpacity
+                style={styles.bodyImpactCard}
+                onPress={() => setShowBodyImpact(!showBodyImpact)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.bodyImpactHeader}>
+                  <Ionicons name="body-outline" size={18} color={DESIGN.colors.textSecondary} />
+                  <Text style={styles.bodyImpactTitle}>Body Impact</Text>
                   <View
                     style={[
-                      styles.levelBadgeSmall,
+                      styles.levelBadge,
                       {
                         backgroundColor:
                           organOverallLevel === 'high'
@@ -808,49 +678,38 @@ export default function DishScreen() {
                             : organOverallLevel === 'medium'
                             ? 'rgba(245, 158, 11, 0.2)'
                             : 'rgba(34, 197, 94, 0.2)',
-                        borderColor:
-                          organOverallLevel === 'high'
-                            ? COLORS.avoid
-                            : organOverallLevel === 'medium'
-                            ? COLORS.caution
-                            : COLORS.safe,
                       },
                     ]}
                   >
                     <Text
                       style={[
-                        styles.levelBadgeSmallText,
+                        styles.levelBadgeText,
                         {
                           color:
                             organOverallLevel === 'high'
-                              ? '#fca5a5'
+                              ? DESIGN.colors.danger
                               : organOverallLevel === 'medium'
-                              ? '#fcd34d'
-                              : '#86efac',
+                              ? DESIGN.colors.caution
+                              : DESIGN.colors.safe,
                         },
                       ]}
                     >
-                      {organOverallLevel === 'low'
-                        ? 'Minor'
-                        : organOverallLevel === 'medium'
-                        ? 'Moderate'
-                        : 'Concern'}
+                      {organOverallLevel === 'low' ? 'Minor' : organOverallLevel === 'medium' ? 'Moderate' : 'Concern'}
                     </Text>
                   </View>
                   <Ionicons
-                    name={showOrganImpactDetails ? 'chevron-up' : 'chevron-down'}
+                    name={showBodyImpact ? 'chevron-up' : 'chevron-down'}
                     size={18}
-                    color="#9ca3af"
-                    style={{ marginLeft: 8 }}
+                    color={DESIGN.colors.textSecondary}
                   />
-                </TouchableOpacity>
+                </View>
 
-                {showOrganImpactDetails && (
-                  <>
+                {showBodyImpact && (
+                  <View style={styles.bodyImpactContent}>
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.organCardsContainer}
+                      contentContainerStyle={styles.organCardsRow}
                     >
                       {viewModel.organLines
                         .filter((line) => line.severity !== 'neutral')
@@ -872,36 +731,23 @@ export default function DishScreen() {
                           const iconName = organIcons[line.organKey] || 'ellipse-outline';
                           const levelColor =
                             line.severity === 'high'
-                              ? COLORS.avoid
+                              ? DESIGN.colors.danger
                               : line.severity === 'medium'
-                              ? COLORS.caution
-                              : COLORS.safe;
-                          const severityLabel =
-                            line.severity === 'low'
-                              ? 'Minor'
-                              : line.severity === 'medium'
-                              ? 'Moderate'
-                              : 'Concern';
+                              ? DESIGN.colors.caution
+                              : DESIGN.colors.safe;
 
                           return (
-                            <View key={line.organKey || idx} style={styles.organCard}>
-                              <View style={[styles.organCardIcon, { backgroundColor: `${levelColor}20` }]}>
-                                <Ionicons name={iconName as any} size={20} color={levelColor} />
-                              </View>
-                              <Text style={styles.organCardLabel}>{line.organLabel}</Text>
-                              <View style={[styles.organCardLevel, { backgroundColor: levelColor }]}>
-                                <Text style={styles.organCardLevelText}>{severityLabel}</Text>
-                              </View>
+                            <View key={line.organKey || idx} style={styles.organMiniCard}>
+                              <Ionicons name={iconName as any} size={18} color={levelColor} />
+                              <Text style={styles.organMiniLabel}>{line.organLabel}</Text>
                             </View>
                           );
                         })}
                     </ScrollView>
 
-                    {organSummary && <Text style={styles.sectionBody}>{organSummary}</Text>}
-
-                    <TouchableOpacity onPress={() => setShowOrganDetails((prev) => !prev)}>
-                      <Text style={styles.showMoreText}>
-                        {showOrganDetails ? 'Hide organ details' : 'Show organ details'}
+                    <TouchableOpacity onPress={() => setShowOrganDetails(!showOrganDetails)}>
+                      <Text style={styles.linkText}>
+                        {showOrganDetails ? 'Hide details' : 'Show details'}
                       </Text>
                     </TouchableOpacity>
 
@@ -917,75 +763,45 @@ export default function DishScreen() {
                             organId: line.organKey || 'organ',
                             label: line.organLabel,
                             level:
-                              line.severity === 'high'
-                                ? 'high'
-                                : line.severity === 'medium'
-                                ? 'medium'
-                                : 'low',
+                              line.severity === 'high' ? 'high' : line.severity === 'medium' ? 'medium' : 'low',
                             score: typeof line.score === 'number' ? line.score : null,
-                            description: line.sentence || 'Organ impact details to follow.',
+                            description: line.sentence || 'Organ impact details.',
                           })) as OrganImpactEntry[]}
                       />
                     )}
-                  </>
-                )}
-              </View>
-            )}
-
-            {viewModel.dietTags && viewModel.dietTags.length > 0 && (
-              <View style={styles.analysisCard}>
-                <TouchableOpacity
-                  onPress={() => setShowDietTags((prev) => !prev)}
-                  style={styles.cardHeader}
-                >
-                  <Ionicons name="leaf" size={18} color={COLORS.safe} />
-                  <Text style={[styles.cardTitle, { flex: 1 }]}>Diet & Lifestyle</Text>
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{viewModel.dietTags.length}</Text>
-                  </View>
-                  <Ionicons
-                    name={showDietTags ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color="#9ca3af"
-                    style={{ marginLeft: 8 }}
-                  />
-                </TouchableOpacity>
-
-                {showDietTags && (
-                  <View style={styles.dietTagsRow}>
-                    {viewModel.dietTags.map((label: any) => (
-                      <View
-                        key={(label as any)?.id || (label as any)?.code || String(label)}
-                        style={styles.dietTagChip}
-                      >
-                        <Text style={styles.dietTagText}>
-                          {(label as any)?.label || (label as any)?.name || String(label)}
-                        </Text>
-                      </View>
-                    ))}
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             )}
 
+            {/* AI Insight - Compact */}
+            {viewModel?.nutritionInsights?.summary && (
+              <View style={styles.insightCard}>
+                <Ionicons name="bulb-outline" size={16} color="#facc15" />
+                <Text style={styles.insightText} numberOfLines={2}>
+                  {viewModel.nutritionInsights.summary}
+                </Text>
+              </View>
+            )}
           </>
         )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Sticky Action Bar */}
       <View style={styles.stickyActionBar}>
         <View style={styles.stickyActionButtons}>
           <TouchableOpacity
             style={[
               styles.stickyPrimaryButton,
               mealLogged && styles.stickyPrimaryButtonLogged,
-              isLoggingMeal && styles.stickyPrimaryButtonDisabled,
+              (isLoggingMeal || !analysis) && styles.stickyPrimaryButtonDisabled,
             ]}
             onPress={handleLogMeal}
             disabled={isLoggingMeal || !analysis}
           >
-            {isLoggingMeal ? (
+            {isLoggingMeal || !analysis ? (
               <ActivityIndicator size="small" color="#020617" style={{ marginRight: 6 }} />
             ) : (
               <Ionicons
@@ -996,7 +812,7 @@ export default function DishScreen() {
               />
             )}
             <Text style={styles.stickyPrimaryButtonText}>
-              {mealLogged ? 'Logged!' : isLoggingMeal ? 'Logging...' : 'Log Meal'}
+              {!analysis ? 'Analyzing...' : mealLogged ? 'Logged!' : isLoggingMeal ? 'Logging...' : 'Log Meal'}
             </Text>
           </TouchableOpacity>
 
@@ -1004,27 +820,16 @@ export default function DishScreen() {
             <TouchableOpacity
               style={styles.stickySecondaryButton}
               onPress={() => {
-                const recipeImageUrl = dishImageUrl || analysis?.recipe_image || '';
                 router.push({
                   pathname: '/likely-recipe',
                   params: {
                     dishName: dishName || 'Unknown Dish',
-                    imageUrl: recipeImageUrl,
-                    likelyRecipe: analysis?.likely_recipe
-                      ? JSON.stringify(analysis.likely_recipe)
-                      : '',
-                    fullRecipe: analysis?.full_recipe
-                      ? JSON.stringify(analysis.full_recipe)
-                      : '',
-                    nutrition: analysis?.nutrition_summary
-                      ? JSON.stringify(analysis.nutrition_summary)
-                      : '',
-                    allergens: analysis?.allergen_flags
-                      ? JSON.stringify(analysis.allergen_flags)
-                      : '[]',
-                    fodmap: analysis?.fodmap_flags
-                      ? JSON.stringify(analysis.fodmap_flags)
-                      : '',
+                    imageUrl: dishImageUrl || '',
+                    likelyRecipe: analysis?.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
+                    fullRecipe: analysis?.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
+                    nutrition: analysis?.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
+                    allergens: analysis?.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
+                    fodmap: analysis?.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
                     nutritionSource: analysis?.nutrition_source || '',
                   },
                 });
@@ -1036,6 +841,72 @@ export default function DishScreen() {
           )}
         </View>
       </View>
+
+      {/* Allergen Detail Modal */}
+      <DetailModal
+        visible={showAllergenModal}
+        onClose={() => setShowAllergenModal(false)}
+        title="Allergen Information"
+        icon="warning-outline"
+        iconColor={DESIGN.colors.caution}
+      >
+        {viewModel?.allergens.length === 0 ? (
+          <Text style={styles.modalBodyText}>No common allergens detected in this dish.</Text>
+        ) : (
+          <>
+            <Text style={styles.modalBodyText}>
+              The following allergens were detected:
+            </Text>
+            {viewModel?.allergens.map((allergen, idx) => (
+              <View key={idx} style={styles.modalListItem}>
+                <View
+                  style={[
+                    styles.modalListDot,
+                    { backgroundColor: allergen.isUserAllergen ? DESIGN.colors.danger : DESIGN.colors.caution },
+                  ]}
+                />
+                <Text style={styles.modalListText}>
+                  <Text style={{ fontWeight: '600' }}>{allergen.name}</Text>
+                  {allergen.present === 'maybe' && ' (possible)'}
+                  {allergen.isUserAllergen && ' - matches your profile'}
+                </Text>
+              </View>
+            ))}
+            {viewModel?.allergenSentence && (
+              <Text style={[styles.modalBodyText, { marginTop: 12 }]}>{viewModel.allergenSentence}</Text>
+            )}
+          </>
+        )}
+      </DetailModal>
+
+      {/* FODMAP Detail Modal */}
+      <DetailModal
+        visible={showFodmapModal}
+        onClose={() => setShowFodmapModal(false)}
+        title="FODMAP / IBS Information"
+        icon="leaf-outline"
+        iconColor={
+          viewModel?.fodmapLevel === 'high'
+            ? DESIGN.colors.danger
+            : viewModel?.fodmapLevel === 'medium'
+            ? DESIGN.colors.caution
+            : DESIGN.colors.safe
+        }
+      >
+        <Text style={styles.modalBodyText}>
+          FODMAP Level:{' '}
+          <Text style={{ fontWeight: '700' }}>
+            {viewModel?.fodmapLevel?.charAt(0).toUpperCase()}
+            {viewModel?.fodmapLevel?.slice(1) || 'Unknown'}
+          </Text>
+        </Text>
+        {viewModel?.fodmapSentence && (
+          <Text style={[styles.modalBodyText, { marginTop: 12 }]}>{viewModel.fodmapSentence}</Text>
+        )}
+        <Text style={[styles.modalBodyText, { marginTop: 12, fontStyle: 'italic' }]}>
+          FODMAPs are fermentable carbohydrates that can trigger digestive symptoms in people with IBS.
+        </Text>
+      </DetailModal>
     </SafeAreaView>
   );
 }
@@ -1051,7 +922,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: DESIGN.colors.card,
   },
   backIconButton: {
     width: 40,
@@ -1062,32 +933,21 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontWeight: '600',
+    color: DESIGN.colors.text,
     textAlign: 'center',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
     paddingBottom: 32,
   },
-  loadingContainer: {
-    flex: 1,
-  },
-  heroSection: {
-    height: 220,
-  },
-  heroGradientBg: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Loading styles
+  loadingContainer: { flex: 1 },
+  heroSection: { height: 220 },
+  heroGradientBg: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  heroIconContainer: { alignItems: 'center', justifyContent: 'center' },
   heroIconGlow: {
     position: 'absolute',
     width: 160,
@@ -1095,30 +955,9 @@ const styles = StyleSheet.create({
     borderRadius: 80,
     backgroundColor: 'rgba(20, 184, 166, 0.15)',
   },
-  heroIcon: {
-    width: 120,
-    height: 120,
-  },
-  loadingContent: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 24,
-  },
-  loadingDishName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  loaderBox: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
+  heroIcon: { width: 120, height: 120 },
+  loadingContent: { flex: 1, alignItems: 'center', paddingHorizontal: 32, paddingTop: 24 },
+  loaderBox: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
   spinnerGlow: {
     position: 'absolute',
     width: 80,
@@ -1126,423 +965,288 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     backgroundColor: 'rgba(20, 184, 166, 0.3)',
   },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
-  },
-  messageText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#e2e8f0',
-  },
+  messageRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  messageText: { fontSize: 16, fontWeight: '500', color: '#e2e8f0' },
   progressBar: {
     width: '100%',
     height: 4,
-    backgroundColor: '#1e293b',
+    backgroundColor: DESIGN.colors.card,
     borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 16,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: TEAL,
-    borderRadius: 2,
-  },
-  elapsedText: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 8,
-  },
-  longWaitText: {
-    fontSize: 14,
-    color: '#f59e0b',
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  errorTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  errorMessage: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    backgroundColor: TEAL,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  retryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#020617',
-  },
-  backButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#9ca3af',
-  },
+  progressFill: { height: '100%', backgroundColor: TEAL, borderRadius: 2 },
+  elapsedText: { fontSize: 14, color: DESIGN.colors.textMuted, marginBottom: 8 },
+  longWaitText: { fontSize: 14, color: DESIGN.colors.caution, fontStyle: 'italic', textAlign: 'center' },
+  // Error styles
+  errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  errorTitle: { fontSize: 22, fontWeight: '700', color: DESIGN.colors.text, marginTop: 16, marginBottom: 8 },
+  errorMessage: { fontSize: 14, color: DESIGN.colors.textSecondary, textAlign: 'center', marginBottom: 24 },
+  retryButton: { backgroundColor: TEAL, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
+  retryButtonText: { fontSize: 16, fontWeight: '600', color: '#020617' },
+  backButton: { paddingHorizontal: 24, paddingVertical: 12 },
+  backButtonText: { fontSize: 16, color: DESIGN.colors.textSecondary },
+  // Image
   dishImageContainer: {
-    height: 200,
-    marginHorizontal: -16,
-    marginBottom: 16,
+    height: 220,
     position: 'relative',
   },
-  dishImage: {
-    width: '100%',
-    height: '100%',
-  },
-  dishImageGradient: {
+  dishImage: { width: '100%', height: '100%' },
+  dishImageGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 100 },
+  favoriteButton: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 80,
+    top: 12,
+    right: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dishCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+  // Main Card
+  mainCard: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   dishName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 12,
+    color: DESIGN.colors.text,
+    marginBottom: 4,
   },
-  spellCorrectionBadge: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
     marginBottom: 12,
-    gap: 6,
   },
-  spellCorrectionText: {
-    fontSize: 12,
-    color: '#86efac',
-    fontStyle: 'italic',
+  priceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: DESIGN.colors.primary,
+  },
+  metaDot: {
+    fontSize: 16,
+    color: DESIGN.colors.textSecondary,
+    marginHorizontal: 8,
+  },
+  calorieText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: DESIGN.colors.textSecondary,
+  },
+  descriptionContainer: {
+    marginBottom: 12,
+  },
+  descriptionText: {
+    fontSize: 15,
+    color: DESIGN.colors.textSecondary,
+    lineHeight: 22,
+  },
+  seeMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: DESIGN.colors.primary,
+    marginTop: 4,
   },
   restaurantBadge: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: 'rgba(20, 184, 166, 0.1)',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    gap: 10,
-  },
-  restaurantBadgeText: {
-    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
   },
   restaurantName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
+    fontWeight: '500',
+    color: DESIGN.colors.text,
   },
-  restaurantAddress: {
-    fontSize: 12,
-    color: '#9ca3af',
+  // Pills Card
+  pillsCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: DESIGN.colors.border,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  pillSafe: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  pillCaution: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  pillDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  pillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pillsHint: {
+    fontSize: 11,
+    color: DESIGN.colors.textMuted,
+    marginTop: 8,
+  },
+  // Nutrition Card
+  nutritionCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: DESIGN.colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+  },
+  macroGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  macroItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  macroValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: DESIGN.colors.text, // Unified white color
+  },
+  macroLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: DESIGN.colors.textSecondary,
     marginTop: 2,
   },
-  healthInsightCallout: {
+  macroDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#374151',
+  },
+  secondaryNutrition: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+  },
+  secondaryItem: {
+    alignItems: 'center',
+  },
+  secondaryValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: DESIGN.colors.textSecondary,
+  },
+  secondaryLabel: {
+    fontSize: 10,
+    color: DESIGN.colors.textMuted,
+    marginTop: 2,
+  },
+  // Body Impact Card
+  bodyImpactCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: DESIGN.colors.card,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: DESIGN.colors.border,
+  },
+  bodyImpactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bodyImpactTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: DESIGN.colors.text,
+  },
+  levelBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  levelBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  bodyImpactContent: {
+    marginTop: 12,
+  },
+  organCardsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  organMiniCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: DESIGN.colors.cardDark,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  organMiniLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: DESIGN.colors.text,
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: DESIGN.colors.primary,
+    marginTop: 8,
+  },
+  // AI Insight Card
+  insightCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(250, 204, 21, 0.1)',
-    borderRadius: 10,
+    gap: 8,
+    backgroundColor: 'rgba(250, 204, 21, 0.08)',
+    borderRadius: 12,
     padding: 12,
-    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(250, 204, 21, 0.2)',
   },
-  healthInsightIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(250, 204, 21, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  healthInsightText: {
+  insightText: {
     flex: 1,
     fontSize: 13,
     color: '#fcd34d',
     lineHeight: 18,
   },
-  analysisCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
-  },
-  coloredPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  coloredPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  showMoreText: {
-    fontSize: 13,
-    color: TEAL,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  sectionBody: {
-    fontSize: 13,
-    color: '#d1d5db',
-    lineHeight: 20,
-    marginTop: 8,
-  },
-  levelBadgeSmall: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  levelBadgeSmallText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  quickStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  quickStatItem: {
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 60,
-  },
-  quickStatValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  quickStatLabel: {
-    fontSize: 9,
-    color: '#9ca3af',
-    marginTop: 2,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-  quickStatDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: '#374151',
-  },
-  secondaryStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-  },
-  secondaryStatItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  secondaryStatValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  secondaryStatLabel: {
-    fontSize: 10,
-    color: '#9ca3af',
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  secondaryStatDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: '#374151',
-  },
-  nutritionGrid: {
-    marginTop: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  nutritionTile: {
-    width: '48%',
-    backgroundColor: '#020819',
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  nutritionLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  nutritionValue: {
-    marginTop: 4,
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  organCardsContainer: {
-    paddingVertical: 8,
-    gap: 10,
-  },
-  organCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    minWidth: 80,
-    marginRight: 10,
-  },
-  organCardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  organCardLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  organCardLevel: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  organCardLevelText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  countBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9ca3af',
-  },
-  dietTagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-  },
-  dietTagChip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  dietTagText: {
-    fontSize: 12,
-    color: '#ffffff',
-  },
-  plateComponentsSection: {
-    marginBottom: 16,
-  },
-  plateComponentsLabel: {
-    fontSize: 13,
-    color: '#9ca3af',
-    marginBottom: 8,
-  },
-  plateComponentPillsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  plateComponentPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    marginRight: 8,
-  },
-  plateComponentPillActive: {
-    backgroundColor: TEAL,
-    borderColor: TEAL,
-  },
-  plateComponentPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#d1d5db',
-  },
-  plateComponentPillTextActive: {
-    color: '#ffffff',
-  },
+  // Sticky Action Bar
   stickyActionBar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0f172a',
+    backgroundColor: DESIGN.colors.cardDark,
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: DESIGN.colors.card,
     paddingHorizontal: 16,
     paddingVertical: 12,
     paddingBottom: 34,
@@ -1561,7 +1265,7 @@ const styles = StyleSheet.create({
     backgroundColor: TEAL,
   },
   stickyPrimaryButtonLogged: {
-    backgroundColor: '#22c55e',
+    backgroundColor: DESIGN.colors.safe,
   },
   stickyPrimaryButtonDisabled: {
     opacity: 0.7,
@@ -1585,5 +1289,67 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: TEAL,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: DESIGN.colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: DESIGN.colors.border,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: DESIGN.colors.text,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBody: {
+    padding: 16,
+  },
+  modalBodyText: {
+    fontSize: 15,
+    color: DESIGN.colors.textSecondary,
+    lineHeight: 22,
+  },
+  modalListItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+  },
+  modalListDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 7,
+  },
+  modalListText: {
+    flex: 1,
+    fontSize: 15,
+    color: DESIGN.colors.text,
+    lineHeight: 22,
   },
 });
