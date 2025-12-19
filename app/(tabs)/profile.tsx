@@ -40,6 +40,11 @@ const ORGAN_PILLS = [
   { code: 'brain', label: 'Brain' },
   { code: 'kidney', label: 'Kidney' },
   { code: 'immune', label: 'Immune' },
+  { code: 'metabolic', label: 'Metabolic' },
+  { code: 'eyes', label: 'Eyes' },
+  { code: 'skin', label: 'Skin' },
+  { code: 'bones', label: 'Bones' },
+  { code: 'thyroid', label: 'Thyroid' },
 ];
 
 // Unit conversion helpers
