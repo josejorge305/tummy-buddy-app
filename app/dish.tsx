@@ -28,6 +28,32 @@ const RestaurantAIIcon = require('../assets/images/REstaurant AI Icon.png');
 const BG = '#020617';
 const TEAL = '#14b8a6';
 
+// Typography System - Semantic font sizing for consistent design
+const TYPE = {
+  // H1 - Dish name, main titles
+  h1: { fontSize: 28, fontWeight: '700' as const, lineHeight: 34 },
+  // H2 - Section headers (Nutrition, Body Impact, etc.)
+  h2: { fontSize: 18, fontWeight: '700' as const, lineHeight: 24 },
+  // H3 - Subsection headers
+  h3: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
+  // Body - Main content text
+  body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
+  // Body small - Secondary content
+  bodySmall: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
+  // Caption - Disclaimers, timestamps
+  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
+  // Label - Nutrition labels, pill text
+  label: { fontSize: 11, fontWeight: '600' as const, lineHeight: 14 },
+  // Link - Interactive text (Show details, etc.)
+  link: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 },
+  // Pill - Chip/badge text
+  pill: { fontSize: 12, fontWeight: '600' as const, lineHeight: 16 },
+  // Stat value - Large numbers
+  statLarge: { fontSize: 20, fontWeight: '700' as const, lineHeight: 24 },
+  // Stat small - Secondary stat values
+  statSmall: { fontSize: 16, fontWeight: '700' as const, lineHeight: 20 },
+};
+
 const COLORS = {
   safe: '#22c55e',
   caution: '#f59e0b',
@@ -41,6 +67,7 @@ const COLORS = {
   cardBorder: 'rgba(255,255,255,0.08)',
 };
 
+// Loading messages for dish analysis
 const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'search-outline', text: 'Finding recipe match...' },
   { icon: 'list-outline', text: 'Identifying ingredients...' },
@@ -51,10 +78,24 @@ const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
 ];
 
-function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?: string }) {
+// Loading messages for photo analysis (different flow with auto-detection)
+const PHOTO_ANALYSIS_LOADING_MESSAGES = [
+  { icon: 'eye-outline', text: 'Recognizing your dish...' },
+  { icon: 'fast-food-outline', text: 'Identifying what you\'re eating...' },
+  { icon: 'search-outline', text: 'Finding recipe match...' },
+  { icon: 'warning-outline', text: 'Scanning for allergens...' },
+  { icon: 'nutrition-outline', text: 'Calculating nutrition...' },
+  { icon: 'fitness-outline', text: 'Analyzing body impact...' },
+  { icon: 'sparkles-outline', text: 'Finalizing analysis...' },
+];
+
+function DishLoadingScreen({ dishName, imageUrl, fromPhoto }: { dishName: string; imageUrl?: string; fromPhoto?: boolean }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
+
+  // Select appropriate loading messages based on analysis source
+  const loadingMessages = fromPhoto ? PHOTO_ANALYSIS_LOADING_MESSAGES : ANALYSIS_LOADING_MESSAGES;
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -79,10 +120,10 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
 
   useEffect(() => {
     const messageTimer = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % ANALYSIS_LOADING_MESSAGES.length);
+      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
     }, 3000);
     return () => clearInterval(messageTimer);
-  }, []);
+  }, [loadingMessages.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -91,7 +132,7 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
     return () => clearInterval(timer);
   }, []);
 
-  const currentMessage = ANALYSIS_LOADING_MESSAGES[messageIndex];
+  const currentMessage = loadingMessages[messageIndex];
   const showLongWait = elapsedSeconds > 15;
 
   return (
@@ -133,7 +174,7 @@ function DishLoadingScreen({ dishName, imageUrl }: { dishName: string; imageUrl?
               styles.progressFill,
               {
                 width: `${Math.min(
-                  ((messageIndex + 1) / ANALYSIS_LOADING_MESSAGES.length) * 100,
+                  ((messageIndex + 1) / loadingMessages.length) * 100,
                   95
                 )}%`,
               },
@@ -179,6 +220,7 @@ export default function DishScreen() {
   const placeId = params.placeId as string | undefined;
   const imageUrl = params.imageUrl as string | undefined;
   const fromCache = params.fromCache === 'true';
+  const fromPhoto = params.fromPhoto === 'true';
 
   const [isLoading, setIsLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalyzeDishResponse | null>(null);
@@ -404,7 +446,7 @@ export default function DishScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <DishLoadingScreen dishName={dishName} imageUrl={imageUrl} />
+        <DishLoadingScreen dishName={dishName} imageUrl={imageUrl} fromPhoto={fromPhoto} />
       </SafeAreaView>
     );
   }
