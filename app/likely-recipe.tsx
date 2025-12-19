@@ -9,14 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import {
   AllergenFlag,
-  AllergenSubstitution,
   FodmapFlag,
   FullRecipeData,
-  FullRecipeIngredientGroup,
   FullRecipeResponse,
   LikelyIngredient,
   LikelyRecipe,
@@ -31,6 +30,23 @@ const TEXT_PRIMARY = '#f8fafc';
 const TEXT_SECONDARY = '#94a3b8';
 const TEXT_MUTED = '#64748b';
 const DIVIDER = '#1e293b';
+
+// Unified Design System (matching dish.tsx)
+const DESIGN = {
+  colors: {
+    primary: '#14b8a6',
+    background: '#020617',
+    card: '#1e293b',
+    cardDark: '#0f172a',
+    text: '#ffffff',
+    textSecondary: '#9ca3af',
+    textMuted: '#64748b',
+    border: 'rgba(255,255,255,0.08)',
+    safe: '#22c55e',
+    caution: '#f59e0b',
+    danger: '#ef4444',
+  },
+};
 
 // Cooking method display
 const getCookingMethodDisplay = (method?: string | null): { icon: string; label: string } => {
@@ -83,15 +99,79 @@ const formatBasicIngredient = (ing: LikelyIngredient): string => {
   return parts.join(' ');
 };
 
+// Truncate text helper (Instagram-style)
+function truncateText(text: string, maxLength: number): { truncated: string; isTruncated: boolean } {
+  if (!text || text.length <= maxLength) {
+    return { truncated: text || '', isTruncated: false };
+  }
+  const truncated = text.substring(0, maxLength).trim();
+  const lastSpace = truncated.lastIndexOf(' ');
+  return {
+    truncated: (lastSpace > maxLength * 0.7 ? truncated.substring(0, lastSpace) : truncated) + '...',
+    isTruncated: true,
+  };
+}
+
+// Collapsible Section Component
+function CollapsibleSection({
+  title,
+  icon,
+  badge,
+  badgeColor,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: string;
+  badge?: string;
+  badgeColor?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.collapsibleSection}>
+      <TouchableOpacity
+        style={styles.collapsibleHeader}
+        onPress={onToggle}
+        activeOpacity={0.7}
+      >
+        <View style={styles.collapsibleLeft}>
+          <Ionicons name={icon as any} size={18} color={TEAL} />
+          <Text style={styles.collapsibleTitle}>{title}</Text>
+          {badge && (
+            <Text style={[styles.collapsibleBadge, badgeColor ? { color: badgeColor } : null]}>
+              {badge}
+            </Text>
+          )}
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={TEXT_MUTED}
+        />
+      </TouchableOpacity>
+      {expanded && <View style={styles.collapsibleContent}>{children}</View>}
+    </View>
+  );
+}
+
 export default function LikelyRecipeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Collapsible state
+  // Collapsible state - Ingredients expanded by default
+  const [ingredientsExpanded, setIngredientsExpanded] = useState(true);
+  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+  const [equipmentExpanded, setEquipmentExpanded] = useState(false);
+  const [chefNotesExpanded, setChefNotesExpanded] = useState(false);
   const [nutritionExpanded, setNutritionExpanded] = useState(false);
   const [allergensExpanded, setAllergensExpanded] = useState(false);
   const [fodmapExpanded, setFodmapExpanded] = useState(false);
-  const [equipmentExpanded, setEquipmentExpanded] = useState(false);
+
+  // Description expansion
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   // Parse the data passed via params
   const dishName = params.dishName as string | undefined;
@@ -113,12 +193,9 @@ export default function LikelyRecipeScreen() {
   try {
     if (likelyRecipeJson) likelyRecipe = JSON.parse(likelyRecipeJson);
     if (fullRecipeJson) fullRecipeResponse = JSON.parse(fullRecipeJson);
-    // The backend returns full_recipe as: { ...likelyRecipe, full_recipe: { cookbook data }, generation_method, model_used }
-    // The actual cookbook data (wine_pairing, storage, chef_notes, etc.) is nested in full_recipe.full_recipe
     if (fullRecipeResponse?.full_recipe) {
       fullRecipe = fullRecipeResponse.full_recipe;
     } else if (fullRecipeResponse?.generation_method === 'llm') {
-      // Fallback: if structure is flat (has generation_method but no nested full_recipe), use the response directly
       fullRecipe = fullRecipeResponse as unknown as FullRecipeData;
     }
     if (nutritionJson) nutrition = JSON.parse(nutritionJson);
@@ -173,10 +250,9 @@ export default function LikelyRecipeScreen() {
   if (isVisionEnhanced) sourceParts.push('Vision');
   const sourceDisplay = sourceParts.length > 0 ? sourceParts.join(' + ') : null;
 
-  // Recipe metadata (from full recipe if available)
+  // Recipe metadata
   const recipeTitle = fullRecipe?.title || dishName || likelyRecipe?.title || 'Recipe';
   const recipeIntro = fullRecipe?.introduction || fullRecipe?.description;
-  const recipeYield = fullRecipe?.yield;
   const difficulty = fullRecipe?.difficulty;
   const prepTime = fullRecipe?.prep_time_minutes;
   const cookTime = fullRecipe?.cook_time_minutes;
@@ -190,6 +266,20 @@ export default function LikelyRecipeScreen() {
   const winePairing = fullRecipe?.wine_pairing;
   const storage = fullRecipe?.storage;
   const makeAhead = fullRecipe?.make_ahead;
+
+  // Description truncation
+  const { truncated: truncatedDesc, isTruncated: descIsTruncated } = truncateText(recipeIntro || '', 150);
+
+  // Count items for badges
+  const ingredientCount = hasFullRecipe && ingredientGroups.length > 0
+    ? ingredientGroups.reduce((acc, g) => acc + (g.ingredients?.length || 0), 0)
+    : hasFullRecipe && fullRecipe?.ingredients
+    ? fullRecipe.ingredients.length
+    : likelyRecipe?.ingredients?.length || 0;
+
+  const instructionCount = hasFullRecipe
+    ? fullRecipe?.instructions?.length || 0
+    : likelyRecipe?.instructions?.length || 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -213,77 +303,92 @@ export default function LikelyRecipeScreen() {
           </View>
         )}
 
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <Text style={styles.dishName}>{recipeTitle}</Text>
-
-          {recipeIntro && (
-            <Text style={styles.recipeDescription}>{recipeIntro}</Text>
-          )}
-
-          {/* Yield Display */}
-          {recipeYield && (
-            <Text style={styles.yieldText}>{recipeYield}</Text>
-          )}
-
-          {/* Metadata Row */}
-          <View style={styles.metaRow}>
+        {/* Recipe Meta - Immediately under hero */}
+        <View style={styles.metaSection}>
+          {/* Cooking Method Row */}
+          <View style={styles.cookingMethodRow}>
             <Ionicons name={cookingMethod.icon as any} size={16} color={ORANGE} />
-            <Text style={styles.cookingMethod}>{cookingMethod.label}</Text>
+            <Text style={styles.cookingMethodText}>{cookingMethod.label}</Text>
             {likelyRecipe?.cooking_method_confidence && (
-              <Text style={styles.confidence}>
+              <Text style={styles.confidenceText}>
                 {Math.round(likelyRecipe.cooking_method_confidence * 100)}%
               </Text>
             )}
           </View>
 
-          {/* Time & Difficulty Row */}
-          {(difficulty || totalTime || servings) && (
-            <View style={styles.recipeMetaRow}>
-              {difficulty && (
-                <View style={styles.metaBadge}>
-                  <Text style={[styles.metaBadgeText, { color: getDifficultyColor(difficulty) }]}>
-                    {difficulty}
-                  </Text>
-                </View>
-              )}
-              {totalTime && (
-                <View style={styles.metaBadge}>
-                  <Ionicons name="time-outline" size={12} color={TEXT_SECONDARY} />
-                  <Text style={styles.metaBadgeText}>{totalTime} min</Text>
-                </View>
-              )}
-              {servings && (
-                <View style={styles.metaBadge}>
-                  <Ionicons name="people-outline" size={12} color={TEXT_SECONDARY} />
-                  <Text style={styles.metaBadgeText}>{servings} servings</Text>
-                </View>
-              )}
-            </View>
-          )}
+          {/* Badges Row */}
+          <View style={styles.badgesRow}>
+            {difficulty && (
+              <View style={styles.metaBadge}>
+                <Text style={[styles.metaBadgeText, { color: getDifficultyColor(difficulty) }]}>
+                  {difficulty}
+                </Text>
+              </View>
+            )}
+            {totalTime && (
+              <View style={styles.metaBadge}>
+                <Ionicons name="time-outline" size={12} color={TEXT_SECONDARY} />
+                <Text style={styles.metaBadgeText}>{totalTime} min</Text>
+              </View>
+            )}
+            {servings && (
+              <View style={styles.metaBadge}>
+                <Ionicons name="people-outline" size={12} color={TEXT_SECONDARY} />
+                <Text style={styles.metaBadgeText}>{servings} servings</Text>
+              </View>
+            )}
+          </View>
 
           {/* Prep/Cook breakdown */}
           {(prepTime || cookTime) && (
-            <View style={styles.timeBreakdown}>
-              {prepTime && <Text style={styles.timeBreakdownText}>Prep: {prepTime} min</Text>}
-              {prepTime && cookTime && <Text style={styles.timeBreakdownText}> | </Text>}
-              {cookTime && <Text style={styles.timeBreakdownText}>Cook: {cookTime} min</Text>}
-            </View>
+            <Text style={styles.timeBreakdownText}>
+              {prepTime && `Prep: ${prepTime} min`}
+              {prepTime && cookTime && ' | '}
+              {cookTime && `Cook: ${cookTime} min`}
+            </Text>
           )}
 
+          {/* Source */}
           {sourceDisplay && (
             <Text style={styles.sourceText}>Source: {sourceDisplay}</Text>
           )}
         </View>
 
+        {/* Title Section */}
+        <View style={styles.titleSection}>
+          <Text style={styles.dishName}>{recipeTitle}</Text>
+
+          {/* Description with see more */}
+          {recipeIntro && (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>
+                {showFullDescription ? recipeIntro : truncatedDesc}
+              </Text>
+              {descIsTruncated && (
+                <TouchableOpacity onPress={() => setShowFullDescription(!showFullDescription)}>
+                  <Text style={styles.seeMoreText}>
+                    {showFullDescription ? 'see less' : 'see more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+
         <View style={styles.divider} />
 
-        {/* INGREDIENTS SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>INGREDIENTS</Text>
+        {/* COLLAPSIBLE SECTIONS */}
+
+        {/* Ingredients - Expanded by default */}
+        <CollapsibleSection
+          title="Ingredients"
+          icon="list-outline"
+          badge={`${ingredientCount} items`}
+          expanded={ingredientsExpanded}
+          onToggle={() => setIngredientsExpanded(!ingredientsExpanded)}
+        >
           <View style={styles.ingredientsList}>
             {hasFullRecipe && ingredientGroups.length > 0 ? (
-              // Use grouped ingredients (e.g., "For the crust:", "For the filling:")
               ingredientGroups.map((group, groupIdx) => (
                 <View key={groupIdx} style={styles.ingredientGroup}>
                   {group.group_name && (
@@ -304,7 +409,6 @@ export default function LikelyRecipeScreen() {
                 </View>
               ))
             ) : hasFullRecipe && fullRecipe?.ingredients ? (
-              // Use flat ingredients list
               fullRecipe.ingredients.map((ing, idx) => (
                 <View key={idx} style={styles.ingredientItem}>
                   <Text style={styles.bullet}>•</Text>
@@ -318,7 +422,6 @@ export default function LikelyRecipeScreen() {
                 </View>
               ))
             ) : likelyRecipe?.ingredients && likelyRecipe.ingredients.length > 0 ? (
-              // Fallback to basic likely recipe ingredients
               likelyRecipe.ingredients.map((ing, idx) => (
                 <View key={idx} style={styles.ingredientItem}>
                   <Text style={styles.bullet}>•</Text>
@@ -329,49 +432,18 @@ export default function LikelyRecipeScreen() {
               <Text style={styles.emptyText}>No ingredients available</Text>
             )}
           </View>
-        </View>
+        </CollapsibleSection>
 
-        {/* EQUIPMENT SECTION (collapsible) */}
-        {equipment.length > 0 && (
-          <>
-            <Pressable
-              style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
-              onPress={() => setEquipmentExpanded(!equipmentExpanded)}
-            >
-              <View style={styles.collapsibleLeft}>
-                <Ionicons name="construct-outline" size={18} color={TEXT_SECONDARY} />
-                <Text style={styles.collapsibleTitle}>Equipment</Text>
-                <Text style={styles.collapsiblePreview}>
-                  {equipment.length} item{equipment.length !== 1 ? 's' : ''}
-                </Text>
-              </View>
-              <Ionicons
-                name={equipmentExpanded ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={TEXT_MUTED}
-              />
-            </Pressable>
-            {equipmentExpanded && (
-              <View style={styles.collapsibleContent}>
-                <View style={styles.equipmentList}>
-                  {equipment.map((item, idx) => (
-                    <View key={idx} style={styles.equipmentItem}>
-                      <Ionicons name="checkmark-circle" size={14} color={TEAL} />
-                      <Text style={styles.equipmentText}>{item}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-          </>
-        )}
-
-        {/* INSTRUCTIONS SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>INSTRUCTIONS</Text>
+        {/* Instructions - Collapsed by default */}
+        <CollapsibleSection
+          title="Instructions"
+          icon="checkbox-outline"
+          badge={`${instructionCount} steps`}
+          expanded={instructionsExpanded}
+          onToggle={() => setInstructionsExpanded(!instructionsExpanded)}
+        >
           <View style={styles.instructionsList}>
             {hasFullRecipe && fullRecipe?.instructions ? (
-              // Enhanced cookbook-style instructions
               fullRecipe.instructions.map((inst, idx) => (
                 <View key={idx} style={styles.enhancedInstructionItem}>
                   <View style={styles.instructionHeader}>
@@ -409,7 +481,6 @@ export default function LikelyRecipeScreen() {
                 </View>
               ))
             ) : likelyRecipe?.instructions && likelyRecipe.instructions.length > 0 ? (
-              // Basic instructions fallback
               likelyRecipe.instructions.map((inst, idx) => (
                 <View key={idx} style={styles.instructionItem}>
                   <Text style={styles.stepNumber}>{idx + 1}.</Text>
@@ -420,12 +491,37 @@ export default function LikelyRecipeScreen() {
               <Text style={styles.emptyText}>No instructions available</Text>
             )}
           </View>
-        </View>
+        </CollapsibleSection>
 
-        {/* CHEF'S NOTES SECTION */}
+        {/* Equipment - Collapsed by default */}
+        {equipment.length > 0 && (
+          <CollapsibleSection
+            title="Equipment"
+            icon="construct-outline"
+            badge={`${equipment.length} items`}
+            expanded={equipmentExpanded}
+            onToggle={() => setEquipmentExpanded(!equipmentExpanded)}
+          >
+            <View style={styles.equipmentList}>
+              {equipment.map((item, idx) => (
+                <View key={idx} style={styles.equipmentItem}>
+                  <Ionicons name="checkmark-circle" size={14} color={TEAL} />
+                  <Text style={styles.equipmentText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </CollapsibleSection>
+        )}
+
+        {/* Chef Notes - Collapsed by default */}
         {chefNotes.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>CHEF'S NOTES</Text>
+          <CollapsibleSection
+            title="Chef's Notes"
+            icon="bulb-outline"
+            badge={`${chefNotes.length} tips`}
+            expanded={chefNotesExpanded}
+            onToggle={() => setChefNotesExpanded(!chefNotesExpanded)}
+          >
             <View style={styles.notesContainer}>
               {chefNotes.map((note, idx) => (
                 <View key={idx} style={styles.noteItem}>
@@ -434,19 +530,24 @@ export default function LikelyRecipeScreen() {
                 </View>
               ))}
             </View>
-          </View>
+          </CollapsibleSection>
         )}
 
         {/* Legacy notes from likely_recipe */}
         {!hasFullRecipe && likelyRecipe?.notes && likelyRecipe.notes.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>NOTES</Text>
+          <CollapsibleSection
+            title="Notes"
+            icon="document-text-outline"
+            badge={`${likelyRecipe.notes.length}`}
+            expanded={chefNotesExpanded}
+            onToggle={() => setChefNotesExpanded(!chefNotesExpanded)}
+          >
             <View style={styles.notesContainer}>
               {likelyRecipe.notes.map((note, idx) => (
                 <Text key={idx} style={styles.legacyNoteText}>{note}</Text>
               ))}
             </View>
-          </View>
+          </CollapsibleSection>
         )}
 
         {/* ALLERGEN SUBSTITUTIONS */}
@@ -515,57 +616,32 @@ export default function LikelyRecipeScreen() {
 
         {/* COLLAPSIBLE: Nutrition */}
         {nutrition && (
-          <Pressable
-            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
-            onPress={() => setNutritionExpanded(!nutritionExpanded)}
+          <CollapsibleSection
+            title="Nutrition"
+            icon="flame-outline"
+            badge={nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : undefined}
+            expanded={nutritionExpanded}
+            onToggle={() => setNutritionExpanded(!nutritionExpanded)}
           >
-            <View style={styles.collapsibleLeft}>
-              <Ionicons name="flame-outline" size={18} color={TEXT_SECONDARY} />
-              <Text style={styles.collapsibleTitle}>Nutrition</Text>
-              <Text style={styles.collapsiblePreview}>
-                {nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : ''}
-              </Text>
-            </View>
-            <Ionicons
-              name={nutritionExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={TEXT_MUTED}
-            />
-          </Pressable>
-        )}
-        {nutritionExpanded && nutrition && (
-          <View style={styles.collapsibleContent}>
             <View style={styles.nutritionRow}>
               <NutritionItem label="Calories" value={nutrition.energyKcal} unit="kcal" />
               <NutritionItem label="Protein" value={nutrition.protein_g} unit="g" />
               <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
-          </View>
+          </CollapsibleSection>
         )}
 
         {/* COLLAPSIBLE: Allergens */}
         {presentAllergens.length > 0 && (
-          <Pressable
-            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
-            onPress={() => setAllergensExpanded(!allergensExpanded)}
+          <CollapsibleSection
+            title="Allergens"
+            icon="warning-outline"
+            badge={`${presentAllergens.length} warning${presentAllergens.length !== 1 ? 's' : ''}`}
+            badgeColor="#f59e0b"
+            expanded={allergensExpanded}
+            onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
-            <View style={styles.collapsibleLeft}>
-              <Ionicons name="warning-outline" size={18} color="#f59e0b" />
-              <Text style={styles.collapsibleTitle}>Allergens</Text>
-              <Text style={[styles.collapsiblePreview, { color: '#f59e0b' }]}>
-                {presentAllergens.length} warning{presentAllergens.length !== 1 ? 's' : ''}
-              </Text>
-            </View>
-            <Ionicons
-              name={allergensExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={TEXT_MUTED}
-            />
-          </Pressable>
-        )}
-        {allergensExpanded && presentAllergens.length > 0 && (
-          <View style={styles.collapsibleContent}>
             {presentAllergens.map((allergen, idx) => (
               <View key={idx} style={styles.allergenRow}>
                 <View
@@ -582,42 +658,21 @@ export default function LikelyRecipeScreen() {
                 )}
               </View>
             ))}
-          </View>
+          </CollapsibleSection>
         )}
 
         {/* COLLAPSIBLE: FODMAP */}
         {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
-          <Pressable
-            style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.7 }]}
-            onPress={() => setFodmapExpanded(!fodmapExpanded)}
+          <CollapsibleSection
+            title="FODMAP"
+            icon="leaf-outline"
+            badge={fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
+            badgeColor={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
+            expanded={fodmapExpanded}
+            onToggle={() => setFodmapExpanded(!fodmapExpanded)}
           >
-            <View style={styles.collapsibleLeft}>
-              <Ionicons
-                name="leaf-outline"
-                size={18}
-                color={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
-              />
-              <Text style={styles.collapsibleTitle}>FODMAP</Text>
-              <Text
-                style={[
-                  styles.collapsiblePreview,
-                  { color: fodmap.level === 'high' ? '#ef4444' : '#f59e0b' },
-                ]}
-              >
-                {fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
-              </Text>
-            </View>
-            <Ionicons
-              name={fodmapExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={TEXT_MUTED}
-            />
-          </Pressable>
-        )}
-        {fodmapExpanded && fodmap && (
-          <View style={styles.collapsibleContent}>
             {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
-          </View>
+          </CollapsibleSection>
         )}
 
         {/* Data Attribution Section */}
@@ -706,7 +761,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 220,
     borderRadius: 16,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   heroPlaceholder: {
     width: '100%',
@@ -715,40 +770,28 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  titleSection: {
-    marginBottom: 20,
+  // Meta section - immediately under hero
+  metaSection: {
+    marginBottom: 16,
   },
-  dishName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: TEXT_PRIMARY,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  recipeDescription: {
-    fontSize: 15,
-    color: TEXT_SECONDARY,
-    lineHeight: 24,
-    marginBottom: 14,
-  },
-  metaRow: {
+  cookingMethodRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 8,
   },
-  cookingMethod: {
+  cookingMethodText: {
     fontSize: 15,
     fontWeight: '600',
     color: TEXT_PRIMARY,
   },
-  confidence: {
+  confidenceText: {
     fontSize: 13,
     color: TEXT_MUTED,
   },
-  recipeMetaRow: {
+  badgesRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
@@ -768,34 +811,75 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TEXT_SECONDARY,
   },
-  timeBreakdown: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
   timeBreakdownText: {
     fontSize: 12,
     color: TEXT_MUTED,
+    marginBottom: 4,
   },
   sourceText: {
     fontSize: 13,
     color: TEXT_MUTED,
+  },
+  // Title section
+  titleSection: {
+    marginBottom: 16,
+  },
+  dishName: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  descriptionContainer: {
+    marginBottom: 4,
+  },
+  descriptionText: {
+    fontSize: 15,
+    color: TEXT_SECONDARY,
+    lineHeight: 22,
+  },
+  seeMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: TEAL,
     marginTop: 4,
   },
   divider: {
     height: 1,
     backgroundColor: DIVIDER,
-    marginBottom: 24,
+    marginBottom: 8,
   },
-  section: {
-    marginBottom: 32,
+  // Collapsible sections
+  collapsibleSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: DIVIDER,
   },
-  sectionTitle: {
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+  },
+  collapsibleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  collapsibleTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TEXT_PRIMARY,
+  },
+  collapsibleBadge: {
     fontSize: 13,
-    fontWeight: '700',
     color: TEXT_MUTED,
-    letterSpacing: 1.5,
-    marginBottom: 16,
+    marginLeft: 4,
   },
+  collapsibleContent: {
+    paddingBottom: 16,
+  },
+  // Ingredients
   ingredientsList: {
     gap: 10,
   },
@@ -821,12 +905,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TEAL,
   },
-  ingredientPrepNote: {
-    fontSize: 13,
-    color: TEXT_MUTED,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
   ingredientPrepInline: {
     fontSize: 14,
     color: TEXT_MUTED,
@@ -843,19 +921,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  yieldText: {
-    fontSize: 14,
-    color: TEXT_SECONDARY,
-    marginBottom: 8,
-    fontWeight: '500',
-  },
   emptyText: {
     fontSize: 14,
     color: TEXT_MUTED,
     fontStyle: 'italic',
   },
+  // Instructions
   instructionsList: {
-    gap: 20,
+    gap: 16,
   },
   instructionItem: {
     flexDirection: 'row',
@@ -968,12 +1041,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     flex: 1,
   },
+  // Equipment
+  equipmentList: {
+    gap: 8,
+  },
+  equipmentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  equipmentText: {
+    fontSize: 14,
+    color: TEXT_PRIMARY,
+  },
+  // Notes
   notesContainer: {
-    backgroundColor: CARD_BG,
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: TEAL,
     gap: 12,
   },
   noteItem: {
@@ -996,6 +1078,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontStyle: 'italic',
   },
+  // Special cards
   pairingCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1003,7 +1086,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(168, 85, 247, 0.1)',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginTop: 16,
     borderLeftWidth: 3,
     borderLeftColor: '#a855f7',
   },
@@ -1030,7 +1113,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 189, 248, 0.1)',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginTop: 12,
     borderLeftWidth: 3,
     borderLeftColor: '#38bdf8',
   },
@@ -1057,7 +1140,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginTop: 16,
     borderLeftWidth: 3,
     borderLeftColor: '#22c55e',
   },
@@ -1076,6 +1159,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TEXT_PRIMARY,
     lineHeight: 20,
+  },
+  // Section styles
+  section: {
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TEXT_MUTED,
+    letterSpacing: 1.5,
+    marginBottom: 16,
   },
   substitutionsContainer: {
     gap: 16,
@@ -1131,48 +1226,10 @@ const styles = StyleSheet.create({
   collapsibleDivider: {
     height: 1,
     backgroundColor: DIVIDER,
-    marginTop: 8,
+    marginTop: 16,
     marginBottom: 8,
   },
-  collapsibleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: DIVIDER,
-  },
-  collapsibleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  collapsibleTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
-  },
-  collapsiblePreview: {
-    fontSize: 13,
-    color: TEXT_MUTED,
-    marginLeft: 4,
-  },
-  collapsibleContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-  },
-  equipmentList: {
-    gap: 8,
-  },
-  equipmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  equipmentText: {
-    fontSize: 14,
-    color: TEXT_PRIMARY,
-  },
+  // Nutrition
   nutritionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1196,6 +1253,7 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     marginTop: 4,
   },
+  // Allergens
   allergenRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1215,11 +1273,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_MUTED,
   },
+  // FODMAP
   fodmapReason: {
     fontSize: 14,
     color: TEXT_SECONDARY,
     lineHeight: 22,
   },
+  // Attribution
   attributionSection: {
     marginTop: 24,
     paddingTop: 20,
