@@ -16,6 +16,7 @@
       }
     },
     "android": {
+      "package": "com.josejorge305.tummybuddyapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
