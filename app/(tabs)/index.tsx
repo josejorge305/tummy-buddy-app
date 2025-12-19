@@ -1658,6 +1658,7 @@ const styles = StyleSheet.create({
     color: '#fefefe',
   },
   upgradeCard: {
+    marginHorizontal: 16,
     marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -1697,8 +1698,10 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 10,
     marginBottom: 4,
+    paddingHorizontal: 16,
   },
   section: {
+    marginHorizontal: 16,
     marginBottom: 4,
   },
   sectionTitle: {

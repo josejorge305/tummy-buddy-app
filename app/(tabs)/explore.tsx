@@ -170,32 +170,32 @@ export default function TummyTracker() {
   const userTargets = targets || todayTracker?.targets;
 
   const caloriesConsumed = summary?.total_calories || 0;
-  const caloriesTarget = userTargets?.calories_target || 2000;
+  const caloriesTarget = userTargets?.calories || 2000;
   const caloriesPercent = Math.round((caloriesConsumed / caloriesTarget) * 100);
 
   const proteinConsumed = summary?.total_protein_g || 0;
-  const proteinTarget = userTargets?.protein_target_g || 100;
+  const proteinTarget = userTargets?.protein_g || 100;
 
   const carbsConsumed = summary?.total_carbs_g || 0;
-  const carbsTarget = userTargets?.carbs_target_g || 250;
+  const carbsTarget = userTargets?.carbs_g || 250;
 
   const fatConsumed = summary?.total_fat_g || 0;
-  const fatTarget = userTargets?.fat_target_g || 65;
+  const fatTarget = userTargets?.fat_g || 65;
 
   const fiberConsumed = summary?.total_fiber_g || 0;
-  const fiberTarget = userTargets?.fiber_target_g || 25;
+  const fiberTarget = userTargets?.fiber_g || 25;
 
   const sodiumConsumed = summary?.total_sodium_mg || 0;
-  const sodiumLimit = userTargets?.sodium_limit_mg || 2300;
+  const sodiumLimit = userTargets?.sodium_mg || 2300;
 
   // Weekly chart data
   const weeklyChartData: WeeklyPoint[] = (weeklyData?.summaries || []).map((s) => {
-    const dayLabel = new Date(s.summary_date).toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
+    const dayLabel = new Date(s.date).toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
     // Calculate a "tummy score" based on how well they hit targets
-    const score = s.meals_logged > 0
-      ? Math.round(Math.min(100, (s.total_calories / (userTargets?.calories_target || 2000)) * 100))
+    const score = s.meal_count > 0
+      ? Math.round(Math.min(100, (s.total_calories / (userTargets?.calories || 2000)) * 100))
       : 0;
-    return { label: dayLabel, score, date: s.summary_date };
+    return { label: dayLabel, score, date: s.date };
   });
 
   // Fill in missing days with zeros
@@ -204,7 +204,7 @@ export default function TummyTracker() {
   }
 
   // Organ impacts from today
-  const organImpacts = summary?.organ_impacts_net || {};
+  const organImpacts = summary?.organ_scores || {};
   const topOrgans = Object.entries(organImpacts)
     .sort(([, a], [, b]) => Math.abs(b as number) - Math.abs(a as number))
     .slice(0, 3)
@@ -214,13 +214,13 @@ export default function TummyTracker() {
     }));
 
   // Calculate streak (simplified - count consecutive days with meals)
-  const streak = (weeklyData?.summaries || []).filter(s => s.meals_logged > 0).length;
+  const streak = (weeklyData?.summaries || []).filter(s => s.meal_count > 0).length;
 
   // Weekly averages
   const weeklyAvg = weeklyData?.weeklyAverages;
 
-  const hasProfile = profile && profile.current_weight_kg;
-  const hasData = meals.length > 0 || (summary && summary.meals_logged > 0);
+  const hasProfile = profile && profile.weight_kg;
+  const hasData = meals.length > 0 || (summary && summary.meal_count > 0);
 
   return (
     <SafeAreaView style={styles.container}>
