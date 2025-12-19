@@ -389,8 +389,8 @@ export default function DishScreen() {
           );
         } else {
           Alert.alert(
-            'Meal Logged!',
-            `${analysis.dishName || dishName} has been added to your tracker.`,
+            'Meal Logged Successfully!',
+            `${analysis.dishName || dishName} has been added to your daily tracker.\n\n${analysis.nutrition_summary?.energyKcal ? `+${Math.round(analysis.nutrition_summary.energyKcal)} calories` : ''}`,
             [
               { text: 'View Tracker', onPress: () => router.push('/(tabs)/explore' as any) },
               { text: 'OK' },
@@ -398,11 +398,12 @@ export default function DishScreen() {
           );
         }
       } else {
-        Alert.alert('Error', 'Failed to log meal. Please try again.');
+        console.error('Log meal failed:', result);
+        Alert.alert('Error', result.error || 'Failed to log meal. Please try again.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Log meal error:', e);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Alert.alert('Error', e?.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoggingMeal(false);
     }

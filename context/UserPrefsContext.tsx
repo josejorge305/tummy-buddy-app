@@ -106,7 +106,7 @@ interface UserPrefsContextValue {
     organ_impacts?: Record<string, number>;
     risk_flags?: string[];
     full_analysis?: any;
-  }) => Promise<{ success: boolean; duplicate?: boolean }>;
+  }) => Promise<{ success: boolean; duplicate?: boolean; error?: string }>;
   deleteMealAction: (mealId: number) => Promise<boolean>;
 
   // Refresh all data
@@ -337,21 +337,28 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     organ_impacts?: Record<string, number>;
     risk_flags?: string[];
     full_analysis?: any;
-  }): Promise<{ success: boolean; duplicate?: boolean }> => {
-    if (!userId) return { success: false };
+  }): Promise<{ success: boolean; duplicate?: boolean; error?: string }> => {
+    if (!userId) {
+      console.error('logMealAction: No userId available');
+      return { success: false, error: 'No user ID' };
+    }
+
+    console.log('logMealAction: Logging meal for user', userId, mealData.dish_name);
 
     try {
       const result = await logMeal(userId, mealData);
+      console.log('logMealAction: API result', result);
 
       if (result.ok) {
         // Refresh tracker data
         await loadDailyTracker();
         return { success: true, duplicate: result.duplicate };
       }
-      return { success: false };
-    } catch (e) {
+      console.error('logMealAction: API returned not ok', result.error);
+      return { success: false, error: result.error };
+    } catch (e: any) {
       console.error('logMealAction error:', e);
-      return { success: false };
+      return { success: false, error: e?.message || 'Unknown error' };
     }
   }, [userId, loadDailyTracker]);
 
