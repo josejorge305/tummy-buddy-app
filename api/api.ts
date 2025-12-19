@@ -1218,7 +1218,7 @@ interface AllergenDefinitionsResponse {
  * Get user profile, targets, allergens, and organ priorities
  */
 export async function getUserProfile(userId: string): Promise<UserProfileResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/profile`;
+  const url = `${API_BASE_URL}/api/profile?user_id=${encodeURIComponent(userId)}`;
   console.log('getUserProfile calling:', url);
 
   try {
@@ -1248,7 +1248,7 @@ export async function updateUserProfile(
   userId: string,
   profileData: Partial<UserProfile>
 ): Promise<UpdateProfileResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/profile`;
+  const url = `${API_BASE_URL}/api/profile`;
   console.log('updateUserProfile calling:', url, profileData);
 
   try {
@@ -1258,7 +1258,7 @@ export async function updateUserProfile(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify(profileData),
+      body: JSON.stringify({ ...profileData, user_id: userId }),
     });
 
     const data = await res.json();
@@ -1282,7 +1282,7 @@ export async function setUserAllergens(
   userId: string,
   allergens: Array<{ allergen_code: string; severity: 'avoid' | 'limit' | 'monitor' }>
 ): Promise<AllergensResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/allergens`;
+  const url = `${API_BASE_URL}/api/profile/allergens`;
   console.log('setUserAllergens calling:', url, allergens);
 
   try {
@@ -1292,7 +1292,7 @@ export async function setUserAllergens(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({ allergens }),
+      body: JSON.stringify({ user_id: userId, allergens }),
     });
 
     const data = await res.json();
@@ -1316,7 +1316,7 @@ export async function setUserOrganPriorities(
   userId: string,
   organs: Array<{ organ_code: string; priority_rank?: number; is_starred?: boolean }>
 ): Promise<OrganPrioritiesResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/organs`;
+  const url = `${API_BASE_URL}/api/profile/organs`;
   console.log('setUserOrganPriorities calling:', url, organs);
 
   try {
@@ -1326,7 +1326,7 @@ export async function setUserOrganPriorities(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({ organs }),
+      body: JSON.stringify({ user_id: userId, organs }),
     });
 
     const data = await res.json();
@@ -1350,7 +1350,7 @@ export async function addWeightEntry(
   userId: string,
   weightKg: number
 ): Promise<WeightResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/weight`;
+  const url = `${API_BASE_URL}/api/profile/weight`;
   console.log('addWeightEntry calling:', url, { weight_kg: weightKg });
 
   try {
@@ -1360,7 +1360,7 @@ export async function addWeightEntry(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({ weight_kg: weightKg }),
+      body: JSON.stringify({ user_id: userId, weight_kg: weightKg }),
     });
 
     const data = await res.json();
@@ -1404,7 +1404,7 @@ export async function logMeal(
     full_analysis?: any;
   }
 ): Promise<LogMealResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals`;
+  const url = `${API_BASE_URL}/api/meals/log`;
   console.log('logMeal calling:', url, mealData);
 
   try {
@@ -1414,7 +1414,7 @@ export async function logMeal(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify(mealData),
+      body: JSON.stringify({ ...mealData, user_id: userId }),
     });
 
     const data = await res.json();
@@ -1439,7 +1439,7 @@ export async function getMeals(
   date?: string
 ): Promise<MealsResponse> {
   const targetDate = date || getTodayDate();
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals?date=${targetDate}`;
+  const url = `${API_BASE_URL}/api/meals?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
   console.log('getMeals calling:', url);
 
   try {
@@ -1469,7 +1469,7 @@ export async function deleteMeal(
   userId: string,
   mealId: number
 ): Promise<DeleteMealResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/meals/${mealId}`;
+  const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${encodeURIComponent(userId)}`;
   console.log('deleteMeal calling:', url);
 
   try {
@@ -1504,7 +1504,7 @@ export async function getDailyTracker(
   date?: string
 ): Promise<DailyTrackerResponse> {
   const targetDate = date || getTodayDate();
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/tracker/daily?date=${targetDate}`;
+  const url = `${API_BASE_URL}/api/tracker/daily?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
   console.log('getDailyTracker calling:', url);
 
   try {
@@ -1531,7 +1531,7 @@ export async function getDailyTracker(
  * Get weekly tracker data (daily summaries + averages for last 7 days)
  */
 export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerResponse> {
-  const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/tracker/weekly`;
+  const url = `${API_BASE_URL}/api/tracker/weekly?user_id=${encodeURIComponent(userId)}`;
   console.log('getWeeklyTracker calling:', url);
 
   try {
