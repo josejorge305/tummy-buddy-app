@@ -3,6 +3,16 @@ const { expo } = require('./app.json');
 module.exports = {
   expo: {
     ...expo,
+
+    platforms: ['ios', 'android'],
+
+    updates: {
+      url: 'https://u.expo.dev/a69d0972-659c-41fe-a929-1e3c3012ae6e',
+    },
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
+
     extra: {
       ...(expo.extra || {}),
       eas: {
