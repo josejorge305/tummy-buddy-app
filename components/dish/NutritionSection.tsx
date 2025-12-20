@@ -55,11 +55,11 @@ export function NutritionSection({
         <Text style={styles.headerText}>Nutrition</Text>
       </View>
 
-      {/* Macros Grid */}
+      {/* Macros Grid - kcal in teal, rest in white */}
       <View style={styles.macrosGrid}>
         <View style={styles.macroItem}>
-          <Text style={styles.macroValue}>{formatValue(calories, '')}</Text>
-          <Text style={styles.macroLabel}>kcal</Text>
+          <Text style={[styles.macroValue, styles.macroValueTeal]}>{formatValue(calories, '')}</Text>
+          <Text style={[styles.macroLabel, styles.macroLabelTeal]}>kcal</Text>
         </View>
         <View style={styles.macroDivider} />
         <View style={styles.macroItem}>
@@ -144,6 +144,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.textMuted,
     marginTop: 2,
+  },
+  macroValueTeal: {
+    color: COLORS.brandTeal,
+  },
+  macroLabelTeal: {
+    color: COLORS.brandTeal,
   },
   macroDivider: {
     width: 1,

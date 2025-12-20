@@ -1,29 +1,43 @@
 /**
  * Dish Screen Design System
  * Unified constants for the redesigned dish analysis screen
+ *
+ * REDESIGN v2: Teal-only color palette for severity indicators
+ * No red, amber, orange, purple - only teal as accent color
  */
 
 export const COLORS = {
-  // Backgrounds
-  background: '#070B12',
-  cardSurface: '#0F1724',
+  // Backgrounds - matching spec: black or bg-black
+  background: '#000000',
+  // Card background: bg-slate-900/80
+  cardSurface: 'rgba(15, 23, 42, 0.8)',
   elevatedSurface: '#131E2E',
-  border: 'rgba(255,255,255,0.08)',
+  // Card border: border-slate-800
+  border: '#1e293b',
+  // Subtle border for tags
+  tagBorder: '#475569',
 
   // Text
   textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.72)',
-  textMuted: 'rgba(255,255,255,0.50)',
+  // text-slate-300
+  textSecondary: '#cbd5e1',
+  // text-slate-500
+  textMuted: '#64748b',
 
-  // Brand
-  brandTeal: '#18D6C6',
+  // Brand - primary accent (teal-500 / teal-400)
+  brandTeal: '#14b8a6',
+  brandTealLight: '#2dd4bf',
 
-  // Severity
+  // Tag background: bg-slate-800/50
+  tagBg: 'rgba(30, 41, 59, 0.5)',
+
+  // LEGACY: Severity colors (kept for backward compatibility with existing components)
+  // New modules should use teal-only severity text
   severityHigh: '#E35B66',
   severityModerate: '#F4B740',
   severityLow: '#35C27E',
 
-  // Severity backgrounds (18% opacity)
+  // Severity backgrounds (18% opacity) - LEGACY
   severityHighBg: 'rgba(227,91,102,0.18)',
   severityModerateBg: 'rgba(244,183,64,0.18)',
   severityLowBg: 'rgba(53,194,126,0.18)',

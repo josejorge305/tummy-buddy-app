@@ -23,3 +23,13 @@ export { NutritionSummary } from './NutritionSummary';
 export { HeadsUpSection } from './HeadsUpSection';
 export { NutritionSection } from './NutritionSection';
 export { ComponentBreakdownSheet } from './ComponentBreakdownSheet';
+
+// Redesigned components (v3) - Three expandable modules
+export { ExpandableCard } from './ExpandableCard';
+export { AllergensModule } from './AllergensModule';
+export type { AllergenWithSource } from './AllergensModule';
+export { DigestiveImpactModule } from './DigestiveImpactModule';
+export type { FodmapCategory } from './DigestiveImpactModule';
+export { LongTermHealthModule } from './LongTermHealthModule';
+export type { OrganImpact } from './LongTermHealthModule';
+export { InlineActionButtons } from './InlineActionButtons';
