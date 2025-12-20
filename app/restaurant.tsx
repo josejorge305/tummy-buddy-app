@@ -8,20 +8,37 @@ import {
   Easing,
   Image,
   ImageBackground,
+  LayoutAnimation,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
 import { AnalyzeDishResponse, analyzeDish, fetchMenuWithRetry, fetchMenuFast, pollApifyJob } from '../api/api';
 import { fetchPlaceDetails } from '../api/places';
-import { OrganImpactEntry, OrganImpactSection } from '../components/analysis/OrganImpactSection';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { buildDishViewModel } from './utils/dishViewModel';
+import {
+  COLORS as DESIGN_COLORS,
+  SPACING,
+  RADIUS,
+  AllergensModule,
+  DigestiveImpactModule,
+  LongTermHealthModule,
+  NutritionSection,
+} from '../components/dish';
+import type { AllergenWithSource, FodmapCategory, OrganImpact } from '../components/dish';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const LAST_RESTAURANT_KEY = '@restaurant_ai_last_restaurant';
 
@@ -32,18 +49,22 @@ const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
 const USER_SELECTED_ALLERGENS: string[] = []; // TODO: wire from user profile/preferences
 const PREFETCH_ANALYSIS_LIMIT = 0;
 
-// Design system colors
+// Design system colors - teal-only palette for severity (matching dish.tsx redesign)
 const COLORS = {
-  safe: '#22c55e',      // Green
-  caution: '#f59e0b',   // Amber
-  avoid: '#ef4444',     // Red
-  neutral: '#6b7280',   // Gray
-  calories: '#f97316',  // Orange
-  protein: '#3b82f6',   // Blue
-  carbs: '#a855f7',     // Purple
-  fat: '#eab308',       // Yellow
-  cardBg: '#1e293b',    // Slate 800
+  brandTeal: '#14b8a6',      // Primary teal
+  brandTealLight: '#2dd4bf', // Lighter teal variant
+  neutral: '#6b7280',        // Gray
+  calories: '#f97316',       // Orange for calories only
+  protein: '#3b82f6',        // Blue
+  carbs: '#a855f7',          // Purple
+  fat: '#eab308',            // Yellow
+  cardBg: '#1e293b',         // Slate 800
   cardBorder: 'rgba(255,255,255,0.08)',
+  textPrimary: '#ffffff',
+  textSecondary: '#94a3b8',
+  textMuted: '#64748b',
+  tagBg: 'rgba(30, 41, 59, 0.5)',
+  tagBorder: '#475569',
 };
 
 // Loading status messages - cycle through these to keep users engaged
@@ -616,18 +637,14 @@ const loadingStyles = StyleSheet.create({
   },
 });
 
-// Get allergen pill color based on presence status
-const getAllergenPillColors = (present: string, isUserAllergen: boolean) => {
-  if (isUserAllergen) {
-    return { bg: COLORS.avoid, border: COLORS.avoid, text: '#ffffff' };
-  }
-  if (present === 'yes') {
-    return { bg: 'rgba(239, 68, 68, 0.2)', border: COLORS.avoid, text: '#fca5a5' };
-  }
-  if (present === 'maybe') {
-    return { bg: 'rgba(245, 158, 11, 0.2)', border: COLORS.caution, text: '#fcd34d' };
-  }
-  return { bg: COLORS.neutral, border: COLORS.neutral, text: '#ffffff' };
+// Get allergen pill color - teal-only design (all allergens use same teal styling)
+const getAllergenPillColors = (_present: string, _isUserAllergen: boolean) => {
+  // Teal-only design: all allergens use the same styling regardless of severity
+  return {
+    bg: 'rgba(20, 184, 166, 0.15)',
+    border: COLORS.brandTeal,
+    text: COLORS.brandTealLight,
+  };
 };
 
 const getSeverityChipStyle = (severity: string) => {
@@ -1255,29 +1272,23 @@ export default function RestaurantScreen() {
                       </View>
                     )}
 
-                    {/* Inline warning badges - shown when analysis is available */}
+                    {/* Inline concern badges - shown when analysis is available (teal-only design) */}
                     {isExpanded && viewModel && (
                       <View style={styles.inlineWarningBadges}>
-                        {/* Allergen badges */}
+                        {/* Allergen badges - teal styling */}
                         {viewModel.allergens.filter(a => a.isUserAllergen || viewModel.allergens.length <= 3).slice(0, 4).map((allergen, idx) => (
                           <View
                             key={`inline-allergen-${idx}`}
-                            style={[
-                              styles.inlineBadge,
-                              allergen.isUserAllergen ? styles.inlineBadgeDanger : styles.inlineBadgeWarning
-                            ]}
+                            style={styles.inlineBadgeTeal}
                           >
-                            <Text style={styles.inlineBadgeText}>{allergen.name}</Text>
+                            <Text style={styles.inlineBadgeTextTeal}>{allergen.name}</Text>
                           </View>
                         ))}
-                        {/* FODMAP badge */}
+                        {/* FODMAP badge - teal styling */}
                         {viewModel.fodmapLevel && (viewModel.fodmapLevel === 'high' || viewModel.fodmapLevel === 'medium') && (
-                          <View style={[
-                            styles.inlineBadge,
-                            viewModel.fodmapLevel === 'high' ? styles.inlineBadgeDanger : styles.inlineBadgeWarning
-                          ]}>
-                            <Text style={styles.inlineBadgeText}>
-                              {viewModel.fodmapLevel === 'high' ? 'High' : 'Med'} FODMAP
+                          <View style={styles.inlineBadgeTeal}>
+                            <Text style={styles.inlineBadgeTextTeal}>
+                              {viewModel.fodmapLevel === 'high' ? 'High' : 'Mod'} FODMAP
                             </Text>
                           </View>
                         )}
@@ -1314,676 +1325,169 @@ export default function RestaurantScreen() {
 
                         {!isAnalysisLoading && viewModel && (
                           <>
-                            {/* Plate Components Selector - allows switching between whole plate and individual components */}
-                            {viewModel.plateComponents && viewModel.plateComponents.length > 1 && (
-                              <View style={styles.plateComponentsSection}>
-                                <Text style={styles.plateComponentsLabel}>Analyze by component:</Text>
-                                <ScrollView
-                                  horizontal
-                                  showsHorizontalScrollIndicator={false}
-                                  contentContainerStyle={styles.plateComponentPillsRow}
-                                >
-                                  {/* Whole Plate pill */}
-                                  <TouchableOpacity
-                                    onPress={() => setFocusedComponentIndex(null)}
-                                    style={[
-                                      styles.plateComponentPill,
-                                      focusedComponentIndex === null && styles.plateComponentPillActive,
-                                    ]}
-                                  >
-                                    <Ionicons
-                                      name="restaurant"
-                                      size={14}
-                                      color={focusedComponentIndex === null ? '#fff' : '#9ca3af'}
-                                      style={{ marginRight: 4 }}
-                                    />
-                                    <Text
-                                      style={[
-                                        styles.plateComponentPillText,
-                                        focusedComponentIndex === null && styles.plateComponentPillTextActive,
-                                      ]}
-                                    >
-                                      Whole Plate
-                                    </Text>
-                                  </TouchableOpacity>
-                                  {/* Individual component pills */}
-                                  {viewModel.plateComponents.map((comp, idx) => (
-                                    <TouchableOpacity
-                                      key={`plate-comp-${idx}`}
-                                      onPress={() => setFocusedComponentIndex(idx)}
-                                      style={[
-                                        styles.plateComponentPill,
-                                        focusedComponentIndex === idx && styles.plateComponentPillActive,
-                                      ]}
-                                    >
-                                      <Text
-                                        style={[
-                                          styles.plateComponentPillText,
-                                          focusedComponentIndex === idx && styles.plateComponentPillTextActive,
-                                        ]}
-                                      >
-                                        {comp.component}
-                                      </Text>
-                                      {comp.role && comp.role !== 'unknown' && (
-                                        <Text
-                                          style={[
-                                            styles.plateComponentRoleText,
-                                            focusedComponentIndex === idx && { color: 'rgba(255,255,255,0.7)' },
-                                          ]}
-                                        >
-                                          {' '}({comp.role})
-                                        </Text>
-                                      )}
-                                    </TouchableOpacity>
-                                  ))}
-                                </ScrollView>
-                              </View>
-                            )}
-
+                            {/* NEW REDESIGN: Three expandable modules matching dish.tsx */}
                             {(() => {
-                              const hasComponents =
-                                viewModel.plateComponents && viewModel.plateComponents.length > 0;
-                              const activeComponent =
-                                hasComponents &&
-                                focusedComponentIndex !== null &&
-                                focusedComponentIndex >= 0 &&
-                                focusedComponentIndex < (viewModel.plateComponents?.length || 0)
-                                  ? viewModel.plateComponents![focusedComponentIndex]
-                                  : null;
-                              const activeComponentAllergens =
-                                viewModel.componentAllergens &&
-                                focusedComponentIndex !== null &&
-                                focusedComponentIndex >= 0 &&
-                                viewModel.componentAllergens.length > focusedComponentIndex
-                                  ? viewModel.componentAllergens[focusedComponentIndex]
-                                  : null;
-                              const isWholePlateFocus =
-                                !hasComponents ||
-                                focusedComponentIndex === null ||
-                                focusedComponentIndex < 0 ||
-                                focusedComponentIndex >= (viewModel.plateComponents?.length || 0);
-                              const activeAllergenPills = isWholePlateFocus
-                                ? viewModel.allergens
-                                : activeComponentAllergens?.allergenPills || viewModel.allergens;
-                              const activeAllergenTitleSuffix = isWholePlateFocus
-                                ? ''
-                                : activeComponent
-                                ? ` (${activeComponent.component} only)`
-                                : '';
-                              const activeAllergenSentence = (() => {
-                                if (isWholePlateFocus || !activeComponentAllergens) {
-                                  return viewModel.allergenSentence;
-                                }
-                                const names = activeComponentAllergens.allergenPills
-                                  ?.map((p) => p.name)
-                                  .join(', ');
-                                if (!names) {
-                                  return `Allergens for ${activeComponentAllergens.component} only.`;
-                                }
-                                return `Contains ${names} for ${activeComponentAllergens.component} only.`;
-                              })();
-
-                              const activeFodmapLevel = isWholePlateFocus
-                                ? viewModel.fodmapLevel
-                                : activeComponentAllergens?.fodmapLevel || viewModel.fodmapLevel;
-                              const activeFodmapSentence = (() => {
-                                if (isWholePlateFocus || !activeComponentAllergens) {
-                                  return viewModel.fodmapSentence;
-                                }
-                                if (!activeComponentAllergens.fodmapLevel) {
-                                  return viewModel.fodmapSentence;
-                                }
-                                return `FODMAP for ${activeComponentAllergens.component}: ${activeComponentAllergens.fodmapLevel}.`;
-                              })();
-
-                              const fodmapLevelScore = (level?: string | null): number => {
-                                switch (level) {
-                                  case 'low':
-                                    return 1;
-                                  case 'medium':
-                                    return 2;
-                                  case 'high':
-                                    return 3;
-                                  default:
-                                    return 0;
-                                }
-                              };
-
-                              let sideFodmapWarning: string | null = null;
-
-                              if (
-                                isWholePlateFocus &&
-                                viewModel.componentAllergens &&
-                                viewModel.componentAllergens.length > 0 &&
-                                viewModel.plateComponents &&
-                                viewModel.plateComponents.length ===
-                                  viewModel.componentAllergens.length
-                              ) {
-                                const wholeScore = fodmapLevelScore(viewModel.fodmapLevel);
-
-                                let bestSideIndex: number | null = null;
-                                let bestSideScore = 0;
-
-                                viewModel.componentAllergens.forEach((ca, idx) => {
-                                  const comp = viewModel.plateComponents![idx];
-                                  if (!comp || comp.role !== 'side') return;
-                                  const s = fodmapLevelScore(ca.fodmapLevel);
-                                  if (s > bestSideScore) {
-                                    bestSideScore = s;
-                                    bestSideIndex = idx;
+                              // Transform allergens data for AllergensModule
+                              const allergensWithSource: AllergenWithSource[] = (analysis?.allergen_flags || []).map((flag: any) => {
+                                // Find source from likely_recipe ingredients
+                                let source: string | null = null;
+                                if (analysis?.likely_recipe?.ingredients) {
+                                  const matchingIngredient = analysis.likely_recipe.ingredients.find((ing: any) => {
+                                    // Handle ingredient as either string or object with name property
+                                    const ingName = typeof ing === 'string' ? ing : (ing?.name || '');
+                                    return ingName.toLowerCase().includes(flag.kind?.toLowerCase() || '');
+                                  });
+                                  if (matchingIngredient) {
+                                    source = typeof matchingIngredient === 'string'
+                                      ? matchingIngredient
+                                      : (matchingIngredient?.name || null);
                                   }
-                                });
-
-                                if (bestSideIndex !== null && bestSideScore > wholeScore) {
-                                  const comp = viewModel.componentAllergens[bestSideIndex];
-                                  const name = comp?.component || 'this side';
-                                  sideFodmapWarning = `FODMAP risk is mostly driven by ${name}.`;
-                                }
-                              }
-
-                              const activeNutrition = (() => {
-                                if (isWholePlateFocus || !activeComponent || !viewModel.nutrition) {
-                                  return viewModel.nutrition;
                                 }
                                 return {
-                                  calories:
-                                    activeComponent.energyKcal ?? viewModel.nutrition.calories,
-                                  protein: activeComponent.protein_g ?? viewModel.nutrition.protein,
-                                  carbs: activeComponent.carbs_g ?? viewModel.nutrition.carbs,
-                                  fat: activeComponent.fat_g ?? viewModel.nutrition.fat,
-                                  sugar: activeComponent.sugar_g ?? viewModel.nutrition.sugar,
-                                  fiber: activeComponent.fiber_g ?? viewModel.nutrition.fiber,
-                                  sodium: activeComponent.sodium_mg ?? viewModel.nutrition.sodium,
+                                  name: flag.kind,
+                                  present: flag.present || 'yes',
+                                  source,
+                                  isUserAllergen: viewModel.allergens?.some((a: any) =>
+                                    a.name.toLowerCase() === flag.kind?.toLowerCase() && a.isUserAllergen
+                                  ) || false,
                                 };
-                              })();
-                              const activeNutritionSubtitle =
-                                !isWholePlateFocus && activeComponent
-                                  ? `${activeComponent.component} only`
-                                  : undefined;
+                              });
+
+                              // Transform FODMAP data for DigestiveImpactModule
+                              const fodmapFlags = Array.isArray(analysis?.fodmap_flags) ? analysis.fodmap_flags : [];
+                              const fodmapCategories: FodmapCategory[] = fodmapFlags
+                                .filter((f: any) => f.fodmap_type && f.level && f.level !== 'low')
+                                .map((f: any) => ({
+                                  name: f.fodmap_type,
+                                  level: (f.level === 'high' ? 'high' : f.level === 'medium' ? 'moderate' : 'low') as 'high' | 'moderate' | 'low',
+                                  sources: f.source_ingredient || 'Various ingredients',
+                                }));
+
+                              // Transform organ data for LongTermHealthModule
+                              const organImpacts: OrganImpact[] = organLines
+                                .filter((line: any) => line.severity !== 'neutral' && line.severity !== 'low')
+                                .map((line: any) => ({
+                                  organName: line.organLabel,
+                                  level: line.severity === 'medium' ? 'moderate' : line.severity,
+                                  concern: line.sentence || `${line.severity === 'high' ? 'Significant' : 'Moderate'} impact on ${line.organLabel.toLowerCase()}`,
+                                }));
 
                               return (
                                 <>
-                                  {/* 1) Allergens row */}
-                                  <View style={styles.analysisCard}>
-                                    <View style={styles.cardHeader}>
-                                      <Ionicons name="warning-outline" size={18} color={COLORS.caution} />
-                                      <Text style={styles.cardTitle}>
-                                        Allergens{activeAllergenTitleSuffix}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.pillRow}>
-                                      {activeAllergenPills.length === 0 && (
-                                        <View style={[styles.coloredPill, { backgroundColor: COLORS.safe, borderColor: COLORS.safe }]}>
-                                          <Ionicons name="checkmark-circle" size={12} color="#fff" style={{ marginRight: 4 }} />
-                                          <Text style={styles.coloredPillText}>None detected</Text>
-                                        </View>
-                                      )}
-                                      {activeAllergenPills.map((pill, idx) => {
-                                        const pillColors = getAllergenPillColors(pill.present || 'yes', pill.isUserAllergen);
-                                        return (
-                                          <View
-                                            key={`${pill.name}-${idx}`}
-                                            style={[
-                                              styles.coloredPill,
-                                              { backgroundColor: pillColors.bg, borderColor: pillColors.border },
-                                            ]}
-                                          >
-                                            {pill.isUserAllergen && (
-                                              <Ionicons name="alert-circle" size={12} color={pillColors.text} style={{ marginRight: 3 }} />
-                                            )}
-                                            <Text style={[styles.coloredPillText, { color: pillColors.text }]}>
-                                              {pill.name}
-                                            </Text>
-                                            {pill.present === 'maybe' && (
-                                              <Text style={[styles.coloredPillText, { color: pillColors.text, fontSize: 9, marginLeft: 2 }]}>?</Text>
-                                            )}
-                                          </View>
-                                        );
-                                      })}
-                                    </View>
-                                <TouchableOpacity onPress={() => setShowAllergenDetails((v) => !v)}>
-                                  <Text style={styles.showMoreText}>
-                                    {showAllergenDetails ? 'Hide details' : 'Show details'}
-                                  </Text>
-                                </TouchableOpacity>
-
-                                {showAllergenDetails ? (
-                                  <>
-                                    {activeAllergenSentence ? (
-                                      <Text style={styles.sectionBody}>
-                                        {activeAllergenSentence}
-                                      </Text>
-                                    ) : null}
-
-                                    <Text style={styles.allergenDisclaimer}>
-                                      Based on recipe analysis and external ingredient data.
-                                      Ingredients may vary by restaurant—always confirm if you have
-                                      a severe allergy.
-                                    </Text>
-                                  </>
-                                ) : null}
-                              </View>
-
-                              {/* 2) FODMAP row */}
-                                  <View style={styles.analysisCard}>
-                                    <View style={styles.cardHeader}>
-                                      <Ionicons name="leaf-outline" size={18} color={
-                                        activeFodmapLevel === 'high' ? COLORS.avoid :
-                                        activeFodmapLevel === 'medium' ? COLORS.caution : COLORS.safe
-                                      } />
-                                      <Text style={styles.cardTitle}>
-                                        FODMAP / IBS{!isWholePlateFocus && activeComponent ? ` (${activeComponent.component})` : ''}
-                                      </Text>
-                                    </View>
-                                    {activeFodmapLevel ? (
-                                      <View style={[
-                                        styles.coloredPill,
-                                        {
-                                          backgroundColor: activeFodmapLevel === 'high' ? 'rgba(239, 68, 68, 0.2)' :
-                                            activeFodmapLevel === 'medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                          borderColor: activeFodmapLevel === 'high' ? COLORS.avoid :
-                                            activeFodmapLevel === 'medium' ? COLORS.caution : COLORS.safe,
-                                          alignSelf: 'flex-start',
-                                        }
-                                      ]}>
-                                        <Text style={[
-                                          styles.coloredPillText,
-                                          {
-                                            color: activeFodmapLevel === 'high' ? '#fca5a5' :
-                                              activeFodmapLevel === 'medium' ? '#fcd34d' : '#86efac',
-                                          }
-                                        ]}>
-                                          {activeFodmapLevel.charAt(0).toUpperCase() + activeFodmapLevel.slice(1)}
-                                        </Text>
-                                      </View>
-                                    ) : null}
-                                    {/* Only show FODMAP trigger pills for whole plate */}
-                                    {isWholePlateFocus && viewModel?.fodmapPills && viewModel.fodmapPills.length > 0 ? (
-                                      <View style={[styles.pillRow, { marginTop: 8 }]}>
-                                        {viewModel.fodmapPills.map((name) => (
-                                          <View key={name} style={[styles.coloredPill, { backgroundColor: 'transparent', borderColor: COLORS.neutral }]}>
-                                            <Text style={[styles.coloredPillText, { color: '#9ca3af' }]}>{name}</Text>
-                                          </View>
-                                        ))}
-                                      </View>
-                                    ) : null}
-                                    <TouchableOpacity onPress={() => setShowFodmapDetails((v) => !v)}>
-                                      <Text style={styles.showMoreText}>
-                                        {showFodmapDetails ? 'Hide details' : 'Show details'}
-                                      </Text>
-                                    </TouchableOpacity>
-
-                                    {showFodmapDetails ? (
-                                      <>
-                                        {activeFodmapSentence ? (
-                                          <Text style={styles.sectionBody}>{activeFodmapSentence}</Text>
-                                        ) : null}
-
-                                        {isWholePlateFocus && sideFodmapWarning ? (
-                                          <Text style={styles.sideFodmapWarningText}>
-                                            {sideFodmapWarning}
-                                          </Text>
-                                        ) : null}
-                                      </>
-                                    ) : null}
+                                  {/* 1) Allergens Module */}
+                                  <View style={styles.moduleWrapper}>
+                                    <AllergensModule allergens={allergensWithSource} />
                                   </View>
 
-                                  {/* 2.5) Diet & lifestyle - Collapsible */}
-                                  {(() => {
-                                    const dietTags = viewModel.dietTags || [];
-                                    const hasDietTags =
-                                      Array.isArray(dietTags) && dietTags.length > 0;
+                                  {/* 2) Digestive Impact Module */}
+                                  <View style={styles.moduleWrapper}>
+                                    <DigestiveImpactModule
+                                      level={viewModel.fodmapLevel as 'high' | 'medium' | 'moderate' | 'low' | null}
+                                      categories={fodmapCategories}
+                                      explanation={viewModel.fodmapSentence}
+                                    />
+                                  </View>
 
-                                    if (!hasDietTags) return null;
+                                  {/* 3) Long-term Health Module */}
+                                  <View style={styles.moduleWrapper}>
+                                    <LongTermHealthModule
+                                      overallLevel={organOverallLevel === 'medium' ? 'moderate' : organOverallLevel}
+                                      organImpacts={organImpacts}
+                                    />
+                                  </View>
 
-                                    return (
-                                      <View style={styles.dietTagsSection}>
-                                        <TouchableOpacity
-                                          onPress={() => setShowDietTags(prev => !prev)}
-                                          style={styles.collapsibleHeader}
-                                        >
-                                          <Text style={styles.sectionTitle}>Diet & lifestyle</Text>
-                                          <View style={styles.collapsibleRight}>
-                                            <View style={styles.countBadge}>
-                                              <Text style={styles.countBadgeText}>{dietTags.length}</Text>
-                                            </View>
-                                            <Ionicons
-                                              name={showDietTags ? 'chevron-up' : 'chevron-down'}
-                                              size={18}
-                                              color="#9ca3af"
-                                            />
-                                          </View>
-                                        </TouchableOpacity>
-
-                                        {showDietTags && (
-                                          <>
-                                            <View style={styles.dietTagsRow}>
-                                              {dietTags.map((label: any) => (
-                                                <View
-                                                  key={
-                                                    (label as any)?.id ||
-                                                    (label as any)?.code ||
-                                                    String(label)
-                                                  }
-                                                  style={styles.dietTagChip}
-                                                >
-                                                  <Text style={styles.dietTagText}>
-                                                    {(label as any)?.label ||
-                                                      (label as any)?.name ||
-                                                      String(label)}
-                                                  </Text>
-                                                </View>
-                                              ))}
-                                            </View>
-                                            <Text style={styles.lifestyleDisclaimer}>
-                                              Lifestyle tags are inferred from dish name, description,
-                                              and typical recipes.
-                                            </Text>
-                                          </>
-                                        )}
+                                  {/* 4) Nutrition Summary (simplified) */}
+                                  <View style={styles.nutritionModuleWrapper}>
+                                    <View style={styles.nutritionCard}>
+                                      <View style={styles.nutritionHeader}>
+                                        <Ionicons name="nutrition-outline" size={20} color={COLORS.textSecondary} />
+                                        <Text style={styles.nutritionTitle}>Nutrition</Text>
                                       </View>
-                                    );
-                                  })()}
-
-                                  {/* 3) Organ impact – Collapsible, only show for whole plate */}
-                                  {organOverallLevel && isWholePlateFocus && (
-                                    <View style={styles.analysisCard}>
-                                      <TouchableOpacity
-                                        onPress={() => setShowOrganImpactDetails((v) => !v)}
-                                        style={styles.cardHeader}
-                                      >
-                                        <Ionicons name="body-outline" size={18} color={
-                                          organOverallLevel === 'high' ? COLORS.avoid :
-                                          organOverallLevel === 'medium' ? COLORS.caution : COLORS.safe
-                                        } />
-                                        <Text style={[styles.cardTitle, { flex: 1 }]}>Body Impact</Text>
-                                        <View style={[
-                                          styles.levelBadgeSmall,
-                                          {
-                                            backgroundColor: organOverallLevel === 'high' ? 'rgba(239, 68, 68, 0.2)' :
-                                              organOverallLevel === 'medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            borderColor: organOverallLevel === 'high' ? COLORS.avoid :
-                                              organOverallLevel === 'medium' ? COLORS.caution : COLORS.safe,
-                                          }
-                                        ]}>
-                                          <Text style={[
-                                            styles.levelBadgeSmallText,
-                                            {
-                                              color: organOverallLevel === 'high' ? '#fca5a5' :
-                                                organOverallLevel === 'medium' ? '#fcd34d' : '#86efac',
-                                            }
-                                          ]}>
-                                            {organOverallLevel === 'low' ? 'Minor' :
-                                              organOverallLevel === 'medium' ? 'Moderate' : 'Concern'}
-                                          </Text>
-                                        </View>
-                                        <Ionicons
-                                          name={showOrganImpactDetails ? 'chevron-up' : 'chevron-down'}
-                                          size={18}
-                                          color="#9ca3af"
-                                          style={{ marginLeft: 8 }}
-                                        />
-                                      </TouchableOpacity>
-
-                                      {/* Horizontal scrolling organ cards - only when expanded */}
-                                      {showOrganImpactDetails && (
-                                        <>
-                                          <ScrollView
-                                            horizontal
-                                            showsHorizontalScrollIndicator={false}
-                                            contentContainerStyle={styles.organCardsContainer}
-                                          >
-                                            {viewModel.organLines
-                                              .filter((line) => line.severity !== 'neutral')
-                                              .slice(0, 6) // Show max 6 organs
-                                              .map((line, idx) => {
-                                                const organIcons: Record<string, string> = {
-                                                  gut: 'fitness-outline',
-                                                  heart: 'heart-outline',
-                                                  liver: 'water-outline',
-                                                  kidney: 'water-outline',
-                                                  brain: 'bulb-outline',
-                                                  skin: 'sparkles-outline',
-                                                  immune: 'shield-outline',
-                                                  metabolic: 'flash-outline',
-                                                  eyes: 'eye-outline',
-                                                  bones: 'barbell-outline',
-                                                  thyroid: 'pulse-outline',
-                                                };
-                                                const iconName = organIcons[line.organKey] || 'ellipse-outline';
-                                                const levelColor = line.severity === 'high' ? COLORS.avoid :
-                                                  line.severity === 'medium' ? COLORS.caution : COLORS.safe;
-
-                                                // Map severity to clearer labels
-                                                const severityLabel = line.severity === 'low' ? 'Minor' :
-                                                  line.severity === 'medium' ? 'Moderate' : 'Concern';
-
-                                                return (
-                                                  <View key={line.organKey || idx} style={styles.organCard}>
-                                                    <View style={[styles.organCardIcon, { backgroundColor: `${levelColor}20` }]}>
-                                                      <Ionicons name={iconName as any} size={20} color={levelColor} />
-                                                    </View>
-                                                    <Text style={styles.organCardLabel}>{line.organLabel}</Text>
-                                                    <View style={[styles.organCardLevel, { backgroundColor: levelColor }]}>
-                                                      <Text style={styles.organCardLevelText}>
-                                                        {severityLabel}
-                                                      </Text>
-                                                    </View>
-                                                  </View>
-                                                );
-                                              })}
-                                          </ScrollView>
-
-                                          {organSummary ? <Text style={styles.sectionBody}>{organSummary}</Text> : null}
-
-                                          <TouchableOpacity
-                                            onPress={() => setShowOrganDetails((prev) => !prev)}
-                                          >
-                                            <Text style={styles.showMoreText}>
-                                              {showOrganDetails
-                                                ? 'Hide organ details'
-                                                : 'Show organ details'}
+                                      {viewModel.nutrition ? (
+                                        <View style={styles.macrosRow}>
+                                          <View style={styles.macroItem}>
+                                            <Text style={[styles.macroValue, styles.macroValueTeal]}>
+                                              {viewModel.nutrition.calories != null ? Math.round(viewModel.nutrition.calories) : '--'}
                                             </Text>
-                                          </TouchableOpacity>
-
-                                          {showOrganDetails && (
-                                            <OrganImpactSection
-                                              showHeader={false}
-                                              showSummary={false}
-                                              showToggle={false}
-                                              impacts={
-                                                viewModel.organLines
-                                                  .filter((line) => line.severity !== 'neutral')
-                                                  .map((line, idx) => ({
-                                                    id: line.organKey || String(idx),
-                                                    organId: line.organKey || 'organ',
-                                                    label: line.organLabel,
-                                                    level:
-                                                      line.severity === 'high'
-                                                        ? 'high'
-                                                        : line.severity === 'medium'
-                                                        ? 'medium'
-                                                        : 'low',
-                                                    score:
-                                                      typeof line.score === 'number' ? line.score : null,
-                                                    description:
-                                                      line.sentence || 'Organ impact details to follow.',
-                                                  })) as OrganImpactEntry[]
-                                              }
-                                            />
-                                          )}
-                                        </>
+                                            <Text style={[styles.macroLabel, styles.macroLabelTeal]}>kcal</Text>
+                                          </View>
+                                          <View style={styles.macroDivider} />
+                                          <View style={styles.macroItem}>
+                                            <Text style={styles.macroValue}>
+                                              {viewModel.nutrition.protein != null ? Math.round(viewModel.nutrition.protein) : '--'}g
+                                            </Text>
+                                            <Text style={styles.macroLabel}>protein</Text>
+                                          </View>
+                                          <View style={styles.macroDivider} />
+                                          <View style={styles.macroItem}>
+                                            <Text style={styles.macroValue}>
+                                              {viewModel.nutrition.carbs != null ? Math.round(viewModel.nutrition.carbs) : '--'}g
+                                            </Text>
+                                            <Text style={styles.macroLabel}>carbs</Text>
+                                          </View>
+                                          <View style={styles.macroDivider} />
+                                          <View style={styles.macroItem}>
+                                            <Text style={styles.macroValue}>
+                                              {viewModel.nutrition.fat != null ? Math.round(viewModel.nutrition.fat) : '--'}g
+                                            </Text>
+                                            <Text style={styles.macroLabel}>fat</Text>
+                                          </View>
+                                        </View>
+                                      ) : (
+                                        <Text style={styles.nutritionUnavailable}>
+                                          Nutrition details unavailable
+                                        </Text>
                                       )}
                                     </View>
-                                  )}
+                                  </View>
 
-                                  {/* 4) Nutrition facts (per serving, estimate) */}
-                                  <View style={styles.analysisCard}>
-                                    <View style={styles.cardHeader}>
-                                      <Ionicons name="nutrition-outline" size={18} color={COLORS.calories} />
-                                      <Text style={[styles.cardTitle, { flex: 1 }]}>
-                                        Nutrition{!isWholePlateFocus && activeComponent ? ` (${activeComponent.component})` : ''}
-                                      </Text>
-                                      {activeNutrition?.calories != null && (
-                                        <View style={[
-                                          styles.levelBadgeSmall,
-                                          {
-                                            backgroundColor: 'rgba(249, 115, 22, 0.2)',
-                                            borderColor: COLORS.calories,
-                                          }
-                                        ]}>
-                                          <Text style={[styles.levelBadgeSmallText, { color: '#fdba74' }]}>
-                                            {Math.round(activeNutrition.calories)} kcal
-                                          </Text>
-                                        </View>
-                                      )}
-                                    </View>
-                                    {activeNutrition ? (
-                                      <>
-                                        {/* Quick Stats Row - Always Visible */}
-                                        <View style={styles.quickStatsRow}>
-                                          <View style={styles.quickStatItem}>
-                                            <Ionicons name="flame" size={16} color={COLORS.calories} />
-                                            <Text style={[styles.quickStatValue, { color: COLORS.calories }]}>
-                                              {activeNutrition.calories != null ? Math.round(activeNutrition.calories) : '--'}
-                                            </Text>
-                                            <Text style={styles.quickStatLabel}>kcal</Text>
-                                          </View>
-                                          <View style={styles.quickStatDivider} />
-                                          <View style={styles.quickStatItem}>
-                                            <Text style={[styles.quickStatValue, { color: COLORS.protein }]}>
-                                              {activeNutrition.protein != null ? Math.round(activeNutrition.protein) : '--'}g
-                                            </Text>
-                                            <Text style={styles.quickStatLabel}>protein</Text>
-                                          </View>
-                                          <View style={styles.quickStatDivider} />
-                                          <View style={styles.quickStatItem}>
-                                            <Text style={[styles.quickStatValue, { color: COLORS.carbs }]}>
-                                              {activeNutrition.carbs != null ? Math.round(activeNutrition.carbs) : '--'}g
-                                            </Text>
-                                            <Text style={styles.quickStatLabel}>carbs</Text>
-                                          </View>
-                                          <View style={styles.quickStatDivider} />
-                                          <View style={styles.quickStatItem}>
-                                            <Text style={[styles.quickStatValue, { color: COLORS.fat }]}>
-                                              {activeNutrition.fat != null ? Math.round(activeNutrition.fat) : '--'}g
-                                            </Text>
-                                            <Text style={styles.quickStatLabel}>fat</Text>
-                                          </View>
-                                        </View>
-
-                                        <TouchableOpacity onPress={() => setShowNutritionNumbers((v) => !v)}>
-                                          <Text style={styles.showMoreText}>
-                                            {showNutritionNumbers ? 'Hide nutrition numbers' : 'Show nutrition numbers'}
-                                          </Text>
-                                        </TouchableOpacity>
-
-                                        {showNutritionNumbers ? (
-                                          <>
-                                            <View style={styles.nutritionGrid}>
-                                              <View style={styles.nutritionTile}>
-                                                <Text style={styles.nutritionLabel}>Sugar</Text>
-                                                <Text style={styles.nutritionValue}>
-                                                  {activeNutrition.sugar != null
-                                                    ? `${Math.round(activeNutrition.sugar)} g`
-                                                    : '--'}
-                                                </Text>
-                                              </View>
-                                              <View style={styles.nutritionTile}>
-                                                <Text style={styles.nutritionLabel}>Fiber</Text>
-                                                <Text style={styles.nutritionValue}>
-                                                  {activeNutrition.fiber != null
-                                                    ? `${Math.round(activeNutrition.fiber)} g`
-                                                    : '--'}
-                                                </Text>
-                                              </View>
-                                              <View style={styles.nutritionTile}>
-                                                <Text style={styles.nutritionLabel}>Sodium</Text>
-                                                <Text style={styles.nutritionValue}>
-                                                  {activeNutrition.sodium != null
-                                                    ? `${Math.round(activeNutrition.sodium)} mg`
-                                                    : '--'}
-                                                </Text>
-                                              </View>
-                                            </View>
-
-                                            {viewModel.nutritionSourceLabel ? (
-                                              <Text style={styles.nutritionSourceLabel}>
-                                                {viewModel.nutritionSourceLabel}
-                                              </Text>
-                                            ) : null}
-
-                                            {/* Portion info now lives under Nutrition */}
-                                            {viewModel?.portion &&
-                                              viewModel.portion.effectiveFactor !== 1 && (
-                                                <View style={{ marginTop: 6 }}>
-                                                  <Text style={{ fontSize: 12, opacity: 0.8 }}>
-                                                    Portion (AI estimate):{' '}
-                                                    <Text style={{ fontWeight: '600' }}>
-                                                      {viewModel.portion.effectiveFactor.toFixed(2)}×
-                                                      typical serving
-                                                    </Text>
-                                                  </Text>
-                                                </View>
-                                              )}
-                                            {viewModel?.portionVision && (
-                                              <View style={{ marginTop: 4 }}>
-                                                <Text style={{ fontSize: 11, opacity: 0.6 }}>
-                                                  {viewModel.portionVision.hasImage
-                                                    ? `Photo-based portion: ${viewModel.portionVision.factor.toFixed(
-                                                        2
-                                                      )}× · ${Math.round(
-                                                        viewModel.portionVision.confidence * 100
-                                                      )}% confidence`
-                                                    : `Estimated portion: ${viewModel.portionVision.factor.toFixed(
-                                                        2
-                                                      )}×`}
-                                                </Text>
-                                                {viewModel.portionVision.reason ? (
-                                                  <Text style={{ fontSize: 11, opacity: 0.5 }}>
-                                                    {viewModel.portionVision.reason}
-                                                  </Text>
-                                                ) : null}
-                                              </View>
-                                            )}
-                                          </>
-                                        ) : null}
-
-                                        {/* Highlights and cautions only - summary is in the Health Insight Callout above */}
-                                        {viewModel.nutritionInsights && (viewModel.nutritionInsights.highlights?.length > 0 || viewModel.nutritionInsights.cautions?.length > 0) ? (
-                                          <View style={styles.nutritionInsightsBox}>
-                                            {viewModel.nutritionInsights.highlights
-                                              ?.slice(0, 2)
-                                              .map((line: string, idx: number) => (
-                                                <Text
-                                                  key={`ni-hi-${idx}`}
-                                                  style={styles.nutritionInsightsHighlight}
-                                                >
-                                                  • {line}
-                                                </Text>
-                                              ))}
-                                            {viewModel.nutritionInsights.cautions
-                                              ?.slice(0, 1)
-                                              .map((line: string, idx: number) => (
-                                                <Text
-                                                  key={`ni-c-${idx}`}
-                                                  style={styles.nutritionInsightsCaution}
-                                                >
-                                                  ⚠ {line}
-                                                </Text>
-                                              ))}
-                                          </View>
-                                        ) : null}
-                                      </>
-                                    ) : (
-                                      <Text style={styles.nutritionUnavailable}>
-                                        Nutrition details are not available for this dish yet.
-                                      </Text>
-                                    )}
-                                    <Text style={styles.nutritionDisclaimer}>
-                                      Nutrition values are estimates based on recipe analysis and
-                                      nutrition databases, not official restaurant labels.
-                                    </Text>
+                                  {/* 5) Inline Action Buttons */}
+                                  <View style={styles.inlineActionsContainer}>
+                                    <TouchableOpacity
+                                      style={styles.primaryActionButton}
+                                      onPress={() => {
+                                        console.log('Log meal pressed', {
+                                          name: item?.name,
+                                          placeId: placeIdValue,
+                                          restaurantName: restaurantNameValue,
+                                        });
+                                      }}
+                                    >
+                                      <Ionicons name="add-circle" size={20} color="#000000" />
+                                      <Text style={styles.primaryActionText}>Log Meal</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={styles.secondaryActionButton}
+                                      onPress={() => {
+                                        const recipeImageUrl = item?.imageUrl || analysis?.recipe_image || '';
+                                        router.push({
+                                          pathname: '/likely-recipe',
+                                          params: {
+                                            dishName: item?.name || 'Unknown Dish',
+                                            imageUrl: recipeImageUrl,
+                                            likelyRecipe: analysis?.likely_recipe
+                                              ? JSON.stringify(analysis.likely_recipe)
+                                              : '',
+                                            fullRecipe: analysis?.full_recipe
+                                              ? JSON.stringify(analysis.full_recipe)
+                                              : '',
+                                            nutrition: analysis?.nutrition_summary
+                                              ? JSON.stringify(analysis.nutrition_summary)
+                                              : '',
+                                            allergens: analysis?.allergen_flags
+                                              ? JSON.stringify(analysis.allergen_flags)
+                                              : '[]',
+                                            fodmap: analysis?.fodmap_flags
+                                              ? JSON.stringify(analysis.fodmap_flags)
+                                              : '',
+                                            nutritionSource: analysis?.nutrition_source || '',
+                                          },
+                                        });
+                                      }}
+                                    >
+                                      <Ionicons name="restaurant-outline" size={18} color={COLORS.brandTealLight} />
+                                      <Text style={styles.secondaryActionText}>Recipe</Text>
+                                    </TouchableOpacity>
                                   </View>
                                 </>
                               );
@@ -1999,85 +1503,7 @@ export default function RestaurantScreen() {
           ))}
         </ScrollView>
 
-        {/* Sticky Action Bar - appears when a dish is expanded */}
-        {expandedItemId && (() => {
-          // Find the expanded item and its analysis
-          let expandedItem: MenuItem | null = null;
-          let expandedAnalysis: AnalyzeDishResponse | null = null;
-
-          for (const section of (menu?.sections || [])) {
-            for (let i = 0; i < (section.items?.length || 0); i++) {
-              const item = section.items![i];
-              const itemId = String(item?.id ?? item?.name ?? `${section.id}-${i}`);
-              if (itemId === expandedItemId) {
-                expandedItem = item;
-                expandedAnalysis = analysisByItemId[itemId] || null;
-                break;
-              }
-            }
-            if (expandedItem) break;
-          }
-
-          if (!expandedItem) return null;
-
-          return (
-            <View style={styles.stickyActionBar}>
-              <Text style={styles.stickyActionDishName} numberOfLines={1}>
-                {expandedItem.name}
-              </Text>
-              <View style={styles.stickyActionButtons}>
-                <TouchableOpacity
-                  style={styles.stickyPrimaryButton}
-                  onPress={() => {
-                    console.log('Log meal pressed', {
-                      name: expandedItem?.name,
-                      placeId: placeIdValue,
-                      restaurantName: restaurantNameValue,
-                    });
-                  }}
-                >
-                  <Ionicons name="add-circle" size={16} color="#020617" style={{ marginRight: 5 }} />
-                  <Text style={styles.stickyPrimaryButtonText}>Log Meal</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.stickySecondaryButton}
-                  onPress={() => {
-                    // Use item image, or recipe_image from API, as fallback
-                    const recipeImageUrl = expandedItem?.imageUrl || expandedAnalysis?.recipe_image || '';
-                    router.push({
-                      pathname: '/likely-recipe',
-                      params: {
-                        dishName: expandedItem?.name || 'Unknown Dish',
-                        imageUrl: recipeImageUrl,
-                        likelyRecipe: expandedAnalysis?.likely_recipe
-                          ? JSON.stringify(expandedAnalysis.likely_recipe)
-                          : '',
-                        fullRecipe: expandedAnalysis?.full_recipe
-                          ? JSON.stringify(expandedAnalysis.full_recipe)
-                          : '',
-                        nutrition: expandedAnalysis?.nutrition_summary
-                          ? JSON.stringify(expandedAnalysis.nutrition_summary)
-                          : '',
-                        allergens: expandedAnalysis?.allergen_flags
-                          ? JSON.stringify(expandedAnalysis.allergen_flags)
-                          : '[]',
-                        fodmap: expandedAnalysis?.fodmap_flags
-                          ? JSON.stringify(expandedAnalysis.fodmap_flags)
-                          : '',
-                        nutritionSource: expandedAnalysis?.nutrition_source || '',
-                      },
-                    });
-                  }}
-                >
-                  <Ionicons name="restaurant-outline" size={14} color={TEAL} style={{ marginRight: 5 }} />
-                  <Text style={styles.stickySecondaryButtonText}>Recipe</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        })()}
-
+        {/* Bottom Navigation */}
         <View style={styles.bottomNav}>
           <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push('/')}>
             <Ionicons name="home" size={22} color="#ffffff" />
@@ -2906,5 +2332,118 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: TEAL,
+  },
+  // NEW: Teal-only inline badge styles
+  inlineBadgeTeal: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.brandTeal,
+  },
+  inlineBadgeTextTeal: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.brandTealLight,
+  },
+  // NEW: Module wrapper styles for expandable cards
+  moduleWrapper: {
+    marginTop: 12,
+  },
+  // NEW: Nutrition module styles
+  nutritionModuleWrapper: {
+    marginTop: 12,
+  },
+  nutritionCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  nutritionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  nutritionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  macrosRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+  },
+  macroItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  macroValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  macroLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  macroValueTeal: {
+    color: COLORS.brandTeal,
+  },
+  macroLabelTeal: {
+    color: COLORS.brandTeal,
+  },
+  macroDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: COLORS.cardBorder,
+  },
+  // NEW: Inline action button styles
+  inlineActionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+  },
+  primaryActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 28,
+    backgroundColor: COLORS.brandTeal,
+  },
+  primaryActionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  secondaryActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: COLORS.brandTeal,
+    backgroundColor: 'transparent',
+  },
+  secondaryActionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.brandTealLight,
   },
 });
