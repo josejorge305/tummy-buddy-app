@@ -29,14 +29,15 @@ import {
   SPACING,
   DishHeader,
   StatusChipsRow,
-  ComponentSelector,
   StickyActionFooter,
   getFooterHeight,
   DetailBottomSheet,
   FodmapSheetContent,
   AllergensSheetContent,
   BodyImpactSheetContent,
-  NutritionSummary,
+  HeadsUpSection,
+  NutritionSection,
+  ComponentBreakdownSheet,
 } from '../components/dish';
 
 const RestaurantAIIcon = require('../assets/images/REstaurant AI Icon.png');
@@ -181,13 +182,12 @@ export default function DishScreen() {
   const [isLoggingMeal, setIsLoggingMeal] = useState(false);
   const [mealLogged, setMealLogged] = useState(false);
 
-  // Component selector state
-  const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
-
   // Bottom sheet modal states
   const [showFodmapSheet, setShowFodmapSheet] = useState(false);
   const [showAllergensSheet, setShowAllergensSheet] = useState(false);
   const [showBodyImpactSheet, setShowBodyImpactSheet] = useState(false);
+  const [showComponentBreakdown, setShowComponentBreakdown] = useState(false);
+  const [showNutritionSheet, setShowNutritionSheet] = useState(false);
 
   useEffect(() => {
     loadDishAnalysis();
@@ -363,13 +363,6 @@ export default function DishScreen() {
   const dishImageUrl = imageUrl || analysis?.recipe_image || fetchedImageUrl || null;
   const price = (analysis?.likely_recipe as { price?: number | string })?.price;
 
-  // Build plate components for selector
-  const plateComponents = viewModel?.plateComponents?.map((pc, idx) => ({
-    id: String(idx),
-    name: pc.component,
-    role: pc.role,
-  })) || [];
-
   // Calculate scroll padding
   const footerPadding = getFooterHeight(insets.bottom);
 
@@ -379,6 +372,43 @@ export default function DishScreen() {
     present: ((a as { present?: string }).present || (a.isUserAllergen ? 'yes' : 'no')) as 'yes' | 'no' | 'maybe',
     detail: null as string | null,
   })) || [];
+
+  // Check if there are fixable issues (allergens or high FODMAP that can be avoided by skipping components)
+  const hasUserAllergens = viewModel?.allergens?.some(a => a.isUserAllergen) || false;
+  const hasHighFodmap = viewModel?.fodmapLevel === 'high';
+  const hasFixableIssues = hasUserAllergens || hasHighFodmap;
+
+  // Build plate components for component breakdown
+  const plateComponentsForSheet = viewModel?.plateComponents?.map((pc, idx) => {
+    // Determine if this component is safe based on allergens
+    const componentAllergen = viewModel?.componentAllergens?.find(ca => ca.component === pc.component);
+    const hasAllergenIssue = componentAllergen?.allergenPills?.some(p =>
+      viewModel?.allergens?.some(a => a.name === p.name && a.isUserAllergen)
+    ) || false;
+    const hasFodmapIssue = componentAllergen?.fodmapLevel === 'high';
+
+    return {
+      id: String(idx),
+      name: pc.component,
+      role: pc.role,
+      shareRatio: pc.shareRatio,
+      calories: pc.energyKcal,
+      protein: pc.protein_g,
+      carbs: pc.carbs_g,
+      fat: pc.fat_g,
+      allergens: componentAllergen?.allergenPills?.map(p => p.name) || [],
+      fodmapLevel: componentAllergen?.fodmapLevel as 'high' | 'medium' | 'low' | undefined,
+      isSafe: !hasAllergenIssue && !hasFodmapIssue,
+    };
+  }) || [];
+
+  // Count safe components
+  const safeComponentCount = plateComponentsForSheet.filter(c => c.isSafe).length;
+  const totalComponentCount = plateComponentsForSheet.length;
+
+  // Get allergen and fodmap summaries from API
+  const allergenSummary = analysis?.allergen_summary || viewModel?.allergenSentence;
+  const fodmapSummary = analysis?.fodmap_summary || viewModel?.fodmapSentence;
 
   // LOADING STATE - Show analyzing UI (UNCHANGED)
   if (isLoading) {
@@ -408,7 +438,10 @@ export default function DishScreen() {
     );
   }
 
-  // READY STATE - Simplified layout with tappable chips
+  // ALL CLEAR STATE - No concerns for this user
+  const isAllClear = !hasUserAllergens && !hasHighFodmap && bodyImpactLevel !== 'high';
+
+  // READY STATE - New simplified layout
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -424,7 +457,7 @@ export default function DishScreen() {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: footerPadding }]}
       >
-        {/* A) DishHeader: hero image, dish name, description (with see more), price */}
+        {/* ZONE 1: DishHeader - hero image, dish name, description (with see more), price */}
         <DishHeader
           imageUrl={dishImageUrl}
           dishName={analysis?.dishName || dishName}
@@ -435,7 +468,7 @@ export default function DishScreen() {
 
         {viewModel && (
           <>
-            {/* B) StatusChipsRow - tappable chips that open bottom sheets */}
+            {/* ZONE 1b: StatusChipsRow - tappable chips that open bottom sheets */}
             <StatusChipsRow
               fodmapLevel={viewModel.fodmapLevel as 'high' | 'medium' | 'low' | null}
               allergens={viewModel.allergens}
@@ -446,19 +479,38 @@ export default function DishScreen() {
               onBodyImpactPress={() => setShowBodyImpactSheet(true)}
             />
 
-            {/* C) Component Selector - Whole Plate | Component... */}
-            <ComponentSelector
-              components={plateComponents}
-              selectedIndex={selectedComponentIndex}
-              onSelect={setSelectedComponentIndex}
-            />
+            {/* ZONE 2: Heads Up Section - Only shown if there are concerns */}
+            {!isAllClear && (
+              <HeadsUpSection
+                allergenSummary={hasUserAllergens ? allergenSummary : null}
+                fodmapSummary={hasHighFodmap ? fodmapSummary : null}
+                hasFixableIssues={hasFixableIssues && totalComponentCount > 1}
+                safeComponentCount={safeComponentCount}
+                totalComponentCount={totalComponentCount}
+                onCanIStillEatThis={() => setShowComponentBreakdown(true)}
+              />
+            )}
 
-            {/* D) Nutrition Summary - compact with "see more" */}
+            {/* ALL CLEAR message - Only shown if no concerns */}
+            {isAllClear && (
+              <View style={styles.allClearSection}>
+                <View style={styles.allClearHeader}>
+                  <Ionicons name="checkmark-circle" size={24} color={COLORS.severityLow} />
+                  <Text style={styles.allClearTitle}>Looks good for you!</Text>
+                </View>
+                <Text style={styles.allClearText}>
+                  No allergens or sensitivities detected based on your profile.
+                </Text>
+              </View>
+            )}
+
+            {/* ZONE 3: Nutrition Section */}
             {activeNutrition && (
-              <NutritionSummary
+              <NutritionSection
                 nutrition={activeNutrition}
-                insight={viewModel.nutritionInsights?.summary}
+                insights={viewModel.nutritionInsights}
                 sourceLabel={viewModel.nutritionSourceLabel}
+                onSeeFullBreakdown={() => setShowNutritionSheet(true)}
               />
             )}
           </>
@@ -521,7 +573,97 @@ export default function DishScreen() {
           }))}
         />
       </DetailBottomSheet>
+
+      {/* Nutrition Full Breakdown Bottom Sheet */}
+      <DetailBottomSheet
+        visible={showNutritionSheet}
+        onClose={() => setShowNutritionSheet(false)}
+        title="Nutrition Details"
+        icon="nutrition-outline"
+      >
+        <View style={styles.nutritionSheetContent}>
+          {/* Macros */}
+          <View style={styles.nutritionGroup}>
+            <Text style={styles.nutritionGroupTitle}>Macronutrients</Text>
+            <View style={styles.nutritionGrid}>
+              <NutritionRow label="Calories" value={activeNutrition?.calories} unit="kcal" />
+              <NutritionRow label="Protein" value={activeNutrition?.protein} unit="g" />
+              <NutritionRow label="Carbs" value={activeNutrition?.carbs} unit="g" />
+              <NutritionRow label="Fat" value={activeNutrition?.fat} unit="g" />
+            </View>
+          </View>
+
+          {/* Other nutrients */}
+          <View style={styles.nutritionGroup}>
+            <Text style={styles.nutritionGroupTitle}>Other Nutrients</Text>
+            <View style={styles.nutritionGrid}>
+              <NutritionRow label="Fiber" value={activeNutrition?.fiber} unit="g" />
+              <NutritionRow label="Sugar" value={activeNutrition?.sugar} unit="g" />
+              <NutritionRow label="Sodium" value={activeNutrition?.sodium} unit="mg" />
+            </View>
+          </View>
+
+          {/* Highlights */}
+          {viewModel?.nutritionInsights?.highlights && viewModel.nutritionInsights.highlights.length > 0 && (
+            <View style={styles.nutritionGroup}>
+              <Text style={styles.nutritionGroupTitle}>Highlights</Text>
+              {viewModel.nutritionInsights.highlights.map((highlight, idx) => (
+                <View key={idx} style={styles.bulletRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.severityLow} />
+                  <Text style={styles.bulletText}>{highlight}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Cautions */}
+          {viewModel?.nutritionInsights?.cautions && viewModel.nutritionInsights.cautions.length > 0 && (
+            <View style={styles.nutritionGroup}>
+              <Text style={styles.nutritionGroupTitle}>Cautions</Text>
+              {viewModel.nutritionInsights.cautions.map((caution, idx) => (
+                <View key={idx} style={styles.bulletRow}>
+                  <Ionicons name="alert-circle" size={16} color={COLORS.severityModerate} />
+                  <Text style={styles.bulletText}>{caution}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Source */}
+          {viewModel?.nutritionSourceLabel && (
+            <Text style={styles.nutritionSource}>Source: {viewModel.nutritionSourceLabel}</Text>
+          )}
+        </View>
+      </DetailBottomSheet>
+
+      {/* Component Breakdown Sheet */}
+      <ComponentBreakdownSheet
+        visible={showComponentBreakdown}
+        onClose={() => setShowComponentBreakdown(false)}
+        components={plateComponentsForSheet}
+        suggestion={
+          hasUserAllergens && hasHighFodmap
+            ? "Skip components with allergens and high FODMAP to make this dish safer for you."
+            : hasUserAllergens
+            ? "Skip components containing your allergens to make this dish safer for you."
+            : hasHighFodmap
+            ? "Skip high FODMAP components to reduce digestive stress."
+            : undefined
+        }
+      />
     </SafeAreaView>
+  );
+}
+
+// Helper component for nutrition rows
+function NutritionRow({ label, value, unit }: { label: string; value?: number | null; unit: string }) {
+  return (
+    <View style={styles.nutritionRow}>
+      <Text style={styles.nutritionLabel}>{label}</Text>
+      <Text style={styles.nutritionValue}>
+        {value != null ? `${Math.round(value)} ${unit}` : '--'}
+      </Text>
+    </View>
   );
 }
 
@@ -556,6 +698,83 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: SPACING.xxl,
+  },
+  // All Clear section
+  allClearSection: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    padding: SPACING.lg,
+    backgroundColor: 'rgba(53,194,126,0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(53,194,126,0.2)',
+  },
+  allClearHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  allClearTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.severityLow,
+  },
+  allClearText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  // Nutrition sheet content
+  nutritionSheetContent: {
+    padding: SPACING.lg,
+  },
+  nutritionGroup: {
+    marginBottom: SPACING.lg,
+  },
+  nutritionGroupTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  nutritionGrid: {
+    gap: SPACING.sm,
+  },
+  nutritionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  nutritionLabel: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+  },
+  nutritionValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  nutritionSource: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.md,
   },
   // Loading styles - UNCHANGED
   loadingContainer: { flex: 1 },
