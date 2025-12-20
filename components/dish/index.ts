@@ -18,3 +18,8 @@ export { FodmapSheetContent } from './FodmapSheetContent';
 export { AllergensSheetContent } from './AllergensSheetContent';
 export { BodyImpactSheetContent } from './BodyImpactSheetContent';
 export { NutritionSummary } from './NutritionSummary';
+
+// Redesigned components (v2)
+export { HeadsUpSection } from './HeadsUpSection';
+export { NutritionSection } from './NutritionSection';
+export { ComponentBreakdownSheet } from './ComponentBreakdownSheet';
