@@ -1598,10 +1598,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   itemName: {
-    fontSize: 18,
+    fontSize: 22, // xl - dish names
     fontWeight: '700',
     color: '#ffffff',
-    lineHeight: 22,
+    lineHeight: 28,
   },
   itemPrice: {
     marginTop: 2,

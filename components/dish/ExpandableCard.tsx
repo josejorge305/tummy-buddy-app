@@ -9,7 +9,7 @@ import {
   UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS } from './designSystem';
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY, FONT_SIZES } from './designSystem';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -108,17 +108,17 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   title: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.lg, // 18px section headers
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.md, // 12px gap between severity text and chevron
   },
   severityText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.sm, // 14px
     fontWeight: '600',
     color: COLORS.brandTeal,
   },

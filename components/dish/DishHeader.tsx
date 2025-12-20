@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from './designSystem';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, FONT_SIZES } from './designSystem';
 
 type Props = {
   imageUrl: string | null;
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   priceText: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.md, // 16px
     fontWeight: '600',
     color: COLORS.brandTeal,
     marginBottom: SPACING.sm,
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
   },
   moreText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.sm, // 14px
     fontWeight: '600',
     color: COLORS.brandTeal,
     marginTop: 4,

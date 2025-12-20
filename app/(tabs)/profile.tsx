@@ -760,10 +760,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'space-between',
   },
   goalButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -771,6 +773,9 @@ const styles = StyleSheet.create({
     borderColor: '#333',
     backgroundColor: '#1a1a22',
     gap: 6,
+    // 2 columns with gap: (100% - 8px gap) / 2 = ~48%
+    width: '48%',
+    minWidth: 140,
   },
   goalButtonActive: {
     backgroundColor: TEAL,

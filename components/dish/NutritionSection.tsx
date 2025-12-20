@@ -6,7 +6,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from './designSystem';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, FONT_SIZES } from './designSystem';
 
 type NutritionData = {
   calories?: number | null;
@@ -120,8 +120,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   headerText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FONT_SIZES.lg, // 18px section headers
+    fontWeight: '600',
     color: COLORS.textPrimary,
   },
   macrosGrid: {
@@ -135,17 +135,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   macroValue: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: FONT_SIZES.xl, // 22px for protein/carbs/fat
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
   macroLabel: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.xs, // 12px
     fontWeight: '500',
     color: COLORS.textMuted,
     marginTop: 2,
   },
   macroValueTeal: {
+    fontSize: FONT_SIZES.xxl, // 28px for calories - larger and teal
     color: COLORS.brandTeal,
   },
   macroLabelTeal: {

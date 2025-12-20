@@ -43,58 +43,97 @@ export const COLORS = {
   severityLowBg: 'rgba(53,194,126,0.18)',
 } as const;
 
+/**
+ * Typography Scale (per spec):
+ * - xxl: 28px - Page titles only
+ * - xl: 22px - Dish names, major headings
+ * - lg: 18px - Section headers
+ * - md: 16px - Body text, descriptions
+ * - sm: 14px - Secondary info
+ * - xs: 12px - Captions, units
+ */
+export const FONT_SIZES = {
+  xxl: 28,
+  xl: 22,
+  lg: 18,
+  md: 16,
+  sm: 14,
+  xs: 12,
+} as const;
+
 export const TYPOGRAPHY = {
-  // Dish title - 24-26 w800
+  // Page title - 28px w700 (used sparingly, e.g., main page headers)
+  pageTitle: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: '700' as const,
+    color: COLORS.textPrimary,
+    lineHeight: 34,
+  },
+  // Dish title - 22px w700 (dish names, max 2 lines with ellipsis)
   dishTitle: {
-    fontSize: 24,
-    fontWeight: '800' as const,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
     color: COLORS.textPrimary,
+    lineHeight: 28,
   },
-  // Section titles - 20 w800
+  // Section titles - 18px w600
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800' as const,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600' as const,
     color: COLORS.textPrimary,
+    lineHeight: 24,
   },
-  // Key numbers - 22 w800
+  // Key numbers - 22px w700 (nutrition values, etc.)
   keyNumber: {
-    fontSize: 22,
-    fontWeight: '800' as const,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
     color: COLORS.textPrimary,
   },
-  // Body text - 16 w500
+  // Large key number - 28px w700 (calories in teal)
+  keyNumberLarge: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: '700' as const,
+    color: COLORS.brandTeal,
+  },
+  // Body text - 16px w500
   body: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.md,
     fontWeight: '500' as const,
     color: COLORS.textSecondary,
     lineHeight: 24,
   },
-  // Secondary text - 14 w500
+  // Secondary text - 14px w500
   secondary: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.sm,
     fontWeight: '500' as const,
     color: COLORS.textSecondary,
     lineHeight: 20,
   },
-  // Disclaimer - 12-13 w400
+  // Disclaimer/caption - 12px w400
   disclaimer: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '400' as const,
     color: COLORS.textMuted,
     lineHeight: 16,
   },
-  // Chip text
+  // Chip text - 13px w600
   chip: {
     fontSize: 13,
     fontWeight: '600' as const,
   },
-  // Label
+  // Label - 11px w600 uppercase
   label: {
     fontSize: 11,
     fontWeight: '600' as const,
     color: COLORS.textMuted,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
+  },
+  // Severity badge text - 14px w600
+  severityBadge: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+    color: COLORS.brandTeal,
   },
 } as const;
 

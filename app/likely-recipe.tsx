@@ -825,10 +825,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   dishName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: TEXT_PRIMARY,
     letterSpacing: -0.5,
+    lineHeight: 30,
     marginBottom: 8,
   },
   descriptionContainer: {
