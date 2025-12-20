@@ -23,19 +23,20 @@ import { useUserPrefs } from '../context/UserPrefsContext';
 import BrandTitle from '../components/BrandTitle';
 import * as Haptics from 'expo-haptics';
 
-// Import new components
+// Import components
 import {
   COLORS,
   SPACING,
   DishHeader,
   StatusChipsRow,
   ComponentSelector,
-  FodmapCard,
-  AllergensCard,
-  BodyImpactCard,
-  NutritionCard,
   StickyActionFooter,
   getFooterHeight,
+  DetailBottomSheet,
+  FodmapSheetContent,
+  AllergensSheetContent,
+  BodyImpactSheetContent,
+  NutritionSummary,
 } from '../components/dish';
 
 const RestaurantAIIcon = require('../assets/images/REstaurant AI Icon.png');
@@ -182,6 +183,11 @@ export default function DishScreen() {
 
   // Component selector state
   const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
+
+  // Bottom sheet modal states
+  const [showFodmapSheet, setShowFodmapSheet] = useState(false);
+  const [showAllergensSheet, setShowAllergensSheet] = useState(false);
+  const [showBodyImpactSheet, setShowBodyImpactSheet] = useState(false);
 
   useEffect(() => {
     loadDishAnalysis();
@@ -355,7 +361,7 @@ export default function DishScreen() {
   const bodyImpactLevel = getOverallBodyImpactLevel(organLines);
   const activeNutrition = viewModel?.nutrition || null;
   const dishImageUrl = imageUrl || analysis?.recipe_image || fetchedImageUrl || null;
-  const price = analysis?.likely_recipe?.price;
+  const price = (analysis?.likely_recipe as { price?: number | string })?.price;
 
   // Build plate components for selector
   const plateComponents = viewModel?.plateComponents?.map((pc, idx) => ({
@@ -366,6 +372,13 @@ export default function DishScreen() {
 
   // Calculate scroll padding
   const footerPadding = getFooterHeight(insets.bottom);
+
+  // Build allergen data for sheet
+  const allergenData = viewModel?.allergens?.map(a => ({
+    kind: a.name,
+    present: ((a as { present?: string }).present || (a.isUserAllergen ? 'yes' : 'no')) as 'yes' | 'no' | 'maybe',
+    detail: null as string | null,
+  })) || [];
 
   // LOADING STATE - Show analyzing UI (UNCHANGED)
   if (isLoading) {
@@ -395,7 +408,7 @@ export default function DishScreen() {
     );
   }
 
-  // READY STATE - Show full analysis with new layout
+  // READY STATE - Simplified layout with tappable chips
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -411,74 +424,48 @@ export default function DishScreen() {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: footerPadding }]}
       >
-        {/* A) DishHeader: hero image, dish name, description, price */}
+        {/* A) DishHeader: hero image, dish name, description (with see more), price */}
         <DishHeader
           imageUrl={dishImageUrl}
           dishName={analysis?.dishName || dishName}
-          description={analysis?.likely_recipe?.description}
+          description={(analysis?.likely_recipe as { description?: string })?.description}
           price={price}
           restaurantName={restaurantName}
         />
 
         {viewModel && (
           <>
-            {/* C) StatusChipsRow - horizontal scrollable */}
+            {/* B) StatusChipsRow - tappable chips that open bottom sheets */}
             <StatusChipsRow
               fodmapLevel={viewModel.fodmapLevel as 'high' | 'medium' | 'low' | null}
               allergens={viewModel.allergens}
               calories={activeNutrition?.calories}
               bodyImpactLevel={bodyImpactLevel}
+              onFodmapPress={() => setShowFodmapSheet(true)}
+              onAllergensPress={() => setShowAllergensSheet(true)}
+              onBodyImpactPress={() => setShowBodyImpactSheet(true)}
             />
 
-            {/* D) Component Selector - Whole Plate | Component... */}
+            {/* C) Component Selector - Whole Plate | Component... */}
             <ComponentSelector
               components={plateComponents}
               selectedIndex={selectedComponentIndex}
               onSelect={setSelectedComponentIndex}
             />
 
-            {/* Accordion Cards Section */}
-            <View style={styles.cardsSection}>
-              {/* FODMAP / IBS Card */}
-              {viewModel.fodmapLevel && (
-                <FodmapCard
-                  level={viewModel.fodmapLevel as 'high' | 'medium' | 'low'}
-                  sentence={viewModel.fodmapSentence}
-                  triggerIngredients={viewModel.fodmapPills}
-                />
-              )}
-
-              {/* Allergens Card */}
-              <AllergensCard
-                allergens={viewModel.allergens}
-                sentence={viewModel.allergenSentence}
+            {/* D) Nutrition Summary - compact with "see more" */}
+            {activeNutrition && (
+              <NutritionSummary
+                nutrition={activeNutrition}
+                insight={viewModel.nutritionInsights?.summary}
+                sourceLabel={viewModel.nutritionSourceLabel}
               />
-
-              {/* Body Impact Card (Organs) */}
-              <BodyImpactCard
-                organLines={organLines.map(line => ({
-                  organKey: line.organKey,
-                  organLabel: line.organLabel,
-                  severity: line.severity,
-                  score: line.score,
-                  sentence: line.sentence,
-                }))}
-              />
-
-              {/* Nutrition Card */}
-              {activeNutrition && (
-                <NutritionCard
-                  nutrition={activeNutrition}
-                  insight={viewModel.nutritionInsights?.summary}
-                  sourceLabel={viewModel.nutritionSourceLabel}
-                />
-              )}
-            </View>
+            )}
           </>
         )}
       </ScrollView>
 
-      {/* Sticky Action Footer - Only shown when analysis is ready */}
+      {/* Sticky Action Footer */}
       <StickyActionFooter
         onLogMeal={handleLogMeal}
         onViewRecipe={handleViewRecipe}
@@ -486,6 +473,54 @@ export default function DishScreen() {
         mealLogged={mealLogged}
         hasRecipe={!!analysis?.likely_recipe}
       />
+
+      {/* FODMAP Bottom Sheet */}
+      <DetailBottomSheet
+        visible={showFodmapSheet}
+        onClose={() => setShowFodmapSheet(false)}
+        title="FODMAP / IBS"
+        icon="leaf-outline"
+        severity={viewModel?.fodmapLevel === 'high' ? 'high' : viewModel?.fodmapLevel === 'medium' ? 'moderate' : 'low'}
+      >
+        <FodmapSheetContent
+          level={(viewModel?.fodmapLevel as 'high' | 'medium' | 'low') || 'low'}
+          sentence={viewModel?.fodmapSentence}
+          triggerIngredients={viewModel?.fodmapPills}
+        />
+      </DetailBottomSheet>
+
+      {/* Allergens Bottom Sheet */}
+      <DetailBottomSheet
+        visible={showAllergensSheet}
+        onClose={() => setShowAllergensSheet(false)}
+        title="Allergens"
+        icon="warning-outline"
+        severity={allergenData.some(a => a.present === 'yes') ? 'high' : allergenData.length > 0 ? 'moderate' : 'low'}
+      >
+        <AllergensSheetContent
+          allergens={allergenData}
+          sentence={viewModel?.allergenSentence}
+        />
+      </DetailBottomSheet>
+
+      {/* Body Impact Bottom Sheet */}
+      <DetailBottomSheet
+        visible={showBodyImpactSheet}
+        onClose={() => setShowBodyImpactSheet(false)}
+        title="Body Impact"
+        icon="body-outline"
+        severity={bodyImpactLevel === 'high' ? 'high' : bodyImpactLevel === 'medium' ? 'moderate' : 'low'}
+      >
+        <BodyImpactSheetContent
+          organLines={organLines.map(line => ({
+            organKey: line.organKey,
+            organLabel: line.organLabel,
+            severity: line.severity,
+            score: line.score ?? 0,
+            sentence: line.sentence ?? undefined,
+          }))}
+        />
+      </DetailBottomSheet>
     </SafeAreaView>
   );
 }
@@ -521,10 +556,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: SPACING.xxl,
-  },
-  cardsSection: {
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
   },
   // Loading styles - UNCHANGED
   loadingContainer: { flex: 1 },

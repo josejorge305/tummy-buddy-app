@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,9 @@ type Props = {
   allergens?: AllergenInfo[];
   calories?: number | null;
   bodyImpactLevel?: 'high' | 'medium' | 'low' | null;
+  onFodmapPress?: () => void;
+  onAllergensPress?: () => void;
+  onBodyImpactPress?: () => void;
 };
 
 export const StatusChipsRow: React.FC<Props> = ({
@@ -34,6 +38,9 @@ export const StatusChipsRow: React.FC<Props> = ({
   allergens = [],
   calories,
   bodyImpactLevel,
+  onFodmapPress,
+  onAllergensPress,
+  onBodyImpactPress,
 }) => {
   // Count allergens for summary
   const userAllergenCount = allergens.filter(a => a.isUserAllergen).length;
@@ -66,29 +73,38 @@ export const StatusChipsRow: React.FC<Props> = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* FODMAP Chip */}
+        {/* FODMAP Chip - Tappable */}
         {fodmapLevel && (
-          <View style={[
-            styles.chip,
-            {
-              backgroundColor: getSeverityBgColor(fodmapLevel),
-              borderColor: getSeverityColor(fodmapLevel),
-            }
-          ]}>
+          <TouchableOpacity
+            onPress={onFodmapPress}
+            activeOpacity={0.7}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: getSeverityBgColor(fodmapLevel),
+                borderColor: getSeverityColor(fodmapLevel),
+              }
+            ]}
+          >
             <Text style={[styles.chipText, { color: getSeverityColor(fodmapLevel) }]}>
               {getSeverityLabel(fodmapLevel)} FODMAP
             </Text>
-          </View>
+            <Ionicons name="chevron-forward" size={12} color={getSeverityColor(fodmapLevel)} />
+          </TouchableOpacity>
         )}
 
-        {/* Allergens Chip */}
-        <View style={[
-          styles.chip,
-          {
-            backgroundColor: getSeverityBgColor(allergenSeverity),
-            borderColor: getSeverityColor(allergenSeverity),
-          }
-        ]}>
+        {/* Allergens Chip - Tappable */}
+        <TouchableOpacity
+          onPress={onAllergensPress}
+          activeOpacity={0.7}
+          style={[
+            styles.chip,
+            {
+              backgroundColor: getSeverityBgColor(allergenSeverity),
+              borderColor: getSeverityColor(allergenSeverity),
+            }
+          ]}
+        >
           {totalAllergenCount === 0 ? (
             <Ionicons name="checkmark-circle" size={14} color={getSeverityColor(allergenSeverity)} />
           ) : userAllergenCount > 0 ? (
@@ -97,9 +113,10 @@ export const StatusChipsRow: React.FC<Props> = ({
           <Text style={[styles.chipText, { color: getSeverityColor(allergenSeverity) }]}>
             {allergenSummary}
           </Text>
-        </View>
+          <Ionicons name="chevron-forward" size={12} color={getSeverityColor(allergenSeverity)} />
+        </TouchableOpacity>
 
-        {/* Calories Chip */}
+        {/* Calories Chip - Static (no modal) */}
         {calories != null && (
           <View style={styles.chipNeutral}>
             <Text style={styles.chipTextNeutral}>
@@ -108,20 +125,25 @@ export const StatusChipsRow: React.FC<Props> = ({
           </View>
         )}
 
-        {/* Body Impact Chip */}
+        {/* Body Impact Chip - Tappable */}
         {bodyImpactLevel && (
-          <View style={[
-            styles.chip,
-            {
-              backgroundColor: getSeverityBgColor(bodyImpactLevel),
-              borderColor: getSeverityColor(bodyImpactLevel),
-            }
-          ]}>
+          <TouchableOpacity
+            onPress={onBodyImpactPress}
+            activeOpacity={0.7}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: getSeverityBgColor(bodyImpactLevel),
+                borderColor: getSeverityColor(bodyImpactLevel),
+              }
+            ]}
+          >
             <Ionicons name="body-outline" size={14} color={getSeverityColor(bodyImpactLevel)} />
             <Text style={[styles.chipText, { color: getSeverityColor(bodyImpactLevel) }]}>
               {getSeverityLabel(bodyImpactLevel)}
             </Text>
-          </View>
+            <Ionicons name="chevron-forward" size={12} color={getSeverityColor(bodyImpactLevel)} />
+          </TouchableOpacity>
         )}
       </ScrollView>
     </View>
