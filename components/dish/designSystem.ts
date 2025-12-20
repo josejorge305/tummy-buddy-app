@@ -99,6 +99,7 @@ export const RADIUS = {
   lg: 16,
   xl: 20,
   full: 999,
+  pill: 100,
 } as const;
 
 // Helper to get severity color
