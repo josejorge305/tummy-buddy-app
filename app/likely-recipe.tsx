@@ -75,6 +75,19 @@ const getDifficultyColor = (difficulty?: string): string => {
   return TEXT_MUTED;
 };
 
+// Map nutrition source to human-readable label
+const mapNutritionSourceToLabel = (source: string | null | undefined): string | null => {
+  if (!source) return null;
+  if (source === 'restaurant_kcal_only') return 'Calories from restaurant label (kcal only).';
+  if (source.includes('restaurant_kcal')) return 'Calories aligned with restaurant label; macros estimated from recipe.';
+  if (source === 'recipe_out' || source === 'recipe_legacy') return 'Estimated from recipe provider.';
+  if (source === 'edamam_totalNutrients' || source === 'edamam_manual') return 'Estimated from recipe nutrition database.';
+  if (source === 'enriched_ingredients_parsed' || source === 'enriched_normalized_items') return 'Estimated from ingredient-level analysis.';
+  if (source.includes('fatsecret')) return 'Estimated from FatSecret nutrition database.';
+  if (source.includes('usda')) return 'Estimated from USDA FoodData Central.';
+  return 'Estimated nutrition values.';
+};
+
 // Phase icon mapping
 const getPhaseIcon = (phase?: string): string => {
   if (!phase) return 'ellipse-outline';
@@ -185,8 +198,11 @@ export default function LikelyRecipeScreen() {
   const fullRecipeJson = params.fullRecipe as string | undefined;
   const nutritionJson = params.nutrition as string | undefined;
   const nutritionInsightsJson = params.nutritionInsights as string | undefined;
+  const nutritionSourceLabel = params.nutritionSourceLabel as string | undefined;
   const allergensJson = params.allergens as string | undefined;
+  const allergenSummary = params.allergenSummary as string | undefined;
   const fodmapJson = params.fodmap as string | undefined;
+  const fodmapSummary = params.fodmapSummary as string | undefined;
   const organsJson = params.organs as string | undefined;
   const nutritionSource = params.nutritionSource as string | undefined;
 
@@ -432,7 +448,12 @@ export default function LikelyRecipeScreen() {
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
             {nutritionInsights?.summary && (
-              <Text style={styles.nutritionSummaryText}>{nutritionInsights.summary}</Text>
+              <Text style={styles.nutritionSummaryText}>"{nutritionInsights.summary}"</Text>
+            )}
+            {(nutritionSourceLabel || nutritionSource) && (
+              <Text style={styles.nutritionSourceText}>
+                Source: {nutritionSourceLabel || mapNutritionSourceToLabel(nutritionSource)}
+              </Text>
             )}
           </CollapsibleSection>
         )}
@@ -447,27 +468,40 @@ export default function LikelyRecipeScreen() {
             expanded={allergensExpanded}
             onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
-            {presentAllergens.map((allergen, idx) => (
-              <View key={idx} style={styles.allergenItemContainer}>
-                <View style={styles.allergenRow}>
-                  <View
+            {/* Allergen Pills */}
+            <View style={styles.allergenPillsContainer}>
+              {presentAllergens.map((allergen, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.allergenPill,
+                    { backgroundColor: allergen.present === 'maybe' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(239, 68, 68, 0.15)' },
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.allergenDot,
-                      { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                      styles.allergenPillText,
+                      { color: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
                     ]}
-                  />
-                  <Text style={styles.allergenText}>
-                    {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
+                  >
+                    {allergen.kind.toLowerCase()}
                   </Text>
-                  {allergen.present === 'maybe' && (
-                    <Text style={styles.allergenMaybe}>(possible)</Text>
-                  )}
                 </View>
-                {allergen.message && (
-                  <Text style={styles.allergenMessage}>{allergen.message}</Text>
-                )}
-              </View>
-            ))}
+              ))}
+            </View>
+            {/* Allergen Explanations - Table Style */}
+            <View style={styles.allergenExplanationsContainer}>
+              {presentAllergens.map((allergen, idx) => (
+                <View key={idx} style={styles.allergenExplanationRow}>
+                  <Text style={styles.allergenExplanationName}>
+                    {allergen.kind.toLowerCase()}
+                  </Text>
+                  <Text style={styles.allergenExplanationText}>
+                    {allergen.message || `This dish contains ${allergen.kind.toLowerCase()}.`}
+                  </Text>
+                </View>
+              ))}
+            </View>
             {/* Allergen Substitutions inside Allergens section */}
             {substitutions.length > 0 && (
               <View style={styles.substitutionsInline}>
@@ -497,17 +531,19 @@ export default function LikelyRecipeScreen() {
           </CollapsibleSection>
         )}
 
-        {/* 3. FODMAP */}
+        {/* 3. Digestive Impact (FODMAP) */}
         {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
           <CollapsibleSection
-            title="FODMAP"
+            title="Digestive Impact"
             icon="leaf-outline"
             badge={fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
             badgeColor={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
             expanded={fodmapExpanded}
             onToggle={() => setFodmapExpanded(!fodmapExpanded)}
           >
-            {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
+            <Text style={styles.fodmapReason}>
+              {fodmapSummary || fodmap.reason || `This dish has ${fodmap.level} FODMAP content.`}
+            </Text>
           </CollapsibleSection>
         )}
 
@@ -1347,6 +1383,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontStyle: 'italic',
   },
+  nutritionSourceText: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    marginTop: 8,
+  },
   nutritionItem: {
     alignItems: 'center',
     flex: 1,
@@ -1367,6 +1408,40 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // Allergens
+  allergenPillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  allergenPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  allergenPillText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  allergenExplanationsContainer: {
+    gap: 16,
+  },
+  allergenExplanationRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  allergenExplanationName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+    width: 70,
+  },
+  allergenExplanationText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    flex: 1,
+  },
   allergenItemContainer: {
     marginBottom: 12,
   },

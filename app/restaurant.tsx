@@ -984,9 +984,11 @@ export default function RestaurantScreen() {
         allergens: analysis?.allergen_flags
           ? JSON.stringify(analysis.allergen_flags)
           : '[]',
+        allergenSummary: analysis?.allergen_summary || '',
         fodmap: analysis?.fodmap_flags
           ? JSON.stringify(analysis.fodmap_flags)
           : '',
+        fodmapSummary: analysis?.fodmap_summary || '',
         organs: analysis?.organs
           ? JSON.stringify(analysis.organs)
           : '',
