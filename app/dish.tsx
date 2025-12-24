@@ -184,6 +184,35 @@ export default function DishScreen() {
     loadDishAnalysis();
   }, [dishName]);
 
+  // Auto-redirect to likely-recipe screen once analysis completes
+  useEffect(() => {
+    if (!isLoading && analysis && analysis.ok && !error) {
+      const dishImageUrl = imageUrl || analysis.recipe_image || fetchedImageUrl || '';
+      const vm = buildDishViewModel(analysis, selectedAllergens);
+
+      router.replace({
+        pathname: '/likely-recipe',
+        params: {
+          dishName: analysis.dishName || dishName || 'Unknown Dish',
+          imageUrl: dishImageUrl,
+          likelyRecipe: analysis.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
+          fullRecipe: analysis.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
+          nutrition: analysis.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
+          nutritionInsights: analysis.nutrition_insights ? JSON.stringify(analysis.nutrition_insights) : '',
+          nutritionSourceLabel: vm?.nutritionSourceLabel || '',
+          allergens: analysis.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
+          allergenSummary: analysis.allergen_summary || '',
+          fodmap: analysis.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
+          fodmapSummary: analysis.fodmap_summary || '',
+          organs: analysis.organs ? JSON.stringify(analysis.organs) : '',
+          nutritionSource: analysis.nutrition_source || '',
+          restaurantName: restaurantName || '',
+          restaurantAddress: restaurantAddress || '',
+        },
+      });
+    }
+  }, [isLoading, analysis, error]);
+
   const fetchImageIfNeeded = async (currentImageUrl: string | null | undefined) => {
     if (currentImageUrl) return;
     try {
