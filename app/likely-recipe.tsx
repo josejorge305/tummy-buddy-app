@@ -161,14 +161,16 @@ export default function LikelyRecipeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Collapsible state - Ingredients expanded by default
-  const [ingredientsExpanded, setIngredientsExpanded] = useState(true);
+  // Collapsible state - All sections collapsed by default
+  const [ingredientsExpanded, setIngredientsExpanded] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [equipmentExpanded, setEquipmentExpanded] = useState(false);
   const [chefNotesExpanded, setChefNotesExpanded] = useState(false);
   const [nutritionExpanded, setNutritionExpanded] = useState(false);
   const [allergensExpanded, setAllergensExpanded] = useState(false);
   const [fodmapExpanded, setFodmapExpanded] = useState(false);
+  const [winePairingExpanded, setWinePairingExpanded] = useState(false);
+  const [storageExpanded, setStorageExpanded] = useState(false);
 
   // Description expansion
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -303,7 +305,28 @@ export default function LikelyRecipeScreen() {
           </View>
         )}
 
-        {/* Recipe Meta - Immediately under hero */}
+        {/* Title Section - Name first */}
+        <View style={styles.titleSection}>
+          <Text style={styles.dishName}>{recipeTitle}</Text>
+
+          {/* Description with see more */}
+          {recipeIntro && (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>
+                {showFullDescription ? recipeIntro : truncatedDesc}
+              </Text>
+              {descIsTruncated && (
+                <TouchableOpacity onPress={() => setShowFullDescription(!showFullDescription)}>
+                  <Text style={styles.seeMoreText}>
+                    {showFullDescription ? 'see less' : 'see more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Recipe Meta - Under title/description */}
         <View style={styles.metaSection}>
           {/* Cooking Method Row */}
           <View style={styles.cookingMethodRow}>
@@ -354,32 +377,98 @@ export default function LikelyRecipeScreen() {
           )}
         </View>
 
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <Text style={styles.dishName}>{recipeTitle}</Text>
-
-          {/* Description with see more */}
-          {recipeIntro && (
-            <View style={styles.descriptionContainer}>
-              <Text style={styles.descriptionText}>
-                {showFullDescription ? recipeIntro : truncatedDesc}
-              </Text>
-              {descIsTruncated && (
-                <TouchableOpacity onPress={() => setShowFullDescription(!showFullDescription)}>
-                  <Text style={styles.seeMoreText}>
-                    {showFullDescription ? 'see less' : 'see more'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-
         <View style={styles.divider} />
 
         {/* COLLAPSIBLE SECTIONS */}
 
-        {/* Ingredients - Expanded by default */}
+        {/* 1. Nutrition */}
+        {nutrition && (
+          <CollapsibleSection
+            title="Nutrition"
+            icon="flame-outline"
+            badge={nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : undefined}
+            expanded={nutritionExpanded}
+            onToggle={() => setNutritionExpanded(!nutritionExpanded)}
+          >
+            <View style={styles.nutritionRow}>
+              <NutritionItem label="Calories" value={nutrition.energyKcal} unit="kcal" />
+              <NutritionItem label="Protein" value={nutrition.protein_g} unit="g" />
+              <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
+              <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
+            </View>
+          </CollapsibleSection>
+        )}
+
+        {/* 2. Allergens */}
+        {presentAllergens.length > 0 && (
+          <CollapsibleSection
+            title="Allergens"
+            icon="warning-outline"
+            badge={`${presentAllergens.length} warning${presentAllergens.length !== 1 ? 's' : ''}`}
+            badgeColor="#f59e0b"
+            expanded={allergensExpanded}
+            onToggle={() => setAllergensExpanded(!allergensExpanded)}
+          >
+            {presentAllergens.map((allergen, idx) => (
+              <View key={idx} style={styles.allergenRow}>
+                <View
+                  style={[
+                    styles.allergenDot,
+                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                  ]}
+                />
+                <Text style={styles.allergenText}>
+                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
+                </Text>
+                {allergen.present === 'maybe' && (
+                  <Text style={styles.allergenMaybe}>(possible)</Text>
+                )}
+              </View>
+            ))}
+            {/* Allergen Substitutions inside Allergens section */}
+            {substitutions.length > 0 && (
+              <View style={styles.substitutionsInline}>
+                <Text style={styles.substitutionsInlineTitle}>Substitutions</Text>
+                {substitutions.map((sub, idx) => (
+                  <View key={idx} style={styles.substitutionItemInline}>
+                    <View style={styles.substitutionHeader}>
+                      <Ionicons name="swap-horizontal" size={14} color="#f59e0b" />
+                      <Text style={styles.substitutionAllergen}>
+                        {sub.allergen?.charAt(0).toUpperCase()}{sub.allergen?.slice(1)}
+                      </Text>
+                    </View>
+                    <View style={styles.substitutionDetails}>
+                      <Text style={styles.substitutionOriginal}>
+                        Replace <Text style={styles.substitutionHighlight}>{sub.original}</Text>
+                      </Text>
+                      <Text style={styles.substitutionArrow}>→</Text>
+                      <Text style={styles.substitutionReplacement}>{sub.substitute}</Text>
+                    </View>
+                    {sub.note && (
+                      <Text style={styles.substitutionNote}>{sub.note}</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* 3. FODMAP */}
+        {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
+          <CollapsibleSection
+            title="FODMAP"
+            icon="leaf-outline"
+            badge={fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
+            badgeColor={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
+            expanded={fodmapExpanded}
+            onToggle={() => setFodmapExpanded(!fodmapExpanded)}
+          >
+            {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
+          </CollapsibleSection>
+        )}
+
+        {/* 4. Ingredients - Collapsed by default */}
         <CollapsibleSection
           title="Ingredients"
           icon="list-outline"
@@ -434,7 +523,7 @@ export default function LikelyRecipeScreen() {
           </View>
         </CollapsibleSection>
 
-        {/* Instructions - Collapsed by default */}
+        {/* 5. Instructions */}
         <CollapsibleSection
           title="Instructions"
           icon="checkbox-outline"
@@ -493,7 +582,7 @@ export default function LikelyRecipeScreen() {
           </View>
         </CollapsibleSection>
 
-        {/* Equipment - Collapsed by default */}
+        {/* 6. Equipment */}
         {equipment.length > 0 && (
           <CollapsibleSection
             title="Equipment"
@@ -513,7 +602,7 @@ export default function LikelyRecipeScreen() {
           </CollapsibleSection>
         )}
 
-        {/* Chef Notes - Collapsed by default */}
+        {/* 7. Chef's Notes */}
         {chefNotes.length > 0 && (
           <CollapsibleSection
             title="Chef's Notes"
@@ -529,6 +618,13 @@ export default function LikelyRecipeScreen() {
                   <Text style={styles.noteText}>{note}</Text>
                 </View>
               ))}
+              {/* Make Ahead info inside Chef's Notes */}
+              {makeAhead && (
+                <View style={styles.makeAheadInline}>
+                  <Ionicons name="calendar-outline" size={14} color="#22c55e" />
+                  <Text style={styles.makeAheadInlineText}>{makeAhead}</Text>
+                </View>
+              )}
             </View>
           </CollapsibleSection>
         )}
@@ -550,132 +646,31 @@ export default function LikelyRecipeScreen() {
           </CollapsibleSection>
         )}
 
-        {/* ALLERGEN SUBSTITUTIONS */}
-        {substitutions.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>ALLERGEN SUBSTITUTIONS</Text>
-            <View style={styles.substitutionsContainer}>
-              {substitutions.map((sub, idx) => (
-                <View key={idx} style={styles.substitutionItem}>
-                  <View style={styles.substitutionHeader}>
-                    <Ionicons name="swap-horizontal" size={16} color="#f59e0b" />
-                    <Text style={styles.substitutionAllergen}>
-                      {sub.allergen?.charAt(0).toUpperCase()}{sub.allergen?.slice(1)}
-                    </Text>
-                  </View>
-                  <View style={styles.substitutionDetails}>
-                    <Text style={styles.substitutionOriginal}>
-                      Replace <Text style={styles.substitutionHighlight}>{sub.original}</Text>
-                    </Text>
-                    <Text style={styles.substitutionArrow}>→</Text>
-                    <Text style={styles.substitutionReplacement}>{sub.substitute}</Text>
-                  </View>
-                  {sub.note && (
-                    <Text style={styles.substitutionNote}>{sub.note}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* MAKE AHEAD */}
-        {makeAhead && (
-          <View style={styles.makeAheadCard}>
-            <Ionicons name="calendar-outline" size={18} color="#22c55e" />
-            <View style={styles.makeAheadContent}>
-              <Text style={styles.makeAheadLabel}>Make Ahead</Text>
-              <Text style={styles.makeAheadText}>{makeAhead}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* WINE PAIRING */}
+        {/* 8. Wine Pairing */}
         {winePairing && (
-          <View style={styles.pairingCard}>
-            <Ionicons name="wine-outline" size={20} color="#a855f7" />
-            <View style={styles.pairingContent}>
-              <Text style={styles.pairingLabel}>Wine Pairing</Text>
-              <Text style={styles.pairingText}>{winePairing}</Text>
-            </View>
-          </View>
+          <CollapsibleSection
+            title="Wine Pairing"
+            icon="wine-outline"
+            expanded={winePairingExpanded}
+            onToggle={() => setWinePairingExpanded(!winePairingExpanded)}
+          >
+            <Text style={styles.pairingText}>{winePairing}</Text>
+          </CollapsibleSection>
         )}
 
-        {/* STORAGE */}
+        {/* 9. Storage */}
         {storage && (
-          <View style={styles.storageCard}>
-            <Ionicons name="snow-outline" size={18} color="#38bdf8" />
-            <View style={styles.storageContent}>
-              <Text style={styles.storageLabel}>Storage</Text>
-              <Text style={styles.storageText}>{storage}</Text>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.collapsibleDivider} />
-
-        {/* COLLAPSIBLE: Nutrition */}
-        {nutrition && (
           <CollapsibleSection
-            title="Nutrition"
-            icon="flame-outline"
-            badge={nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : undefined}
-            expanded={nutritionExpanded}
-            onToggle={() => setNutritionExpanded(!nutritionExpanded)}
+            title="Storage"
+            icon="snow-outline"
+            expanded={storageExpanded}
+            onToggle={() => setStorageExpanded(!storageExpanded)}
           >
-            <View style={styles.nutritionRow}>
-              <NutritionItem label="Calories" value={nutrition.energyKcal} unit="kcal" />
-              <NutritionItem label="Protein" value={nutrition.protein_g} unit="g" />
-              <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
-              <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
-            </View>
+            <Text style={styles.storageTextCollapsible}>{storage}</Text>
           </CollapsibleSection>
         )}
 
-        {/* COLLAPSIBLE: Allergens */}
-        {presentAllergens.length > 0 && (
-          <CollapsibleSection
-            title="Allergens"
-            icon="warning-outline"
-            badge={`${presentAllergens.length} warning${presentAllergens.length !== 1 ? 's' : ''}`}
-            badgeColor="#f59e0b"
-            expanded={allergensExpanded}
-            onToggle={() => setAllergensExpanded(!allergensExpanded)}
-          >
-            {presentAllergens.map((allergen, idx) => (
-              <View key={idx} style={styles.allergenRow}>
-                <View
-                  style={[
-                    styles.allergenDot,
-                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
-                  ]}
-                />
-                <Text style={styles.allergenText}>
-                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
-                </Text>
-                {allergen.present === 'maybe' && (
-                  <Text style={styles.allergenMaybe}>(possible)</Text>
-                )}
-              </View>
-            ))}
-          </CollapsibleSection>
-        )}
-
-        {/* COLLAPSIBLE: FODMAP */}
-        {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
-          <CollapsibleSection
-            title="FODMAP"
-            icon="leaf-outline"
-            badge={fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
-            badgeColor={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
-            expanded={fodmapExpanded}
-            onToggle={() => setFodmapExpanded(!fodmapExpanded)}
-          >
-            {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
-          </CollapsibleSection>
-        )}
-
-        {/* Data Attribution Section */}
+        {/* 10. Data Attribution Section */}
         {attributions.length > 0 && (
           <View style={styles.attributionSection}>
             <Text style={styles.attributionTitle}>Data provided by</Text>
@@ -1223,6 +1218,47 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     fontStyle: 'italic',
     marginTop: 6,
+  },
+  // Inline substitutions (inside Allergens collapsible)
+  substitutionsInline: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: DIVIDER,
+  },
+  substitutionsInlineTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+    marginBottom: 12,
+  },
+  substitutionItemInline: {
+    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  // Inline make ahead (inside Chef's Notes collapsible)
+  makeAheadInline: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: DIVIDER,
+  },
+  makeAheadInlineText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    flex: 1,
+  },
+  // Storage text inside collapsible
+  storageTextCollapsible: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 22,
   },
   collapsibleDivider: {
     height: 1,
