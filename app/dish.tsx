@@ -340,6 +340,7 @@ export default function DishScreen() {
         likelyRecipe: analysis?.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
         fullRecipe: analysis?.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
         nutrition: analysis?.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
+        nutritionInsights: analysis?.nutrition_insights ? JSON.stringify(analysis.nutrition_insights) : '',
         allergens: analysis?.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
         fodmap: analysis?.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
         nutritionSource: analysis?.nutrition_source || '',

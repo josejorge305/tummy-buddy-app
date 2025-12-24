@@ -978,6 +978,9 @@ export default function RestaurantScreen() {
         nutrition: analysis?.nutrition_summary
           ? JSON.stringify(analysis.nutrition_summary)
           : '',
+        nutritionInsights: analysis?.nutrition_insights
+          ? JSON.stringify(analysis.nutrition_insights)
+          : '',
         allergens: analysis?.allergen_flags
           ? JSON.stringify(analysis.allergen_flags)
           : '[]',

@@ -19,6 +19,7 @@ import {
   FullRecipeResponse,
   LikelyIngredient,
   LikelyRecipe,
+  NutritionInsights,
   NutritionSummary,
 } from '../api/api';
 
@@ -181,6 +182,7 @@ export default function LikelyRecipeScreen() {
   const likelyRecipeJson = params.likelyRecipe as string | undefined;
   const fullRecipeJson = params.fullRecipe as string | undefined;
   const nutritionJson = params.nutrition as string | undefined;
+  const nutritionInsightsJson = params.nutritionInsights as string | undefined;
   const allergensJson = params.allergens as string | undefined;
   const fodmapJson = params.fodmap as string | undefined;
   const nutritionSource = params.nutritionSource as string | undefined;
@@ -189,6 +191,7 @@ export default function LikelyRecipeScreen() {
   let fullRecipeResponse: FullRecipeResponse | null = null;
   let fullRecipe: FullRecipeData | null = null;
   let nutrition: NutritionSummary | null = null;
+  let nutritionInsights: NutritionInsights | null = null;
   let allergens: AllergenFlag[] = [];
   let fodmap: FodmapFlag | null = null;
 
@@ -201,6 +204,7 @@ export default function LikelyRecipeScreen() {
       fullRecipe = fullRecipeResponse as unknown as FullRecipeData;
     }
     if (nutritionJson) nutrition = JSON.parse(nutritionJson);
+    if (nutritionInsightsJson) nutritionInsights = JSON.parse(nutritionInsightsJson);
     if (allergensJson) allergens = JSON.parse(allergensJson);
     if (fodmapJson) fodmap = JSON.parse(fodmapJson);
   } catch (e) {
@@ -396,6 +400,9 @@ export default function LikelyRecipeScreen() {
               <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
+            {nutritionInsights?.summary && (
+              <Text style={styles.nutritionSummaryText}>{nutritionInsights.summary}</Text>
+            )}
           </CollapsibleSection>
         )}
 
@@ -410,18 +417,23 @@ export default function LikelyRecipeScreen() {
             onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
             {presentAllergens.map((allergen, idx) => (
-              <View key={idx} style={styles.allergenRow}>
-                <View
-                  style={[
-                    styles.allergenDot,
-                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
-                  ]}
-                />
-                <Text style={styles.allergenText}>
-                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
-                </Text>
-                {allergen.present === 'maybe' && (
-                  <Text style={styles.allergenMaybe}>(possible)</Text>
+              <View key={idx} style={styles.allergenItemContainer}>
+                <View style={styles.allergenRow}>
+                  <View
+                    style={[
+                      styles.allergenDot,
+                      { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                    ]}
+                  />
+                  <Text style={styles.allergenText}>
+                    {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
+                  </Text>
+                  {allergen.present === 'maybe' && (
+                    <Text style={styles.allergenMaybe}>(possible)</Text>
+                  )}
+                </View>
+                {allergen.message && (
+                  <Text style={styles.allergenMessage}>{allergen.message}</Text>
                 )}
               </View>
             ))}
@@ -1271,6 +1283,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  nutritionSummaryText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
   nutritionItem: {
     alignItems: 'center',
     flex: 1,
@@ -1291,11 +1310,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // Allergens
+  allergenItemContainer: {
+    marginBottom: 12,
+  },
   allergenRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 8,
+  },
+  allergenMessage: {
+    fontSize: 13,
+    color: TEXT_SECONDARY,
+    lineHeight: 18,
+    marginTop: 4,
+    marginLeft: 18,
   },
   allergenDot: {
     width: 8,
