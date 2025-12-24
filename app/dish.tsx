@@ -343,6 +343,7 @@ export default function DishScreen() {
         nutritionInsights: analysis?.nutrition_insights ? JSON.stringify(analysis.nutrition_insights) : '',
         allergens: analysis?.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
         fodmap: analysis?.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
+        organs: analysis?.organs ? JSON.stringify(analysis.organs) : '',
         nutritionSource: analysis?.nutrition_source || '',
       },
     });

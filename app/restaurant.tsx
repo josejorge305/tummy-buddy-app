@@ -987,6 +987,9 @@ export default function RestaurantScreen() {
         fodmap: analysis?.fodmap_flags
           ? JSON.stringify(analysis.fodmap_flags)
           : '',
+        organs: analysis?.organs
+          ? JSON.stringify(analysis.organs)
+          : '',
         nutritionSource: analysis?.nutrition_source || '',
       },
     });
