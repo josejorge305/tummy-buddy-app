@@ -341,6 +341,7 @@ export default function DishScreen() {
         fullRecipe: analysis?.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
         nutrition: analysis?.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
         allergens: analysis?.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
+        allergenSummary: viewModel?.allergenSentence || '',
         fodmap: analysis?.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
         nutritionSource: analysis?.nutrition_source || '',
       },
@@ -471,7 +472,10 @@ export default function DishScreen() {
             )}
 
             {/* MODULE 1: Allergens - tags always visible, sources on expand */}
-            <AllergensModule allergens={allergensWithSource} />
+            <AllergensModule
+              allergens={allergensWithSource}
+              smartSentence={viewModel.allergenSentence}
+            />
 
             {/* MODULE 2: Digestive Impact - FODMAP breakdown */}
             <DigestiveImpactModule
@@ -480,7 +484,7 @@ export default function DishScreen() {
               explanation={viewModel.fodmapSentence}
             />
 
-            {/* MODULE 3: Long-term Health - Organ impacts (deduplicated) */}
+            {/* MODULE 3: Organ Impact - shows impact level pill, smart summary on expand */}
             <LongTermHealthModule
               overallLevel={bodyImpactLevel === 'medium' ? 'moderate' : bodyImpactLevel}
               organImpacts={organImpacts}

@@ -47,25 +47,47 @@ export function LongTermHealthModule({ overallLevel, organImpacts }: Props) {
 
   const severityLabel = getOverallLabel(overallLevel);
 
-  // Build expanded content with organ impacts
+  // Build teal pill for always-visible section showing impact level
+  const impactPill = (
+    <View style={styles.tagsRow}>
+      <View style={styles.tag}>
+        <Text style={styles.tagText}>{severityLabel} Impact</Text>
+      </View>
+    </View>
+  );
+
+  // Build smart summary sentence from organ impacts
+  const buildSmartSummary = (): string => {
+    if (concernImpacts.length === 0) return '';
+
+    const organNames = concernImpacts.map(o => o.organName.toLowerCase());
+    const uniqueOrgans = [...new Set(organNames)];
+
+    if (uniqueOrgans.length === 1) {
+      return `This dish may have ${severityLabel.toLowerCase()} impact on your ${uniqueOrgans[0]}. ${concernImpacts[0].concern}`;
+    } else if (uniqueOrgans.length === 2) {
+      return `This dish may affect your ${uniqueOrgans[0]} and ${uniqueOrgans[1]}. ${concernImpacts[0].concern}`;
+    } else {
+      const lastOrgan = uniqueOrgans.pop();
+      return `This dish may affect your ${uniqueOrgans.join(', ')}, and ${lastOrgan}. Consider moderation for long-term health.`;
+    }
+  };
+
+  const smartSummary = buildSmartSummary();
+
+  // Build expanded content with smart summary
   const expandedDetails = (
     <View style={styles.expandedContainer}>
-      {concernImpacts.map((impact, idx) => (
-        <View key={idx} style={styles.organRow}>
-          <View style={styles.organHeader}>
-            <Text style={styles.organName}>{impact.organName}</Text>
-            <Text style={styles.organLevel}>({getLevelLabel(impact.level)})</Text>
-          </View>
-          <Text style={styles.organConcern}>{impact.concern}</Text>
-        </View>
-      ))}
+      {smartSummary && (
+        <Text style={styles.smartSummary}>{smartSummary}</Text>
+      )}
     </View>
   );
 
   return (
     <ExpandableCard
-      title="Long-term Health"
-      severityText={severityLabel}
+      title="Organ Impact"
+      alwaysVisibleContent={impactPill}
       expandedContent={expandedDetails}
       defaultExpanded={false}
     />
@@ -73,32 +95,31 @@ export function LongTermHealthModule({ overallLevel, organImpacts }: Props) {
 }
 
 const styles = StyleSheet.create({
-  expandedContainer: {
-    gap: SPACING.lg,
-  },
-  organRow: {
-    gap: SPACING.xs,
-  },
-  organHeader: {
+  tagsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
   },
-  organName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+  tag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.brandTeal,
   },
-  organLevel: {
-    fontSize: 13,
+  tagText: {
+    fontSize: 14,
     fontWeight: '500',
     color: COLORS.brandTeal,
   },
-  organConcern: {
+  expandedContainer: {
+    gap: SPACING.md,
+  },
+  smartSummary: {
     fontSize: 14,
     color: COLORS.textSecondary,
     lineHeight: 20,
-    paddingLeft: SPACING.xs,
   },
 });
 

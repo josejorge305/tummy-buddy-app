@@ -180,6 +180,7 @@ export default function LikelyRecipeScreen() {
   const fullRecipeJson = params.fullRecipe as string | undefined;
   const nutritionJson = params.nutrition as string | undefined;
   const allergensJson = params.allergens as string | undefined;
+  const allergenSummary = params.allergenSummary as string | undefined;
   const fodmapJson = params.fodmap as string | undefined;
   const nutritionSource = params.nutritionSource as string | undefined;
 
@@ -637,27 +638,26 @@ export default function LikelyRecipeScreen() {
           <CollapsibleSection
             title="Allergens"
             icon="warning-outline"
-            badge={`${presentAllergens.length} warning${presentAllergens.length !== 1 ? 's' : ''}`}
-            badgeColor="#f59e0b"
+            badge={`${presentAllergens.length} detected`}
+            badgeColor="#14b8a6"
             expanded={allergensExpanded}
             onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
-            {presentAllergens.map((allergen, idx) => (
-              <View key={idx} style={styles.allergenRow}>
-                <View
-                  style={[
-                    styles.allergenDot,
-                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
-                  ]}
-                />
-                <Text style={styles.allergenText}>
-                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
-                </Text>
-                {allergen.present === 'maybe' && (
-                  <Text style={styles.allergenMaybe}>(possible)</Text>
-                )}
-              </View>
-            ))}
+            {/* Smart sentence summary */}
+            {allergenSummary && (
+              <Text style={styles.allergenSummary}>{allergenSummary}</Text>
+            )}
+            {/* Allergen tags */}
+            <View style={styles.allergenTagsRow}>
+              {presentAllergens.map((allergen, idx) => (
+                <View key={idx} style={styles.allergenTag}>
+                  <Text style={styles.allergenTagText}>
+                    {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
+                    {allergen.present === 'maybe' ? '?' : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </CollapsibleSection>
         )}
 
@@ -1255,6 +1255,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // Allergens
+  allergenSummary: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  allergenTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  allergenTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: '#14b8a6',
+  },
+  allergenTagText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#14b8a6',
+  },
   allergenRow: {
     flexDirection: 'row',
     alignItems: 'center',
