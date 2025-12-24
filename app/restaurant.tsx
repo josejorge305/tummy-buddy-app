@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -28,12 +29,7 @@ import {
   COLORS as DESIGN_COLORS,
   SPACING,
   RADIUS,
-  AllergensModule,
-  DigestiveImpactModule,
-  LongTermHealthModule,
-  NutritionSection,
 } from '../components/dish';
-import type { AllergenWithSource, FodmapCategory, OrganImpact } from '../components/dish';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -723,26 +719,18 @@ export default function RestaurantScreen() {
   const { getPrefetchedMenu, isMenuReady, getPrefetchStatus } = useMenuPrefetch();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});
+  const lastViewedItemId = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [restaurant, setRestaurant] = useState<MenuResponse['restaurant'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-  const [likedItemIds, setLikedItemIds] = useState<Set<string>>(new Set());
   const [analysisByItemId, setAnalysisByItemId] = useState<
     Record<string, AnalyzeDishResponse | null>
   >({});
   const [analysisLoadingByItemId, setAnalysisLoadingByItemId] = useState<Record<string, boolean>>(
     {}
   );
-  const [showOrganDetails, setShowOrganDetails] = useState(false);
-  const [showAllergenDetails, setShowAllergenDetails] = useState(false);
-  const [showFodmapDetails, setShowFodmapDetails] = useState(false);
-  const [showOrganImpactDetails, setShowOrganImpactDetails] = useState(false);
-  const [showNutritionNumbers, setShowNutritionNumbers] = useState(false);
-  const [showDietTags, setShowDietTags] = useState(false);
-  const [showPlateBreakdown, setShowPlateBreakdown] = useState(false);
-  const [focusedComponentIndex, setFocusedComponentIndex] = useState<number | null>(null);
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -865,7 +853,7 @@ export default function RestaurantScreen() {
     item: any;
     sectionName?: string;
     descriptionText: string;
-  }) => {
+  }): Promise<AnalyzeDishResponse | null> => {
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
     try {
@@ -888,15 +876,18 @@ export default function RestaurantScreen() {
         ...prev,
         [itemId]: result,
       }));
+      return result;
     } catch (err) {
       console.error('Error calling analyzeDish', err);
+      const errorResult = {
+        ok: false,
+        error: 'Analysis failed',
+      } as AnalyzeDishResponse;
       setAnalysisByItemId((prev) => ({
         ...prev,
-        [itemId]: {
-          ok: false,
-          error: 'Analysis failed',
-        } as AnalyzeDishResponse,
+        [itemId]: errorResult,
       }));
+      return errorResult;
     } finally {
       setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
     }
@@ -956,9 +947,65 @@ export default function RestaurantScreen() {
     });
   }, [menu, analysisByItemId, analysisLoadingByItemId]);
 
-  const handleToggleAnalysis = async (itemId: string, item: any, sectionName?: string) => {
+  // Scroll to last viewed item when returning from recipe page
+  useFocusEffect(
+    useCallback(() => {
+      if (lastViewedItemId.current && itemLayouts.current[lastViewedItemId.current] !== undefined) {
+        // Small delay to ensure layout is ready
+        setTimeout(() => {
+          const yOffset = itemLayouts.current[lastViewedItemId.current!];
+          scrollViewRef.current?.scrollTo({ y: yOffset - 100, animated: true });
+        }, 100);
+      }
+    }, [])
+  );
+
+  // Navigate to recipe page (when dish is already analyzed)
+  const navigateToRecipe = (itemId: string, item: any, analysis: AnalyzeDishResponse) => {
+    lastViewedItemId.current = itemId;
+    const recipeImageUrl = item?.imageUrl || analysis?.recipe_image || '';
+    router.push({
+      pathname: '/likely-recipe',
+      params: {
+        dishName: item?.name || 'Unknown Dish',
+        imageUrl: recipeImageUrl,
+        likelyRecipe: analysis?.likely_recipe
+          ? JSON.stringify(analysis.likely_recipe)
+          : '',
+        fullRecipe: analysis?.full_recipe
+          ? JSON.stringify(analysis.full_recipe)
+          : '',
+        nutrition: analysis?.nutrition_summary
+          ? JSON.stringify(analysis.nutrition_summary)
+          : '',
+        allergens: analysis?.allergen_flags
+          ? JSON.stringify(analysis.allergen_flags)
+          : '[]',
+        fodmap: analysis?.fodmap_flags
+          ? JSON.stringify(analysis.fodmap_flags)
+          : '',
+        nutritionSource: analysis?.nutrition_source || '',
+      },
+    });
+  };
+
+  // Handle "Show Analysis" button press
+  const handleShowAnalysis = async (itemId: string, item: any, sectionName?: string) => {
     if (!itemId) return;
 
+    const existingAnalysis = analysisByItemId[itemId];
+    const isLoading = analysisLoadingByItemId[itemId];
+
+    // If already analyzed successfully, navigate to recipe
+    if (existingAnalysis && existingAnalysis.ok) {
+      navigateToRecipe(itemId, item, existingAnalysis);
+      return;
+    }
+
+    // If already loading, do nothing
+    if (isLoading) return;
+
+    // Start analysis and expand to show loader
     const descriptionText =
       item?.menuDescription ??
       item?.description ??
@@ -967,35 +1014,19 @@ export default function RestaurantScreen() {
       item?.rawDescription ??
       '';
 
-    // Collapse if tapping the same expanded item
-    if (expandedItemId === itemId) {
-      setExpandedItemId(null);
-      return;
-    }
-
-    // Reset all detail toggle states when expanding a new item
-    setShowOrganDetails(false);
-    setShowAllergenDetails(false);
-    setShowFodmapDetails(false);
-    setShowOrganImpactDetails(false);
-    setShowNutritionNumbers(false);
-    setShowPlateBreakdown(false);
-    setShowDietTags(false);
-    setFocusedComponentIndex(null);
-
-    // If analysis already loaded, just expand
-    if (analysisByItemId[itemId]) {
-      setExpandedItemId(itemId);
-      return;
-    }
-
     setExpandedItemId(itemId);
-    await runAnalysisForItem({
+    const result = await runAnalysisForItem({
       itemId,
       item,
       sectionName,
       descriptionText,
     });
+
+    // After analysis completes, navigate to recipe if successful
+    if (result && result.ok) {
+      setExpandedItemId(null); // Collapse the loader
+      navigateToRecipe(itemId, item, result);
+    }
   };
 
   // Hero image priority: Google photo ref (fetched from place details) > menu API imageRef > menu API imageUrl
@@ -1225,29 +1256,7 @@ export default function RestaurantScreen() {
                     }}
                   >
                     {item?.imageUrl ? (
-                      <View style={styles.imageWrapper}>
-                        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-                        <TouchableOpacity
-                          style={styles.heartButton}
-                          onPress={() => {
-                            setLikedItemIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(itemId)) {
-                                next.delete(itemId);
-                              } else {
-                                next.add(itemId);
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          <Ionicons
-                            name={likedItemIds.has(itemId) ? 'heart' : 'heart-outline'}
-                            size={22}
-                            color={likedItemIds.has(itemId) ? '#f97373' : '#ffffff'}
-                          />
-                        </TouchableOpacity>
-                      </View>
+                      <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
                     ) : null}
 
                     <Text style={styles.itemName} numberOfLines={2}>
@@ -1255,28 +1264,16 @@ export default function RestaurantScreen() {
                     </Text>
 
                     {descriptionText ? (
-                      <Text style={styles.dishDescription} numberOfLines={isExpanded ? 0 : 3}>
+                      <Text style={styles.dishDescription} numberOfLines={3}>
                         {descriptionText}
                       </Text>
                     ) : null}
 
-                    {/* Health Insight Callout - shown when analysis is available */}
-                    {isExpanded && viewModel?.nutritionInsights?.summary && (
-                      <View style={styles.healthInsightCallout}>
-                        <View style={styles.healthInsightIcon}>
-                          <Ionicons name="bulb-outline" size={16} color="#facc15" />
-                        </View>
-                        <Text style={styles.healthInsightText}>
-                          {viewModel.nutritionInsights.summary}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Inline concern badges - shown when analysis is available (teal-only design) */}
-                    {isExpanded && viewModel && (
+                    {/* Allergen & FODMAP pills - shown when dish has been analyzed */}
+                    {viewModel && (
                       <View style={styles.inlineWarningBadges}>
                         {/* Allergen badges - teal styling */}
-                        {viewModel.allergens.filter(a => a.isUserAllergen || viewModel.allergens.length <= 3).slice(0, 4).map((allergen, idx) => (
+                        {viewModel.allergens.filter(a => a.present === 'yes').slice(0, 4).map((allergen, idx) => (
                           <View
                             key={`inline-allergen-${idx}`}
                             style={styles.inlineBadgeTeal}
@@ -1295,205 +1292,27 @@ export default function RestaurantScreen() {
                       </View>
                     )}
 
-                    {!!item?.priceText && <Text style={styles.itemPrice}>{item.priceText}</Text>}
-
                     <TouchableOpacity
-                      onPress={() => handleToggleAnalysis(String(itemId), item, section.name || '')}
+                      onPress={() => handleShowAnalysis(String(itemId), item, section.name || '')}
                     >
                       <Text style={styles.showMoreText}>
-                        {isExpanded ? 'Hide analysis…' : 'Show analysis…'}
+                        {isAnalysisLoading ? 'Analyzing…' : 'Show analysis'}
                       </Text>
                     </TouchableOpacity>
 
-                    {isExpanded && (
+                    {/* Show loader only when analysis is in progress */}
+                    {isExpanded && isAnalysisLoading && (
                       <View style={styles.expandedVerdictContainer}>
-                        {isAnalysisLoading && (
-                          <DishAnalysisLoader dishName={item?.name || 'this dish'} />
-                        )}
+                        <DishAnalysisLoader dishName={item?.name || 'this dish'} />
+                      </View>
+                    )}
 
-                        {!isAnalysisLoading && !analysis && (
-                          <Text style={styles.verdictBodyText}>
-                            Analysis not available yet. Tap “Show analysis…” to try again.
-                          </Text>
-                        )}
-
-                        {!isAnalysisLoading && analysis && !analysis.ok && (
-                          <Text style={styles.verdictBodyText}>
-                            Analysis failed or is unavailable for this dish.
-                          </Text>
-                        )}
-
-                        {!isAnalysisLoading && viewModel && (
-                          <>
-                            {/* NEW REDESIGN: Three expandable modules matching dish.tsx */}
-                            {(() => {
-                              // Transform allergens data for AllergensModule
-                              const allergensWithSource: AllergenWithSource[] = (analysis?.allergen_flags || []).map((flag: any) => {
-                                // Find source from likely_recipe ingredients
-                                let source: string | null = null;
-                                if (analysis?.likely_recipe?.ingredients) {
-                                  const matchingIngredient = analysis.likely_recipe.ingredients.find((ing: any) => {
-                                    // Handle ingredient as either string or object with name property
-                                    const ingName = typeof ing === 'string' ? ing : (ing?.name || '');
-                                    return ingName.toLowerCase().includes(flag.kind?.toLowerCase() || '');
-                                  });
-                                  if (matchingIngredient) {
-                                    source = typeof matchingIngredient === 'string'
-                                      ? matchingIngredient
-                                      : (matchingIngredient?.name || null);
-                                  }
-                                }
-                                return {
-                                  name: flag.kind,
-                                  present: flag.present || 'yes',
-                                  source,
-                                  isUserAllergen: viewModel.allergens?.some((a: any) =>
-                                    a.name.toLowerCase() === flag.kind?.toLowerCase() && a.isUserAllergen
-                                  ) || false,
-                                };
-                              });
-
-                              // Transform FODMAP data for DigestiveImpactModule
-                              const fodmapFlags = Array.isArray(analysis?.fodmap_flags) ? analysis.fodmap_flags : [];
-                              const fodmapCategories: FodmapCategory[] = fodmapFlags
-                                .filter((f: any) => f.fodmap_type && f.level && f.level !== 'low')
-                                .map((f: any) => ({
-                                  name: f.fodmap_type,
-                                  level: (f.level === 'high' ? 'high' : f.level === 'medium' ? 'moderate' : 'low') as 'high' | 'moderate' | 'low',
-                                  sources: f.source_ingredient || 'Various ingredients',
-                                }));
-
-                              // Transform organ data for LongTermHealthModule
-                              const organImpacts: OrganImpact[] = organLines
-                                .filter((line: any) => line.severity !== 'neutral' && line.severity !== 'low')
-                                .map((line: any) => ({
-                                  organName: line.organLabel,
-                                  level: line.severity === 'medium' ? 'moderate' : line.severity,
-                                  concern: line.sentence || `${line.severity === 'high' ? 'Significant' : 'Moderate'} impact on ${line.organLabel.toLowerCase()}`,
-                                }));
-
-                              return (
-                                <>
-                                  {/* 1) Allergens Module */}
-                                  <View style={styles.moduleWrapper}>
-                                    <AllergensModule allergens={allergensWithSource} />
-                                  </View>
-
-                                  {/* 2) Digestive Impact Module */}
-                                  <View style={styles.moduleWrapper}>
-                                    <DigestiveImpactModule
-                                      level={viewModel.fodmapLevel as 'high' | 'medium' | 'moderate' | 'low' | null}
-                                      categories={fodmapCategories}
-                                      explanation={viewModel.fodmapSentence}
-                                    />
-                                  </View>
-
-                                  {/* 3) Long-term Health Module */}
-                                  <View style={styles.moduleWrapper}>
-                                    <LongTermHealthModule
-                                      overallLevel={organOverallLevel === 'medium' ? 'moderate' : organOverallLevel}
-                                      organImpacts={organImpacts}
-                                    />
-                                  </View>
-
-                                  {/* 4) Nutrition Summary (simplified) */}
-                                  <View style={styles.nutritionModuleWrapper}>
-                                    <View style={styles.nutritionCard}>
-                                      <View style={styles.nutritionHeader}>
-                                        <Ionicons name="nutrition-outline" size={20} color={COLORS.textSecondary} />
-                                        <Text style={styles.nutritionTitle}>Nutrition</Text>
-                                      </View>
-                                      {viewModel.nutrition ? (
-                                        <View style={styles.macrosRow}>
-                                          <View style={styles.macroItem}>
-                                            <Text style={[styles.macroValue, styles.macroValueTeal]}>
-                                              {viewModel.nutrition.calories != null ? Math.round(viewModel.nutrition.calories) : '--'}
-                                            </Text>
-                                            <Text style={[styles.macroLabel, styles.macroLabelTeal]}>kcal</Text>
-                                          </View>
-                                          <View style={styles.macroDivider} />
-                                          <View style={styles.macroItem}>
-                                            <Text style={styles.macroValue}>
-                                              {viewModel.nutrition.protein != null ? Math.round(viewModel.nutrition.protein) : '--'}g
-                                            </Text>
-                                            <Text style={styles.macroLabel}>protein</Text>
-                                          </View>
-                                          <View style={styles.macroDivider} />
-                                          <View style={styles.macroItem}>
-                                            <Text style={styles.macroValue}>
-                                              {viewModel.nutrition.carbs != null ? Math.round(viewModel.nutrition.carbs) : '--'}g
-                                            </Text>
-                                            <Text style={styles.macroLabel}>carbs</Text>
-                                          </View>
-                                          <View style={styles.macroDivider} />
-                                          <View style={styles.macroItem}>
-                                            <Text style={styles.macroValue}>
-                                              {viewModel.nutrition.fat != null ? Math.round(viewModel.nutrition.fat) : '--'}g
-                                            </Text>
-                                            <Text style={styles.macroLabel}>fat</Text>
-                                          </View>
-                                        </View>
-                                      ) : (
-                                        <Text style={styles.nutritionUnavailable}>
-                                          Nutrition details unavailable
-                                        </Text>
-                                      )}
-                                    </View>
-                                  </View>
-
-                                  {/* 5) Inline Action Buttons */}
-                                  <View style={styles.inlineActionsContainer}>
-                                    <TouchableOpacity
-                                      style={styles.primaryActionButton}
-                                      onPress={() => {
-                                        console.log('Log meal pressed', {
-                                          name: item?.name,
-                                          placeId: placeIdValue,
-                                          restaurantName: restaurantNameValue,
-                                        });
-                                      }}
-                                    >
-                                      <Ionicons name="add-circle" size={20} color="#000000" />
-                                      <Text style={styles.primaryActionText}>Log Meal</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={styles.secondaryActionButton}
-                                      onPress={() => {
-                                        const recipeImageUrl = item?.imageUrl || analysis?.recipe_image || '';
-                                        router.push({
-                                          pathname: '/likely-recipe',
-                                          params: {
-                                            dishName: item?.name || 'Unknown Dish',
-                                            imageUrl: recipeImageUrl,
-                                            likelyRecipe: analysis?.likely_recipe
-                                              ? JSON.stringify(analysis.likely_recipe)
-                                              : '',
-                                            fullRecipe: analysis?.full_recipe
-                                              ? JSON.stringify(analysis.full_recipe)
-                                              : '',
-                                            nutrition: analysis?.nutrition_summary
-                                              ? JSON.stringify(analysis.nutrition_summary)
-                                              : '',
-                                            allergens: analysis?.allergen_flags
-                                              ? JSON.stringify(analysis.allergen_flags)
-                                              : '[]',
-                                            fodmap: analysis?.fodmap_flags
-                                              ? JSON.stringify(analysis.fodmap_flags)
-                                              : '',
-                                            nutritionSource: analysis?.nutrition_source || '',
-                                          },
-                                        });
-                                      }}
-                                    >
-                                      <Ionicons name="restaurant-outline" size={18} color={COLORS.brandTealLight} />
-                                      <Text style={styles.secondaryActionText}>Recipe</Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                </>
-                              );
-                            })()}
-                          </>
-                        )}
+                    {/* Show error message if analysis failed */}
+                    {isExpanded && !isAnalysisLoading && analysis && !analysis.ok && (
+                      <View style={styles.expandedVerdictContainer}>
+                        <Text style={styles.verdictBodyText}>
+                          Analysis failed. Tap "Show analysis" to try again.
+                        </Text>
                       </View>
                     )}
                   </View>
