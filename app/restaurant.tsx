@@ -1114,8 +1114,11 @@ export default function RestaurantScreen() {
     const existingAnalysis = analysisByItemId[itemId];
     const isLoading = analysisLoadingByItemId[itemId];
 
-    // If already analyzed successfully, navigate to recipe
-    if (existingAnalysis && existingAnalysis.ok) {
+    // Check if we have complete analysis with full_recipe data
+    const hasFullRecipe = existingAnalysis?.ok && existingAnalysis?.full_recipe;
+
+    // If we have complete analysis with full_recipe, navigate directly
+    if (hasFullRecipe) {
       navigateToRecipe(itemId, item, existingAnalysis);
       return;
     }
@@ -1134,39 +1137,15 @@ export default function RestaurantScreen() {
     setExpandedItemId(itemId);
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
-    // Check if we have a jobId for this item (from batch analysis)
-    const jobId = jobIdByItemId[itemId];
-    const restName = restaurant?.name || restaurantNameValue || '';
-
-    let result: AnalyzeDishResponse | null = null;
-
-    if (jobId && restName) {
-      // Use priority endpoint for faster response
-      console.log('[RestaurantScreen] Using priority endpoint for:', item?.name);
-      const priorityResult = await priorityAnalyzeDish(jobId, {
-        dishName: item?.name || '',
-        restaurantName: restName,
-        description: descriptionText,
-      });
-
-      if (priorityResult.ok && priorityResult.result) {
-        result = priorityResult.result;
-        setAnalysisByItemId((prev) => ({ ...prev, [itemId]: result! }));
-      }
-    }
-
-    // Fall back to regular analysis if priority didn't work
-    if (!result || !result.ok) {
-      console.log('[RestaurantScreen] Falling back to regular analysis for:', item?.name);
-      result = await runAnalysisForItem({
-        itemId,
-        item,
-        sectionName,
-        descriptionText,
-      });
-    } else {
-      setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
-    }
+    // Always use full analysis to get full_recipe data (batch results don't include it)
+    // This ensures we have description, wine pairing, storage tips, chef's notes, etc.
+    console.log('[RestaurantScreen] Fetching full analysis for:', item?.name);
+    const result = await runAnalysisForItem({
+      itemId,
+      item,
+      sectionName,
+      descriptionText,
+    });
 
     // After analysis completes, navigate to recipe if successful
     if (result && result.ok) {
