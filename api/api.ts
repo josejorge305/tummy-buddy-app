@@ -313,6 +313,10 @@ export interface AnalyzeDishResponse {
 
   // Recipe image from provider (Spoonacular/Edamam)
   recipe_image?: string | null;
+
+  // Organs pending (when skip_organs=true was used)
+  organs_pending?: boolean;
+  organs_poll_key?: string;
 }
 
 // Dish image lookup response
@@ -618,6 +622,9 @@ export interface AnalyzeDishPayload {
 
   // Request full cookbook-style recipe with LLM instructions
   fullRecipe?: boolean;
+
+  // Skip organs computation (runs in background, use polling to fetch)
+  skip_organs?: boolean;
 }
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
@@ -695,6 +702,103 @@ export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResp
     console.error('TB analyzeDishCard JSON.parse failed:', e?.message || String(e));
     throw e;
   }
+}
+
+// ============================================================
+// Organs Status Polling (for skip_organs optimization)
+// ============================================================
+
+export interface OrgansStatusResponse {
+  ok: boolean;
+  ready: boolean;
+  organs?: DishOrgansBlock;
+  error?: string;
+}
+
+/**
+ * Poll for organs computation status when skip_organs=true was used.
+ *
+ * @param pollKey - The organs_poll_key from the analyze-dish response
+ * @returns Status with organs data when ready
+ */
+export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResponse> {
+  const url = `${GATEWAY_BASE_URL}/pipeline/organs-status?key=${encodeURIComponent(pollKey)}`;
+  console.log('TB getOrgansStatus calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB getOrgansStatus HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `HTTP ${res.status}: ${text.slice(0, 100)}`,
+      };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB getOrgansStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `Invalid JSON response: ${text.slice(0, 100)}`,
+      };
+    }
+
+    console.log('TB getOrgansStatus response:', JSON.stringify(data).slice(0, 200));
+    return data as OrgansStatusResponse;
+  } catch (e: any) {
+    console.error('TB getOrgansStatus error:', e?.message || String(e));
+    return {
+      ok: false,
+      ready: false,
+      error: e?.message || 'Failed to get organs status',
+    };
+  }
+}
+
+/**
+ * Poll for organs computation until ready or timeout.
+ *
+ * @param pollKey - The organs_poll_key from the analyze-dish response
+ * @param onUpdate - Optional callback when status is checked
+ * @param pollIntervalMs - Poll interval in ms (default 2000 = 2s)
+ * @param maxAttempts - Maximum poll attempts (default 30 = 60s timeout)
+ * @returns Final organs data when ready, or error
+ */
+export async function pollOrgansStatus(
+  pollKey: string,
+  onUpdate?: (attempt: number, ready: boolean) => void,
+  pollIntervalMs: number = 2000,
+  maxAttempts: number = 30
+): Promise<OrgansStatusResponse> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await getOrgansStatus(pollKey);
+
+    onUpdate?.(attempt, result.ready);
+
+    if (result.ready || !result.ok) {
+      return result;
+    }
+
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return {
+    ok: false,
+    ready: false,
+    error: `Organs polling timed out after ${maxAttempts} attempts`,
+  };
 }
 
 // ============================================================
