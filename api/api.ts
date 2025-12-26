@@ -1760,3 +1760,245 @@ export async function getSavedDishes(
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
+
+// ============================================================
+// Batch Dish Analysis API (Parallel Processing)
+// ============================================================
+
+export interface BatchDishInput {
+  dishName: string;
+  description?: string;
+  section?: string;
+  category?: string;
+  imageUrl?: string | null;
+}
+
+export interface BatchJobStatus {
+  jobId: string;
+  dishName: string;
+  status: 'cached' | 'pending' | 'processing' | 'completed' | 'failed';
+  result?: AnalyzeDishResponse | null;
+}
+
+export interface BatchAnalyzeResponse {
+  ok: boolean;
+  batchId?: string;
+  total?: number;
+  cached?: number;
+  processing?: number;
+  jobs?: BatchJobStatus[];
+  error?: string;
+}
+
+export interface BatchStatusResponse {
+  ok: boolean;
+  batch?: {
+    id: string;
+    status: 'processing' | 'completed' | 'failed';
+    total: number;
+    completed: number;
+    failed: number;
+    jobs: Array<{
+      jobId: string;
+      dishName: string;
+      status: string;
+      data?: {
+        id: string;
+        status: string;
+        result?: AnalyzeDishResponse;
+      };
+    }>;
+  };
+  error?: string;
+}
+
+export interface BatchPriorityResponse {
+  ok: boolean;
+  result?: AnalyzeDishResponse;
+  error?: string;
+}
+
+/**
+ * Start batch analysis for multiple dishes.
+ * Returns immediately with batchId and cached results.
+ * Pending dishes are processed in background.
+ *
+ * @param restaurantName - Restaurant name for context
+ * @param dishes - Array of dishes to analyze
+ * @param concurrency - Max parallel processing (default 5, max 10)
+ */
+export async function startBatchAnalysis(
+  restaurantName: string,
+  dishes: BatchDishInput[],
+  concurrency: number = 5
+): Promise<BatchAnalyzeResponse> {
+  const url = `${API_BASE_URL}/api/analyze/batch`;
+  console.log('TB startBatchAnalysis calling:', url, { restaurantName, dishCount: dishes.length });
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        restaurantName,
+        dishes,
+        concurrency: Math.min(concurrency, 10),
+      }),
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB startBatchAnalysis HTTP error:', res.status, text.slice(0, 200));
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 100)}` };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB startBatchAnalysis JSON parse error:', parseErr?.message);
+      return { ok: false, error: 'Invalid JSON response' };
+    }
+
+    console.log('TB startBatchAnalysis response:', {
+      batchId: data.batchId,
+      total: data.total,
+      cached: data.cached,
+      processing: data.processing,
+    });
+
+    return data as BatchAnalyzeResponse;
+  } catch (e: any) {
+    console.error('TB startBatchAnalysis error:', e?.message || String(e));
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Poll for batch analysis status.
+ *
+ * @param batchId - The batch ID from startBatchAnalysis
+ * @param includeResults - Whether to include full results (default true)
+ */
+export async function getBatchStatus(
+  batchId: string,
+  includeResults: boolean = true
+): Promise<BatchStatusResponse> {
+  const url = `${API_BASE_URL}/api/analyze/batch/status?batchId=${encodeURIComponent(batchId)}&results=${includeResults ? '1' : '0'}`;
+  console.log('TB getBatchStatus calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB getBatchStatus HTTP error:', res.status, text.slice(0, 200));
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB getBatchStatus JSON parse error:', parseErr?.message);
+      return { ok: false, error: 'Invalid JSON response' };
+    }
+
+    return data as BatchStatusResponse;
+  } catch (e: any) {
+    console.error('TB getBatchStatus error:', e?.message || String(e));
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Poll batch status until complete or timeout.
+ *
+ * @param batchId - The batch ID to poll
+ * @param onUpdate - Callback when new results arrive
+ * @param pollIntervalMs - Poll interval (default 2500ms)
+ * @param maxAttempts - Max poll attempts (default 60 = ~2.5 min)
+ */
+export async function pollBatchStatus(
+  batchId: string,
+  onUpdate?: (status: BatchStatusResponse) => void,
+  pollIntervalMs: number = 2500,
+  maxAttempts: number = 60
+): Promise<BatchStatusResponse> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await getBatchStatus(batchId, true);
+
+    onUpdate?.(result);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    if (result.batch?.status === 'completed' || result.batch?.status === 'failed') {
+      return result;
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return {
+    ok: false,
+    error: `Batch polling timed out after ${maxAttempts} attempts`,
+  };
+}
+
+/**
+ * Priority analyze a specific dish (when user clicks before batch completes).
+ * Runs synchronously and returns the full analysis.
+ *
+ * @param jobId - The job ID from the batch response
+ * @param dish - Dish details for analysis
+ */
+export async function priorityAnalyzeDish(
+  jobId: string,
+  dish: {
+    dishName: string;
+    restaurantName?: string;
+    description?: string;
+  }
+): Promise<BatchPriorityResponse> {
+  const url = `${API_BASE_URL}/api/analyze/batch/priority`;
+  console.log('TB priorityAnalyzeDish calling:', url, { jobId, dishName: dish.dishName });
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobId,
+        dish,
+      }),
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB priorityAnalyzeDish HTTP error:', res.status, text.slice(0, 200));
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB priorityAnalyzeDish JSON parse error:', parseErr?.message);
+      return { ok: false, error: 'Invalid JSON response' };
+    }
+
+    return data as BatchPriorityResponse;
+  } catch (e: any) {
+    console.error('TB priorityAnalyzeDish error:', e?.message || String(e));
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}

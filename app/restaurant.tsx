@@ -20,7 +20,18 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { AnalyzeDishResponse, analyzeDish, fetchMenuWithRetry, fetchMenuFast, pollApifyJob } from '../api/api';
+import {
+  AnalyzeDishResponse,
+  analyzeDish,
+  fetchMenuWithRetry,
+  fetchMenuFast,
+  pollApifyJob,
+  startBatchAnalysis,
+  getBatchStatus,
+  priorityAnalyzeDish,
+  BatchDishInput,
+  BatchJobStatus,
+} from '../api/api';
 import { fetchPlaceDetails } from '../api/places';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
@@ -734,6 +745,11 @@ export default function RestaurantScreen() {
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
 
+  // Batch analysis state
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [jobIdByItemId, setJobIdByItemId] = useState<Record<string, string>>({});
+  const [batchPollingActive, setBatchPollingActive] = useState(false);
+
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
   const addressValue = Array.isArray(address) ? address[0] : address;
@@ -893,26 +909,25 @@ export default function RestaurantScreen() {
     }
   };
 
+  // Start batch analysis when menu loads
   useEffect(() => {
-    if (PREFETCH_ANALYSIS_LIMIT <= 0) return;
     if (!menu || !menu.sections || menu.sections.length === 0) return;
+    if (batchId) return; // Already started batch
 
-    const itemsToPrefetch: {
-      itemId: string;
-      item: any;
-      sectionName: string;
-      descriptionText: string;
-    }[] = [];
+    const restName = restaurant?.name || restaurantNameValue || '';
+    if (!restName) return;
+
+    // Build list of dishes for batch analysis
+    const dishes: BatchDishInput[] = [];
+    const itemIdToJobIdMap: Record<string, string> = {};
 
     for (const section of menu.sections) {
       const sectionName = section.name || '';
       const items = Array.isArray(section.items) ? section.items : [];
+
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
-        // Always include section in itemId to ensure uniqueness across menu sections
         const itemId = `${section.id || section.name || 'section'}-${item?.id || item?.name || index}`;
-
-        if (itemsToPrefetch.length >= PREFETCH_ANALYSIS_LIMIT) break;
 
         const descriptionText =
           item?.menuDescription ??
@@ -922,31 +937,133 @@ export default function RestaurantScreen() {
           item?.rawDescription ??
           '';
 
-        itemsToPrefetch.push({
-          itemId,
-          item,
-          sectionName,
-          descriptionText,
+        dishes.push({
+          dishName: item?.name || '',
+          description: descriptionText,
+          section: sectionName,
+          imageUrl: item?.imageUrl ?? null,
         });
       }
-      if (itemsToPrefetch.length >= PREFETCH_ANALYSIS_LIMIT) break;
     }
 
-    if (!itemsToPrefetch.length) return;
+    if (dishes.length === 0) return;
 
-    // Fire analysis in the background for items that don't already have it
-    itemsToPrefetch.forEach(({ itemId, item, sectionName, descriptionText }) => {
-      if (analysisByItemId[itemId] || analysisLoadingByItemId[itemId]) {
+    // Start batch analysis
+    console.log('[RestaurantScreen] Starting batch analysis for', dishes.length, 'dishes');
+
+    startBatchAnalysis(restName, dishes, 5).then((response) => {
+      if (!response.ok || !response.batchId) {
+        console.log('[RestaurantScreen] Batch analysis failed to start:', response.error);
         return;
       }
-      runAnalysisForItem({
-        itemId,
-        item,
-        sectionName,
-        descriptionText,
+
+      console.log('[RestaurantScreen] Batch started:', {
+        batchId: response.batchId,
+        total: response.total,
+        cached: response.cached,
+        processing: response.processing,
       });
+
+      setBatchId(response.batchId);
+
+      // Map jobIds to itemIds and store cached results
+      if (response.jobs) {
+        const newJobIdMap: Record<string, string> = {};
+        const newAnalyses: Record<string, AnalyzeDishResponse> = {};
+
+        // Match jobs to menu items by dish name
+        let jobIndex = 0;
+        for (const section of menu.sections) {
+          const items = Array.isArray(section.items) ? section.items : [];
+          for (let index = 0; index < items.length; index++) {
+            const item = items[index];
+            const itemId = `${section.id || section.name || 'section'}-${item?.id || item?.name || index}`;
+
+            if (jobIndex < response.jobs.length) {
+              const job = response.jobs[jobIndex];
+              newJobIdMap[itemId] = job.jobId;
+
+              // Store cached results immediately
+              if (job.status === 'cached' && job.result) {
+                newAnalyses[itemId] = job.result;
+              }
+            }
+            jobIndex++;
+          }
+        }
+
+        setJobIdByItemId(newJobIdMap);
+        if (Object.keys(newAnalyses).length > 0) {
+          setAnalysisByItemId((prev) => ({ ...prev, ...newAnalyses }));
+          console.log('[RestaurantScreen] Loaded', Object.keys(newAnalyses).length, 'cached analyses');
+        }
+
+        // Start polling if there are pending dishes
+        if ((response.processing || 0) > 0) {
+          setBatchPollingActive(true);
+        }
+      }
     });
-  }, [menu, analysisByItemId, analysisLoadingByItemId]);
+  }, [menu, restaurant, restaurantNameValue, batchId]);
+
+  // Poll for batch completion
+  useEffect(() => {
+    if (!batchPollingActive || !batchId) return;
+
+    let cancelled = false;
+    const pollInterval = 2500; // 2.5 seconds
+
+    const poll = async () => {
+      while (!cancelled) {
+        const status = await getBatchStatus(batchId, true);
+
+        if (!status.ok || !status.batch) {
+          console.log('[RestaurantScreen] Batch polling error:', status.error);
+          setBatchPollingActive(false);
+          return;
+        }
+
+        // Process completed jobs
+        if (status.batch.jobs) {
+          const newAnalyses: Record<string, AnalyzeDishResponse> = {};
+
+          for (const job of status.batch.jobs) {
+            if (job.status === 'completed' && job.data?.result) {
+              // Find the itemId for this job
+              const itemId = Object.entries(jobIdByItemId).find(
+                ([_, jId]) => jId === job.jobId
+              )?.[0];
+
+              if (itemId && !analysisByItemId[itemId]) {
+                newAnalyses[itemId] = job.data.result;
+              }
+            }
+          }
+
+          if (Object.keys(newAnalyses).length > 0) {
+            setAnalysisByItemId((prev) => ({ ...prev, ...newAnalyses }));
+            console.log('[RestaurantScreen] Batch update:', Object.keys(newAnalyses).length, 'new analyses');
+          }
+        }
+
+        // Stop polling when complete
+        if (status.batch.status === 'completed' || status.batch.status === 'failed') {
+          console.log('[RestaurantScreen] Batch completed:', status.batch.status);
+          setBatchPollingActive(false);
+          return;
+        }
+
+        // Wait before next poll
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [batchPollingActive, batchId, jobIdByItemId, analysisByItemId]);
 
   // Scroll to last viewed item when returning from recipe page
   useFocusEffect(
@@ -1006,7 +1123,6 @@ export default function RestaurantScreen() {
     // If already loading, do nothing
     if (isLoading) return;
 
-    // Start analysis and expand to show loader
     const descriptionText =
       item?.menuDescription ??
       item?.description ??
@@ -1016,17 +1132,48 @@ export default function RestaurantScreen() {
       '';
 
     setExpandedItemId(itemId);
-    const result = await runAnalysisForItem({
-      itemId,
-      item,
-      sectionName,
-      descriptionText,
-    });
+    setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
+
+    // Check if we have a jobId for this item (from batch analysis)
+    const jobId = jobIdByItemId[itemId];
+    const restName = restaurant?.name || restaurantNameValue || '';
+
+    let result: AnalyzeDishResponse | null = null;
+
+    if (jobId && restName) {
+      // Use priority endpoint for faster response
+      console.log('[RestaurantScreen] Using priority endpoint for:', item?.name);
+      const priorityResult = await priorityAnalyzeDish(jobId, {
+        dishName: item?.name || '',
+        restaurantName: restName,
+        description: descriptionText,
+      });
+
+      if (priorityResult.ok && priorityResult.result) {
+        result = priorityResult.result;
+        setAnalysisByItemId((prev) => ({ ...prev, [itemId]: result! }));
+      }
+    }
+
+    // Fall back to regular analysis if priority didn't work
+    if (!result || !result.ok) {
+      console.log('[RestaurantScreen] Falling back to regular analysis for:', item?.name);
+      result = await runAnalysisForItem({
+        itemId,
+        item,
+        sectionName,
+        descriptionText,
+      });
+    } else {
+      setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
+    }
 
     // After analysis completes, navigate to recipe if successful
     if (result && result.ok) {
       setExpandedItemId(null); // Collapse the loader
       navigateToRecipe(itemId, item, result);
+    } else {
+      setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
     }
   };
 
