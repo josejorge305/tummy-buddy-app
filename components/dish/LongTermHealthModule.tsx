@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING } from './designSystem';
 import { ExpandableCard } from './ExpandableCard';
 
@@ -17,6 +17,8 @@ type Props = {
   overallLevel: 'high' | 'moderate' | 'low' | null;
   /** List of organ impacts - ONE concern per organ, no redundancy */
   organImpacts: OrganImpact[];
+  /** Whether organs data is still loading (polling in progress) */
+  loading?: boolean;
 };
 
 function getLevelLabel(level: 'high' | 'moderate' | 'low' | 'beneficial' | null): string {
@@ -35,7 +37,26 @@ function getOverallLabel(level: 'high' | 'moderate' | 'low' | null): string {
   return 'Low';
 }
 
-export function LongTermHealthModule({ overallLevel, organImpacts }: Props) {
+export function LongTermHealthModule({ overallLevel, organImpacts, loading }: Props) {
+  // Show loading state if organs are still being computed
+  if (loading) {
+    const loadingContent = (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={COLORS.brandTeal} />
+        <Text style={styles.loadingText}>Analyzing organ impacts...</Text>
+      </View>
+    );
+
+    return (
+      <ExpandableCard
+        title="Long-term Health"
+        severityText="Loading"
+        expandedContent={loadingContent}
+        defaultExpanded={false}
+      />
+    );
+  }
+
   // Don't show if no impacts
   if (!organImpacts || organImpacts.length === 0) return null;
 
@@ -75,6 +96,17 @@ export function LongTermHealthModule({ overallLevel, organImpacts }: Props) {
 const styles = StyleSheet.create({
   expandedContainer: {
     gap: SPACING.lg,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
   organRow: {
     gap: SPACING.xs,

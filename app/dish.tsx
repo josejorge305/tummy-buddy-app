@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 // Note: useSafeAreaInsets removed - using inline action buttons instead of sticky footer
-import { AnalyzeDishResponse, analyzeDish, fetchDishImage } from '../api/api';
+import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus, DishOrgansBlock } from '../api/api';
 import { buildDishViewModel, DishOrganLine } from './utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish } from '../utils/dishCache';
 import { useUserPrefs } from '../context/UserPrefsContext';
@@ -177,6 +177,7 @@ export default function DishScreen() {
   const [fetchedImageUrl, setFetchedImageUrl] = useState<string | null>(null);
   const [isLoggingMeal, setIsLoggingMeal] = useState(false);
   const [mealLogged, setMealLogged] = useState(false);
+  const [organsLoading, setOrgansLoading] = useState(false);
 
   // Note: Bottom sheet modals removed - using expandable modules now
 
@@ -228,12 +229,49 @@ export default function DishScreen() {
         source: fromPhoto ? 'photo_analysis' : 'standalone_dish_search',
         imageUrl: imageUrl || null,
         fullRecipe: true,
+        skip_organs: true,
       });
 
       if (result.ok) {
         setAnalysis(result);
         const correctedDishName = result.dishName || dishName;
         const cacheImageUrl = imageUrl || result.recipe_image || undefined;
+
+        // Start organs polling in background if organs are pending
+        if (result.organs_pending && result.organs_poll_key) {
+          setOrgansLoading(true);
+          pollOrgansStatus(result.organs_poll_key)
+            .then((organsResult) => {
+              if (organsResult.ok && organsResult.ready && organsResult.organs) {
+                // Update analysis with organs data
+                setAnalysis((prev) => {
+                  if (!prev) return prev;
+                  const updated = {
+                    ...prev,
+                    organs: organsResult.organs,
+                    organs_pending: false,
+                    organs_poll_key: undefined,
+                  };
+                  // Update cache with organs data
+                  cacheDishAnalysis(correctedDishName, updated, {
+                    restaurantName,
+                    restaurantAddress,
+                    placeId,
+                    imageUrl: cacheImageUrl,
+                    source: restaurantName ? 'restaurant' : 'standalone',
+                  });
+                  return updated;
+                });
+              }
+            })
+            .catch((e) => {
+              console.error('Organs polling error:', e);
+            })
+            .finally(() => {
+              setOrgansLoading(false);
+            });
+        }
+
         await cacheDishAnalysis(correctedDishName, result, {
           restaurantName,
           restaurantAddress,
@@ -484,6 +522,7 @@ export default function DishScreen() {
             <LongTermHealthModule
               overallLevel={bodyImpactLevel === 'medium' ? 'moderate' : bodyImpactLevel}
               organImpacts={organImpacts}
+              loading={organsLoading}
             />
 
             {/* ACTION BUTTONS - Inline, only shown when analysis complete */}
