@@ -492,7 +492,11 @@ export default function DishScreen() {
         <DishHeader
           imageUrl={dishImageUrl}
           dishName={analysis?.dishName || dishName}
-          description={(analysis?.likely_recipe as { description?: string })?.description}
+          description={
+            analysis?.full_recipe?.full_recipe?.description ||
+            analysis?.full_recipe?.full_recipe?.introduction ||
+            null
+          }
           price={price}
           restaurantName={restaurantName}
         />
