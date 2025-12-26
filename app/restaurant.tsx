@@ -909,7 +909,8 @@ export default function RestaurantScreen() {
       const items = Array.isArray(section.items) ? section.items : [];
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
-        const itemId = String(item?.id ?? item?.name ?? `${section.id}-${index}`);
+        // Always include section in itemId to ensure uniqueness across menu sections
+        const itemId = `${section.id || section.name || 'section'}-${item?.id || item?.name || index}`;
 
         if (itemsToPrefetch.length >= PREFETCH_ANALYSIS_LIMIT) break;
 
@@ -1179,7 +1180,8 @@ export default function RestaurantScreen() {
               {section.name ? <Text style={styles.sectionTitle}>{section.name}</Text> : null}
 
               {section.items?.map((item: any, index: number) => {
-                const itemId = String(item?.id ?? item?.name ?? `${section.id}-${index}`);
+                // Always include section in itemId to ensure uniqueness across menu sections
+                const itemId = `${section.id || section.name || 'section'}-${item?.id || item?.name || index}`;
                 const isExpanded = expandedItemId === itemId;
 
                 const analysis = analysisByItemId[itemId];
