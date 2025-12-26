@@ -490,7 +490,7 @@ export default function LikelyRecipeScreen() {
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
             {nutritionInsights?.summary && (
-              <Text style={styles.nutritionSummaryText}>&quot;{nutritionInsights.summary}&quot;</Text>
+              <Text style={styles.nutritionSummaryText}>"{nutritionInsights.summary}"</Text>
             )}
             {(nutritionSourceLabel || nutritionSource) && (
               <Text style={styles.nutritionSourceText}>
