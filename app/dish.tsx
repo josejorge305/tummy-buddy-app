@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus } from '../api/api';
 import { buildDishViewModel, DishOrganLine } from './utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish } from '../utils/dishCache';
+import { recordCacheHit, recordCacheMiss, recordCacheStore, logMetrics } from '../utils/cacheMetrics';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import BrandTitle from '../components/BrandTitle';
 import * as Haptics from 'expo-haptics';
@@ -242,6 +243,8 @@ export default function DishScreen() {
       if (!fromPhoto) {
         const cached = await getCachedDish(dishName, placeId);
         if (cached && cached.analysis) {
+          recordCacheHit(dishName);
+          logMetrics(); // Log current stats
           setAnalysis(cached.analysis);
           setIsLoading(false);
           const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
@@ -250,6 +253,7 @@ export default function DishScreen() {
           }
           return;
         }
+        recordCacheMiss(dishName);
       }
 
       const result = await analyzeDish({
@@ -310,6 +314,7 @@ export default function DishScreen() {
           imageUrl: cacheImageUrl,
           source: restaurantName ? 'restaurant' : 'standalone',
         });
+        recordCacheStore(correctedDishName);
         if (!imageUrl && !result.recipe_image) {
           fetchImageIfNeeded(null);
         }
