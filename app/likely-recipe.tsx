@@ -14,11 +14,13 @@ import {
 } from 'react-native';
 import {
   AllergenFlag,
+  DishOrgansBlock,
   FodmapFlag,
   FullRecipeData,
   FullRecipeResponse,
   LikelyIngredient,
   LikelyRecipe,
+  NutritionInsights,
   NutritionSummary,
 } from '../api/api';
 
@@ -71,6 +73,19 @@ const getDifficultyColor = (difficulty?: string): string => {
   if (d === 'medium') return '#f59e0b';
   if (d === 'hard') return '#ef4444';
   return TEXT_MUTED;
+};
+
+// Map nutrition source to human-readable label
+const mapNutritionSourceToLabel = (source: string | null | undefined): string | null => {
+  if (!source) return null;
+  if (source === 'restaurant_kcal_only') return 'Calories from restaurant label (kcal only).';
+  if (source.includes('restaurant_kcal')) return 'Calories aligned with restaurant label; macros estimated from recipe.';
+  if (source === 'recipe_out' || source === 'recipe_legacy') return 'Estimated from recipe provider.';
+  if (source === 'edamam_totalNutrients' || source === 'edamam_manual') return 'Estimated from recipe nutrition database.';
+  if (source === 'enriched_ingredients_parsed' || source === 'enriched_normalized_items') return 'Estimated from ingredient-level analysis.';
+  if (source.includes('fatsecret')) return 'Estimated from FatSecret nutrition database.';
+  if (source.includes('usda')) return 'Estimated from USDA FoodData Central.';
+  return 'Estimated nutrition values.';
 };
 
 // Phase icon mapping
@@ -169,6 +184,7 @@ export default function LikelyRecipeScreen() {
   const [nutritionExpanded, setNutritionExpanded] = useState(false);
   const [allergensExpanded, setAllergensExpanded] = useState(false);
   const [fodmapExpanded, setFodmapExpanded] = useState(false);
+  const [longTermHealthExpanded, setLongTermHealthExpanded] = useState(false);
   const [winePairingExpanded, setWinePairingExpanded] = useState(false);
   const [storageExpanded, setStorageExpanded] = useState(false);
 
@@ -181,16 +197,23 @@ export default function LikelyRecipeScreen() {
   const likelyRecipeJson = params.likelyRecipe as string | undefined;
   const fullRecipeJson = params.fullRecipe as string | undefined;
   const nutritionJson = params.nutrition as string | undefined;
+  const nutritionInsightsJson = params.nutritionInsights as string | undefined;
+  const nutritionSourceLabel = params.nutritionSourceLabel as string | undefined;
   const allergensJson = params.allergens as string | undefined;
+  const allergenSummary = params.allergenSummary as string | undefined;
   const fodmapJson = params.fodmap as string | undefined;
+  const fodmapSummary = params.fodmapSummary as string | undefined;
+  const organsJson = params.organs as string | undefined;
   const nutritionSource = params.nutritionSource as string | undefined;
 
   let likelyRecipe: LikelyRecipe | null = null;
   let fullRecipeResponse: FullRecipeResponse | null = null;
   let fullRecipe: FullRecipeData | null = null;
   let nutrition: NutritionSummary | null = null;
+  let nutritionInsights: NutritionInsights | null = null;
   let allergens: AllergenFlag[] = [];
   let fodmap: FodmapFlag | null = null;
+  let organs: DishOrgansBlock | null = null;
 
   try {
     if (likelyRecipeJson) likelyRecipe = JSON.parse(likelyRecipeJson);
@@ -201,8 +224,10 @@ export default function LikelyRecipeScreen() {
       fullRecipe = fullRecipeResponse as unknown as FullRecipeData;
     }
     if (nutritionJson) nutrition = JSON.parse(nutritionJson);
+    if (nutritionInsightsJson) nutritionInsights = JSON.parse(nutritionInsightsJson);
     if (allergensJson) allergens = JSON.parse(allergensJson);
     if (fodmapJson) fodmap = JSON.parse(fodmapJson);
+    if (organsJson) organs = JSON.parse(organsJson);
   } catch (e) {
     console.error('Error parsing likely recipe params:', e);
   }
@@ -213,6 +238,32 @@ export default function LikelyRecipeScreen() {
   const presentAllergens = allergens.filter(
     (a) => a.present === 'yes' || a.present === 'maybe'
   );
+
+  // Compute organ impacts for Long-term Health section
+  const organImpacts = (organs?.organs || [])
+    .filter(o => o.organ && o.level && o.level.toLowerCase() !== 'low' && o.level.toLowerCase() !== 'beneficial')
+    .map(o => {
+      const reasons = (o as any).reasons as string[] | undefined;
+      const organName = o.organ!.charAt(0).toUpperCase() + o.organ!.slice(1);
+      const levelLower = o.level!.toLowerCase();
+      return {
+        organName,
+        level: levelLower === 'medium' ? 'Moderate' : o.level!.charAt(0).toUpperCase() + o.level!.slice(1),
+        levelColor: levelLower === 'high' ? '#ef4444' : '#14b8a6',
+        sentence: reasons?.[0] || `${levelLower === 'high' ? 'Significant' : 'Moderate'} impact on ${organName.toLowerCase()}.`,
+      };
+    });
+
+  // Get overall level from tummy_barometer or compute from organ levels
+  const getOverallLevel = (): { label: string; color: string } | null => {
+    if (!organs?.organs || organs.organs.length === 0) return null;
+    const hasHigh = organs.organs.some(o => o.level?.toLowerCase() === 'high');
+    const hasMedium = organs.organs.some(o => o.level?.toLowerCase() === 'medium');
+    if (hasHigh) return { label: 'High', color: '#ef4444' };
+    if (hasMedium) return { label: 'Moderate', color: '#14b8a6' };
+    return { label: 'Low', color: '#22c55e' };
+  };
+  const overallOrganLevel = getOverallLevel();
 
   const cookingMethod = getCookingMethodDisplay(likelyRecipe?.cooking_method);
   const isVisionEnhanced = nutritionSource === 'fatsecret_image';
@@ -396,6 +447,14 @@ export default function LikelyRecipeScreen() {
               <NutritionItem label="Carbs" value={nutrition.carbs_g} unit="g" />
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
+            {nutritionInsights?.summary && (
+              <Text style={styles.nutritionSummaryText}>"{nutritionInsights.summary}"</Text>
+            )}
+            {(nutritionSourceLabel || nutritionSource) && (
+              <Text style={styles.nutritionSourceText}>
+                Source: {nutritionSourceLabel || mapNutritionSourceToLabel(nutritionSource)}
+              </Text>
+            )}
           </CollapsibleSection>
         )}
 
@@ -409,22 +468,40 @@ export default function LikelyRecipeScreen() {
             expanded={allergensExpanded}
             onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
-            {presentAllergens.map((allergen, idx) => (
-              <View key={idx} style={styles.allergenRow}>
+            {/* Allergen Pills */}
+            <View style={styles.allergenPillsContainer}>
+              {presentAllergens.map((allergen, idx) => (
                 <View
+                  key={idx}
                   style={[
-                    styles.allergenDot,
-                    { backgroundColor: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                    styles.allergenPill,
+                    { backgroundColor: allergen.present === 'maybe' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(239, 68, 68, 0.15)' },
                   ]}
-                />
-                <Text style={styles.allergenText}>
-                  {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
-                </Text>
-                {allergen.present === 'maybe' && (
-                  <Text style={styles.allergenMaybe}>(possible)</Text>
-                )}
-              </View>
-            ))}
+                >
+                  <Text
+                    style={[
+                      styles.allergenPillText,
+                      { color: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                    ]}
+                  >
+                    {allergen.kind.toLowerCase()}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {/* Allergen Explanations - Table Style */}
+            <View style={styles.allergenExplanationsContainer}>
+              {presentAllergens.map((allergen, idx) => (
+                <View key={idx} style={styles.allergenExplanationRow}>
+                  <Text style={styles.allergenExplanationName}>
+                    {allergen.kind.toLowerCase()}
+                  </Text>
+                  <Text style={styles.allergenExplanationText}>
+                    {allergen.message || `This dish contains ${allergen.kind.toLowerCase()}.`}
+                  </Text>
+                </View>
+              ))}
+            </View>
             {/* Allergen Substitutions inside Allergens section */}
             {substitutions.length > 0 && (
               <View style={styles.substitutionsInline}>
@@ -454,21 +531,49 @@ export default function LikelyRecipeScreen() {
           </CollapsibleSection>
         )}
 
-        {/* 3. FODMAP */}
+        {/* 3. Digestive Impact (FODMAP) */}
         {fodmap && (fodmap.level === 'high' || fodmap.level === 'medium') && (
           <CollapsibleSection
-            title="FODMAP"
+            title="Digestive Impact"
             icon="leaf-outline"
             badge={fodmap.level.charAt(0).toUpperCase() + fodmap.level.slice(1)}
             badgeColor={fodmap.level === 'high' ? '#ef4444' : '#f59e0b'}
             expanded={fodmapExpanded}
             onToggle={() => setFodmapExpanded(!fodmapExpanded)}
           >
-            {fodmap.reason && <Text style={styles.fodmapReason}>{fodmap.reason}</Text>}
+            <Text style={styles.fodmapReason}>
+              {fodmapSummary || fodmap.reason || `This dish has ${fodmap.level} FODMAP content.`}
+            </Text>
           </CollapsibleSection>
         )}
 
-        {/* 4. Ingredients - Collapsed by default */}
+        {/* 4. Long-term Health */}
+        {organImpacts.length > 0 && overallOrganLevel && (
+          <CollapsibleSection
+            title="Long-term Health"
+            icon="fitness-outline"
+            badge={overallOrganLevel.label}
+            badgeColor={overallOrganLevel.color}
+            expanded={longTermHealthExpanded}
+            onToggle={() => setLongTermHealthExpanded(!longTermHealthExpanded)}
+          >
+            <View style={styles.organImpactsList}>
+              {organImpacts.map((impact, idx) => (
+                <View key={idx} style={styles.organImpactItem}>
+                  <View style={styles.organImpactHeader}>
+                    <Text style={styles.organImpactName}>{impact.organName}</Text>
+                    <Text style={[styles.organImpactLevel, { color: impact.levelColor }]}>
+                      ({impact.level})
+                    </Text>
+                  </View>
+                  <Text style={styles.organImpactSentence}>{impact.sentence}</Text>
+                </View>
+              ))}
+            </View>
+          </CollapsibleSection>
+        )}
+
+        {/* 5. Ingredients - Collapsed by default */}
         <CollapsibleSection
           title="Ingredients"
           icon="list-outline"
@@ -1271,6 +1376,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  nutritionSummaryText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
+  nutritionSourceText: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    marginTop: 8,
+  },
   nutritionItem: {
     alignItems: 'center',
     flex: 1,
@@ -1291,11 +1408,54 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // Allergens
+  allergenPillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  allergenPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  allergenPillText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  allergenExplanationsContainer: {
+    gap: 16,
+  },
+  allergenExplanationRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  allergenExplanationName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+    width: 70,
+  },
+  allergenExplanationText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    flex: 1,
+  },
+  allergenItemContainer: {
+    marginBottom: 12,
+  },
   allergenRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 8,
+  },
+  allergenMessage: {
+    fontSize: 13,
+    color: TEXT_SECONDARY,
+    lineHeight: 18,
+    marginTop: 4,
+    marginLeft: 18,
   },
   allergenDot: {
     width: 8,
@@ -1315,6 +1475,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TEXT_SECONDARY,
     lineHeight: 22,
+  },
+  // Long-term Health / Organ Impacts
+  organImpactsList: {
+    gap: 16,
+  },
+  organImpactItem: {
+    gap: 4,
+  },
+  organImpactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  organImpactName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+  },
+  organImpactLevel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  organImpactSentence: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 20,
+    marginLeft: 2,
   },
   // Attribution
   attributionSection: {
