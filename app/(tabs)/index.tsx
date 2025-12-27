@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ImageBackground,
   SafeAreaView,
   Pressable,
   Animated,
@@ -25,7 +24,6 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandTitle from '../../components/BrandTitle';
 import {
-  fetchPlaceSuggestions,
   fetchPlaceDetails,
   PlaceSuggestion,
 } from '../../api/places';
@@ -67,9 +65,9 @@ async function fetchEta(origin: any, destination: any, apiKey: string | undefine
   }
 }
 
-function haversineDistance(lat1, lon1, lat2, lon2) {
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // km
-  const toRad = (v) => (v * Math.PI) / 180;
+  const toRad = (v: number) => (v * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
@@ -975,7 +973,7 @@ export default function HomeScreen() {
                 >
                   <Ionicons name="search-outline" size={18} color={TEAL} />
                   <Text style={styles.dishDropdownSearchNewText}>
-                    Search for "{query.trim()}"
+                    Search for &quot;{query.trim()}&quot;
                   </Text>
                   <Ionicons name="arrow-forward" size={16} color={TEAL} />
                 </TouchableOpacity>

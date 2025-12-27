@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 // Note: useSafeAreaInsets removed - using inline action buttons instead of sticky footer
-import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus, DishOrgansBlock } from '../api/api';
+import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus } from '../api/api';
 import { buildDishViewModel, DishOrganLine } from './utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish } from '../utils/dishCache';
 import { useUserPrefs } from '../context/UserPrefsContext';
@@ -168,7 +168,8 @@ export default function DishScreen() {
   const restaurantName = params.restaurantName as string | undefined;
   const restaurantAddress = params.restaurantAddress as string | undefined;
   const placeId = params.placeId as string | undefined;
-  const imageUrl = params.imageUrl as string | undefined;
+  const rawImageUrl = params.imageUrl as string | undefined;
+  const imageUrl = rawImageUrl ? decodeURIComponent(rawImageUrl) : undefined;
   const fromPhoto = params.fromPhoto === 'true';
 
   const [isLoading, setIsLoading] = useState(true);
@@ -270,27 +271,28 @@ export default function DishScreen() {
         if (result.organs_pending && result.organs_poll_key) {
           setOrgansLoading(true);
           pollOrgansStatus(result.organs_poll_key)
-            .then((organsResult) => {
+            .then(async (organsResult) => {
               if (organsResult.ok && organsResult.ready && organsResult.organs) {
                 // Update analysis with organs data
-                setAnalysis((prev) => {
-                  if (!prev) return prev;
-                  const updated = {
-                    ...prev,
-                    organs: organsResult.organs,
-                    organs_pending: false,
-                    organs_poll_key: undefined,
-                  };
-                  // Update cache with organs data
-                  cacheDishAnalysis(correctedDishName, updated, {
+                const updated = {
+                  ...result,
+                  organs: organsResult.organs,
+                  organs_pending: false,
+                  organs_poll_key: undefined,
+                };
+                setAnalysis(updated);
+                // Update cache with organs data
+                try {
+                  await cacheDishAnalysis(correctedDishName, updated, {
                     restaurantName,
                     restaurantAddress,
                     placeId,
                     imageUrl: cacheImageUrl,
                     source: restaurantName ? 'restaurant' : 'standalone',
                   });
-                  return updated;
-                });
+                } catch (cacheError) {
+                  console.error('Failed to cache organs update:', cacheError);
+                }
               }
             })
             .catch((e) => {

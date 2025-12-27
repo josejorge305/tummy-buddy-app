@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserPrefs } from '../../context/UserPrefsContext';
@@ -112,8 +111,11 @@ function BarChart({ data }: { data: WeeklyPoint[] }) {
   );
 }
 
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
+function formatTime(timestamp: string | number): string {
+  // Handle both Unix timestamp (number) and ISO date string
+  const date = typeof timestamp === 'number'
+    ? new Date(timestamp * 1000)
+    : new Date(timestamp);
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
@@ -271,7 +273,7 @@ export default function TummyTracker() {
 
         {/* Today's Overview Card */}
         <Card>
-          <Text style={styles.sectionTitle}>Today's Overview</Text>
+          <Text style={styles.sectionTitle}>Today&apos;s Overview</Text>
           <View style={styles.rowBetween}>
             <View style={styles.centered}>
               <Text style={styles.tummyScore}>{caloriesPercent}%</Text>
@@ -332,7 +334,7 @@ export default function TummyTracker() {
               <Ionicons name="restaurant-outline" size={32} color="#444" />
               <Text style={styles.emptyText}>No meals logged yet</Text>
               <Text style={styles.emptyHint}>
-                Analyze a dish and tap "Log Meal" to track it here.
+                Analyze a dish and tap &quot;Log Meal&quot; to track it here.
               </Text>
             </View>
           ) : (
@@ -401,7 +403,7 @@ export default function TummyTracker() {
               <View style={{ marginLeft: 12, flex: 1 }}>
                 <Text style={styles.warningTitle}>High Sodium</Text>
                 <Text style={styles.warningText}>
-                  You've consumed {Math.round(sodiumConsumed)}mg of {sodiumLimit}mg limit.
+                  You&apos;ve consumed {Math.round(sodiumConsumed)}mg of {sodiumLimit}mg limit.
                 </Text>
               </View>
             </View>
