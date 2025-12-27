@@ -127,6 +127,43 @@ function truncateText(text: string, maxLength: number): { truncated: string; isT
   };
 }
 
+// Detect wine type from pairing text
+type WineType = 'red' | 'white' | 'beer' | 'other';
+function detectWineType(text: string): WineType {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('red wine') || lowerText.includes('cabernet') || lowerText.includes('merlot') ||
+      lowerText.includes('pinot noir') || lowerText.includes('shiraz') || lowerText.includes('malbec') ||
+      lowerText.includes('zinfandel') || lowerText.includes('sangiovese') || lowerText.includes('tempranillo')) {
+    return 'red';
+  }
+  if (lowerText.includes('white wine') || lowerText.includes('chardonnay') || lowerText.includes('sauvignon blanc') ||
+      lowerText.includes('pinot grigio') || lowerText.includes('riesling') || lowerText.includes('moscato') ||
+      lowerText.includes('prosecco') || lowerText.includes('champagne') || lowerText.includes('chablis')) {
+    return 'white';
+  }
+  if (lowerText.includes('beer') || lowerText.includes('lager') || lowerText.includes('ale') ||
+      lowerText.includes('ipa') || lowerText.includes('stout') || lowerText.includes('pilsner')) {
+    return 'beer';
+  }
+  return 'other';
+}
+
+// Detect storage temperature type from text
+type StorageType = 'cold' | 'hot' | 'room';
+function detectStorageType(text: string): StorageType {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('refrigerat') || lowerText.includes('fridge') || lowerText.includes('cold') ||
+      lowerText.includes('freeze') || lowerText.includes('frozen') || lowerText.includes('chill') ||
+      lowerText.includes('cool') || lowerText.includes('ice')) {
+    return 'cold';
+  }
+  if (lowerText.includes('warm') || lowerText.includes('hot') || lowerText.includes('heat') ||
+      lowerText.includes('reheat') || lowerText.includes('microwave') || lowerText.includes('oven')) {
+    return 'hot';
+  }
+  return 'room';
+}
+
 // Collapsible Section Component
 function CollapsibleSection({
   title,
@@ -757,28 +794,55 @@ export default function LikelyRecipeScreen() {
         )}
 
         {/* 8. Wine Pairing */}
-        {winePairing && (
-          <CollapsibleSection
-            title="Wine Pairing"
-            icon="wine-outline"
-            expanded={winePairingExpanded}
-            onToggle={() => setWinePairingExpanded(!winePairingExpanded)}
-          >
-            <Text style={styles.pairingText}>{winePairing}</Text>
-          </CollapsibleSection>
-        )}
+        {winePairing && (() => {
+          const wineType = detectWineType(winePairing);
+          const wineBoxStyle = wineType === 'red' ? styles.winePairingBoxRed :
+                               wineType === 'white' || wineType === 'beer' ? styles.winePairingBoxYellow :
+                               styles.winePairingBoxDefault;
+          const wineTextStyle = wineType === 'red' ? styles.winePairingTextRed :
+                                wineType === 'white' || wineType === 'beer' ? styles.winePairingTextYellow :
+                                styles.pairingText;
+          const wineIcon = wineType === 'beer' ? 'beer-outline' : 'wine-outline';
+          return (
+            <CollapsibleSection
+              title="Wine Pairing"
+              icon={wineIcon}
+              expanded={winePairingExpanded}
+              onToggle={() => setWinePairingExpanded(!winePairingExpanded)}
+            >
+              <View style={wineBoxStyle}>
+                <Ionicons name={wineIcon as any} size={18} color={wineType === 'red' ? '#fca5a5' : wineType === 'white' || wineType === 'beer' ? '#fef08a' : TEAL} />
+                <Text style={wineTextStyle}>{winePairing}</Text>
+              </View>
+            </CollapsibleSection>
+          );
+        })()}
 
         {/* 9. Storage */}
-        {storage && (
-          <CollapsibleSection
-            title="Storage"
-            icon="snow-outline"
-            expanded={storageExpanded}
-            onToggle={() => setStorageExpanded(!storageExpanded)}
-          >
-            <Text style={styles.storageTextCollapsible}>{storage}</Text>
-          </CollapsibleSection>
-        )}
+        {storage && (() => {
+          const storageType = detectStorageType(storage);
+          const storageBoxStyle = storageType === 'cold' ? styles.storageBoxCold :
+                                  storageType === 'hot' ? styles.storageBoxHot :
+                                  styles.storageBoxDefault;
+          const storageTextStyle = storageType === 'cold' ? styles.storageTextCold :
+                                   storageType === 'hot' ? styles.storageTextHot :
+                                   styles.storageTextCollapsible;
+          const storageIcon = storageType === 'cold' ? 'snow-outline' :
+                              storageType === 'hot' ? 'flame-outline' : 'cube-outline';
+          return (
+            <CollapsibleSection
+              title="Storage"
+              icon={storageIcon}
+              expanded={storageExpanded}
+              onToggle={() => setStorageExpanded(!storageExpanded)}
+            >
+              <View style={storageBoxStyle}>
+                <Ionicons name={storageIcon as any} size={18} color={storageType === 'cold' ? '#7dd3fc' : storageType === 'hot' ? '#fca5a5' : TEAL} />
+                <Text style={storageTextStyle}>{storage}</Text>
+              </View>
+            </CollapsibleSection>
+          );
+        })()}
 
         {/* 10. Data Attribution Section */}
         {attributions.length > 0 && (
@@ -1212,6 +1276,49 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     lineHeight: 20,
   },
+  // Wine Pairing color-coded boxes
+  winePairingBoxRed: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+  },
+  winePairingTextRed: {
+    fontSize: 14,
+    color: '#fca5a5',
+    lineHeight: 22,
+    flex: 1,
+  },
+  winePairingBoxYellow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#facc15',
+  },
+  winePairingTextYellow: {
+    fontSize: 14,
+    color: '#fef08a',
+    lineHeight: 22,
+    flex: 1,
+  },
+  winePairingBoxDefault: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#a855f7',
+  },
   storageCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1369,6 +1476,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TEXT_SECONDARY,
     lineHeight: 22,
+  },
+  // Storage color-coded boxes
+  storageBoxCold: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#38bdf8',
+  },
+  storageTextCold: {
+    fontSize: 14,
+    color: '#7dd3fc',
+    lineHeight: 22,
+    flex: 1,
+  },
+  storageBoxHot: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+  },
+  storageTextHot: {
+    fontSize: 14,
+    color: '#fca5a5',
+    lineHeight: 22,
+    flex: 1,
+  },
+  storageBoxDefault: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: TEAL,
   },
   collapsibleDivider: {
     height: 1,
