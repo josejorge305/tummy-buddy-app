@@ -1133,11 +1133,16 @@ export function getTodayDate(): string {
 export interface UserProfile {
   user_id: string;
   sex?: 'male' | 'female' | null;
+  biological_sex?: 'male' | 'female' | null;
   birth_year?: number | null;
+  date_of_birth?: string | null;
   height_cm?: number | null;
   weight_kg?: number | null;
+  current_weight_kg?: number | null;
   activity_level?: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active' | null;
   primary_goal?: 'lose_weight' | 'maintain' | 'build_muscle' | 'improve_health' | 'manage_condition' | null;
+  goals?: string[] | null;
+  unit_system?: 'imperial' | 'metric' | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -1205,6 +1210,7 @@ export interface DailySummary {
   total_sodium_mg: number;
   meal_count: number;
   organ_scores?: Record<string, number> | null;
+  daily_insight?: string | null;
 }
 
 export interface WeightEntry {

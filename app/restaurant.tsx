@@ -9,7 +9,6 @@ import {
   Easing,
   Image,
   ImageBackground,
-  LayoutAnimation,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -25,22 +24,14 @@ import {
   analyzeDish,
   fetchMenuWithRetry,
   fetchMenuFast,
-  pollApifyJob,
   startBatchAnalysis,
   getBatchStatus,
-  priorityAnalyzeDish,
   BatchDishInput,
-  BatchJobStatus,
 } from '../api/api';
 import { fetchPlaceDetails } from '../api/places';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { buildDishViewModel } from './utils/dishViewModel';
-import {
-  COLORS as DESIGN_COLORS,
-  SPACING,
-  RADIUS,
-} from '../components/dish';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -435,11 +426,11 @@ function MenuLoadingScreen({
               <Text style={loadingStyles.infoTitle}>One-time setup</Text>
             </View>
             <Text style={loadingStyles.infoText}>
-              We're preparing this menu for the first time. Future visits will load instantly!
+              We&apos;re preparing this menu for the first time. Future visits will load instantly!
             </Text>
             {showLongWaitMessage ? (
               <Text style={loadingStyles.longWaitText}>
-                This menu has a lot of items - hang tight, we're almost there!
+                This menu has a lot of items - hang tight, we&apos;re almost there!
               </Text>
             ) : null}
           </View>
@@ -973,7 +964,7 @@ export default function RestaurantScreen() {
 
         // Match jobs to menu items by dish name
         let jobIndex = 0;
-        for (const section of menu.sections) {
+        for (const section of menu.sections || []) {
           const items = Array.isArray(section.items) ? section.items : [];
           for (let index = 0; index < items.length; index++) {
             const item = items[index];
@@ -1306,7 +1297,7 @@ export default function RestaurantScreen() {
           </View>
 
           {menuSearch && filteredSections.length === 0 && (
-            <Text style={styles.noResultsText}>No items found for "{menuSearch}"</Text>
+            <Text style={styles.noResultsText}>No items found for &quot;{menuSearch}&quot;</Text>
           )}
 
           {filteredSections.map((section) => (
@@ -1447,7 +1438,7 @@ export default function RestaurantScreen() {
                     {isExpanded && !isAnalysisLoading && analysis && !analysis.ok && (
                       <View style={styles.expandedVerdictContainer}>
                         <Text style={styles.verdictBodyText}>
-                          Analysis failed. Tap "Show analysis" to try again.
+                          Analysis failed. Tap &quot;Show analysis&quot; to try again.
                         </Text>
                       </View>
                     )}

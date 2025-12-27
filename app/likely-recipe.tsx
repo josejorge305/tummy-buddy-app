@@ -193,7 +193,8 @@ export default function LikelyRecipeScreen() {
 
   // Parse the data passed via params
   const dishName = params.dishName as string | undefined;
-  const imageUrl = params.imageUrl as string | undefined;
+  const rawImageUrl = params.imageUrl as string | undefined;
+  const imageUrl = rawImageUrl ? decodeURIComponent(rawImageUrl) : undefined;
   const likelyRecipeJson = params.likelyRecipe as string | undefined;
   const fullRecipeJson = params.fullRecipe as string | undefined;
   const nutritionJson = params.nutrition as string | undefined;
@@ -241,14 +242,18 @@ export default function LikelyRecipeScreen() {
 
   // Compute organ impacts for Long-term Health section
   const organImpacts = (organs?.organs || [])
-    .filter(o => o.organ && o.level && o.level.toLowerCase() !== 'low' && o.level.toLowerCase() !== 'beneficial')
+    .filter((o): o is typeof o & { organ: string; level: string } => {
+      if (!o.organ || !o.level) return false;
+      const levelLower = o.level.toLowerCase();
+      return levelLower !== 'low' && levelLower !== 'beneficial';
+    })
     .map(o => {
       const reasons = (o as any).reasons as string[] | undefined;
-      const organName = o.organ!.charAt(0).toUpperCase() + o.organ!.slice(1);
-      const levelLower = o.level!.toLowerCase();
+      const organName = o.organ.charAt(0).toUpperCase() + o.organ.slice(1);
+      const levelLower = o.level.toLowerCase();
       return {
         organName,
-        level: levelLower === 'medium' ? 'Moderate' : o.level!.charAt(0).toUpperCase() + o.level!.slice(1),
+        level: levelLower === 'medium' ? 'Moderate' : o.level.charAt(0).toUpperCase() + o.level.slice(1),
         levelColor: levelLower === 'high' ? '#ef4444' : '#14b8a6',
         sentence: reasons?.[0] || `${levelLower === 'high' ? 'Significant' : 'Moderate'} impact on ${organName.toLowerCase()}.`,
       };
@@ -448,7 +453,7 @@ export default function LikelyRecipeScreen() {
               <NutritionItem label="Fat" value={nutrition.fat_g} unit="g" />
             </View>
             {nutritionInsights?.summary && (
-              <Text style={styles.nutritionSummaryText}>"{nutritionInsights.summary}"</Text>
+              <Text style={styles.nutritionSummaryText}>&quot;{nutritionInsights.summary}&quot;</Text>
             )}
             {(nutritionSourceLabel || nutritionSource) && (
               <Text style={styles.nutritionSourceText}>

@@ -198,14 +198,14 @@ const ComponentRow: React.FC<{ component: PlateComponentEntry; color: string; is
 
   return (
     <View style={styles.componentRow}>
-      <View style={styles.componentLeftBorder(color)} />
+      <View style={getComponentLeftBorderStyle(color)} />
       <View style={styles.componentContent}>
         <View style={styles.rowTop}>
           <View style={styles.rowTopLeft}>
             <Text style={styles.componentName} numberOfLines={2}>
               {name}
             </Text>
-            <View style={styles.kindBadge(kind)}>
+            <View style={getKindBadgeStyle(kind)}>
               <Text style={styles.kindBadgeText}>{kindLabel(kind)}</Text>
             </View>
           </View>
@@ -236,7 +236,7 @@ const ComponentRow: React.FC<{ component: PlateComponentEntry; color: string; is
 };
 
 type TagVariant = "allergen" | "level";
-type LevelType = "low" | "medium" | "high" | "unknown";
+type LevelType = "low" | "medium" | "high" | "unknown" | "none";
 
 const TagPill: React.FC<{ label: string; variant: TagVariant; level?: LevelType }> = ({
   label,
@@ -345,6 +345,28 @@ const kindLabel = (kind: PlateComponentKind) => {
   }
 };
 
+// Dynamic style functions (outside StyleSheet.create)
+const getComponentLeftBorderStyle = (color: string) => ({
+  width: 3,
+  borderRadius: 999,
+  backgroundColor: color,
+  marginRight: 8,
+});
+
+const getKindBadgeStyle = (kind: PlateComponentKind) => ({
+  alignSelf: "flex-start" as const,
+  marginTop: 3,
+  borderRadius: 999,
+  paddingHorizontal: 8,
+  paddingVertical: 2,
+  backgroundColor:
+    kind === "main"
+      ? "rgba(56, 189, 248, 0.18)"
+      : kind === "side"
+      ? "rgba(168, 85, 247, 0.18)"
+      : "rgba(148, 163, 184, 0.22)",
+});
+
 const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
@@ -398,12 +420,9 @@ const styles = StyleSheet.create({
   componentRow: {
     flexDirection: "row",
   },
-  componentLeftBorder: (color: string) => ({
-    width: 3,
-    borderRadius: 999,
-    backgroundColor: color,
-    marginRight: 8,
-  }),
+  componentLeftBorder: {
+    // Dynamic style - use getComponentLeftBorderStyle(color) instead
+  },
   componentContent: {
     flex: 1,
     paddingVertical: 8,
@@ -425,19 +444,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: TEXT_PRIMARY,
   },
-  kindBadge: (kind: PlateComponentKind) => ({
-    alignSelf: "flex-start",
-    marginTop: 3,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor:
-      kind === "main"
-        ? "rgba(56, 189, 248, 0.18)"
-        : kind === "side"
-        ? "rgba(168, 85, 247, 0.18)"
-        : "rgba(148, 163, 184, 0.22)",
-  }),
+  kindBadge: {
+    // Dynamic style - use getKindBadgeStyle(kind) instead
+  },
   kindBadgeText: {
     fontSize: 10,
     fontWeight: "500",

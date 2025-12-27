@@ -17,7 +17,7 @@ export interface DishOrganLine {
 }
 
 export interface DishViewModel {
-  allergens: { name: string; isUserAllergen: boolean }[];
+  allergens: { name: string; kind?: string; isUserAllergen: boolean; present?: string }[];
   allergenSentence: string | null;
   fodmapPills: string[];
   fodmapLevel: string | null;
