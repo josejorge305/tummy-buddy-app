@@ -33,7 +33,7 @@ import {
 import { fetchPlaceDetails } from '../api/places';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { useUserPrefs } from '../context/UserPrefsContext';
-import { buildDishViewModel } from './utils/dishViewModel';
+import { buildDishViewModel } from '../utils/dishViewModel';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {

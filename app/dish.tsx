@@ -17,7 +17,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 // Note: useSafeAreaInsets removed - using inline action buttons instead of sticky footer
 import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus } from '../api/api';
-import { buildDishViewModel, DishOrganLine } from './utils/dishViewModel';
+import { buildDishViewModel, DishOrganLine } from '../utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish } from '../utils/dishCache';
 import { recordCacheHit, recordCacheMiss, recordCacheStore, logMetrics } from '../utils/cacheMetrics';
 import { useUserPrefs } from '../context/UserPrefsContext';
