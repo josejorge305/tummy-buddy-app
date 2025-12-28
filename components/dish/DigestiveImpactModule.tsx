@@ -41,13 +41,22 @@ function getTimingMessage(level: 'high' | 'medium' | 'moderate' | 'low' | null):
 }
 
 export function DigestiveImpactModule({ level, categories, explanation }: Props) {
-  // Don't show if no level
-  if (!level) return null;
+  // Don't show if no level or if low
+  if (!level || level === 'low') return null;
 
   const severityLabel = getLevelLabel(level);
   const timingMessage = explanation || getTimingMessage(level);
 
-  // Build expanded content with FODMAP breakdown
+  // Build FODMAP pill for always-visible section
+  const fodmapPill = (
+    <View style={styles.tagsRow}>
+      <View style={styles.tag}>
+        <Text style={styles.tagText}>{severityLabel} FODMAP</Text>
+      </View>
+    </View>
+  );
+
+  // Build expanded content with explanation
   const expandedDetails = (
     <View style={styles.expandedContainer}>
       {/* Explanation */}
@@ -73,7 +82,7 @@ export function DigestiveImpactModule({ level, categories, explanation }: Props)
   return (
     <ExpandableCard
       title="Digestive Impact"
-      severityText={severityLabel}
+      alwaysVisibleContent={fodmapPill}
       expandedContent={expandedDetails}
       defaultExpanded={false}
     />
@@ -81,6 +90,24 @@ export function DigestiveImpactModule({ level, categories, explanation }: Props)
 }
 
 const styles = StyleSheet.create({
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  tag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.brandTeal,
+  },
+  tagText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.brandTeal,
+  },
   expandedContainer: {
     gap: SPACING.md,
   },

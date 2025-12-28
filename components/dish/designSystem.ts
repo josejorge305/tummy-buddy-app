@@ -69,12 +69,12 @@ export const TYPOGRAPHY = {
     color: COLORS.textPrimary,
     lineHeight: 34,
   },
-  // Dish title - 22px w700 (dish names, max 2 lines with ellipsis)
+  // Dish title - 20px w700 (dish names, max 2 lines with ellipsis)
   dishTitle: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: 20,
     fontWeight: '700' as const,
     color: COLORS.textPrimary,
-    lineHeight: 28,
+    lineHeight: 26,
   },
   // Section titles - 18px w600
   sectionTitle: {

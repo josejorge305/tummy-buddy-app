@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    overflow: 'hidden',
+    // Remove overflow: hidden to prevent text clipping at corners
   },
   header: {
     flexDirection: 'row',

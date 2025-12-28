@@ -17,9 +17,11 @@ export type AllergenWithSource = {
 type Props = {
   /** List of allergens with their sources */
   allergens: AllergenWithSource[];
+  /** Smart sentence summary explaining the allergens in human-readable form */
+  smartSentence?: string | null;
 };
 
-export function AllergensModule({ allergens }: Props) {
+export function AllergensModule({ allergens, smartSentence }: Props) {
   // Filter to only show detected allergens (yes or maybe)
   const detectedAllergens = allergens.filter(a => a.present === 'yes' || a.present === 'maybe');
 
@@ -27,7 +29,7 @@ export function AllergensModule({ allergens }: Props) {
     return null;
   }
 
-  // Build allergen tags for always-visible section
+  // Build allergen tags for always-visible section (teal colored)
   const allergenTags = (
     <View style={styles.tagsRow}>
       {detectedAllergens.map((allergen, idx) => {
@@ -43,23 +45,12 @@ export function AllergensModule({ allergens }: Props) {
     </View>
   );
 
-  // Build expanded content with source details
-  const expandedDetails = (
+  // Build expanded content - only smart sentence (no detailed rows)
+  const expandedDetails = smartSentence ? (
     <View style={styles.detailsList}>
-      {detectedAllergens.map((allergen, idx) => (
-        <View key={idx} style={styles.detailRow}>
-          <Text style={styles.detailAllergen}>{allergen.name}</Text>
-          {allergen.source ? (
-            <Text style={styles.detailSource}>{allergen.source}</Text>
-          ) : allergen.present === 'maybe' ? (
-            <Text style={styles.detailSourceMaybe}>May be present</Text>
-          ) : (
-            <Text style={styles.detailSource}>Present in dish</Text>
-          )}
-        </View>
-      ))}
+      <Text style={styles.smartSentence}>{smartSentence}</Text>
     </View>
-  );
+  ) : null;
 
   return (
     <ExpandableCard
@@ -81,17 +72,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: COLORS.tagBg,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)', // teal background
     borderWidth: 1,
-    borderColor: COLORS.tagBorder,
+    borderColor: COLORS.brandTeal,
   },
   tagText: {
     fontSize: 14,
     fontWeight: '500',
-    color: COLORS.textSecondary,
+    color: COLORS.brandTeal,
   },
   detailsList: {
     gap: SPACING.md,
+  },
+  smartSentence: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginBottom: SPACING.sm,
   },
   detailRow: {
     flexDirection: 'row',
