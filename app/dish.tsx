@@ -23,6 +23,7 @@ import { recordCacheHit, recordCacheMiss, recordCacheStore, logMetrics } from '.
 import { useUserPrefs } from '../context/UserPrefsContext';
 import BrandTitle from '../components/BrandTitle';
 import * as Haptics from 'expo-haptics';
+import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
 // Import components
 import {
@@ -180,6 +181,7 @@ export default function DishScreen() {
   const [isLoggingMeal, setIsLoggingMeal] = useState(false);
   const [mealLogged, setMealLogged] = useState(false);
   const [organsLoading, setOrgansLoading] = useState(false);
+  const [showPortionSheet, setShowPortionSheet] = useState(false);
 
   // Note: Bottom sheet modals removed - using expandable modules now
 
@@ -331,20 +333,83 @@ export default function DishScreen() {
 
   const viewModel = analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
 
-  const handleLogMeal = async () => {
-    if (!analysis || isLoggingMeal) return;
+  // Detect course type for portion defaults
+  const detectCourseType = (): CourseType => {
+    if (!analysis) return 'unknown';
+    const name = (analysis.dishName || dishName || '').toLowerCase();
+    const section = (params.menuSection as string || '').toLowerCase();
 
+    // Check for appetizers/starters
+    if (section.includes('appetizer') || section.includes('starter') ||
+        name.includes('appetizer') || name.includes('wings') ||
+        name.includes('nachos') || name.includes('dip')) {
+      return 'appetizer';
+    }
+    // Check for desserts
+    if (section.includes('dessert') || name.includes('cake') ||
+        name.includes('ice cream') || name.includes('brownie') ||
+        name.includes('cheesecake') || name.includes('pie')) {
+      return 'dessert';
+    }
+    // Check for drinks
+    if (section.includes('drink') || section.includes('beverage') ||
+        name.includes('smoothie') || name.includes('shake') ||
+        name.includes('latte') || name.includes('coffee')) {
+      return 'drink';
+    }
+    // Check for sides
+    if (section.includes('side') || name.includes('fries') ||
+        name.includes('mashed') || name.includes('coleslaw')) {
+      return 'side';
+    }
+    // Default to entree
+    return 'entree';
+  };
+
+  // Open portion sheet instead of logging directly
+  const handleLogMeal = () => {
+    if (!analysis || isLoggingMeal) return;
+    setShowPortionSheet(true);
+  };
+
+  // Scale a number value by portion multiplier
+  const scaleValue = (value: number | null | undefined, multiplier: number): number | undefined => {
+    if (value === null || value === undefined) return undefined;
+    return Math.round(value * multiplier * 10) / 10; // Round to 1 decimal
+  };
+
+  // Scale organ impacts by portion multiplier
+  const scaleOrganImpacts = (
+    impacts: Record<string, number> | undefined,
+    multiplier: number
+  ): Record<string, number> | undefined => {
+    if (!impacts) return undefined;
+    const scaled: Record<string, number> = {};
+    for (const [organ, score] of Object.entries(impacts)) {
+      scaled[organ] = Math.round(score * multiplier * 100) / 100;
+    }
+    return scaled;
+  };
+
+  // Actually log the meal after portion is confirmed
+  const handlePortionConfirm = async (portionData: PortionData) => {
+    if (!analysis) return;
+
+    setShowPortionSheet(false);
     setIsLoggingMeal(true);
+
     try {
-      const organImpacts: Record<string, number> = {};
+      // Build organ impacts from analysis
+      const baselineOrganImpacts: Record<string, number> = {};
       if (analysis.organs?.organs) {
         for (const org of analysis.organs.organs) {
           if (org.organ && typeof org.score === 'number') {
-            organImpacts[org.organ.toLowerCase()] = org.score;
+            baselineOrganImpacts[org.organ.toLowerCase()] = org.score;
           }
         }
       }
 
+      // Build risk flags
       const riskFlags: string[] = [];
       if (analysis.allergen_flags) {
         for (const flag of analysis.allergen_flags) {
@@ -360,18 +425,49 @@ export default function DishScreen() {
         riskFlags.push('high_sodium');
       }
 
+      // Get baseline (full serving) values from analysis
+      const baselineCalories = analysis.nutrition_summary?.energyKcal || undefined;
+      const baselineProtein = analysis.nutrition_summary?.protein_g || undefined;
+      const baselineCarbs = analysis.nutrition_summary?.carbs_g || undefined;
+      const baselineFat = analysis.nutrition_summary?.fat_g || undefined;
+      const baselineFiber = analysis.nutrition_summary?.fiber_g || undefined;
+      const baselineSugar = analysis.nutrition_summary?.sugar_g || undefined;
+      const baselineSodium = analysis.nutrition_summary?.sodium_mg || undefined;
+
+      // Scale values by portion multiplier
+      const multiplier = portionData.portionMultiplier;
+
       const result = await logMealAction({
         dish_name: analysis.dishName || dishName,
         dish_id: `${dishName}-${Date.now()}`,
         restaurant_name: restaurantName,
-        calories: analysis.nutrition_summary?.energyKcal || undefined,
-        protein_g: analysis.nutrition_summary?.protein_g || undefined,
-        carbs_g: analysis.nutrition_summary?.carbs_g || undefined,
-        fat_g: analysis.nutrition_summary?.fat_g || undefined,
-        fiber_g: analysis.nutrition_summary?.fiber_g || undefined,
-        sugar_g: analysis.nutrition_summary?.sugar_g || undefined,
-        sodium_mg: analysis.nutrition_summary?.sodium_mg || undefined,
-        organ_impacts: Object.keys(organImpacts).length > 0 ? organImpacts : undefined,
+        // Portion data
+        portion_percent: portionData.portionPercent,
+        portion_multiplier: multiplier,
+        shared_with_count: portionData.sharedWithCount,
+        leftovers_saved: portionData.leftoversSaved,
+        portion_mode: portionData.portionMode,
+        // Baseline (full serving) values
+        baseline_calories: baselineCalories,
+        baseline_protein_g: baselineProtein,
+        baseline_carbs_g: baselineCarbs,
+        baseline_fat_g: baselineFat,
+        baseline_fiber_g: baselineFiber,
+        baseline_sugar_g: baselineSugar,
+        baseline_sodium_mg: baselineSodium,
+        baseline_organ_impacts: Object.keys(baselineOrganImpacts).length > 0 ? baselineOrganImpacts : undefined,
+        // Consumed (scaled) values
+        calories: scaleValue(baselineCalories, multiplier),
+        protein_g: scaleValue(baselineProtein, multiplier),
+        carbs_g: scaleValue(baselineCarbs, multiplier),
+        fat_g: scaleValue(baselineFat, multiplier),
+        fiber_g: scaleValue(baselineFiber, multiplier),
+        sugar_g: scaleValue(baselineSugar, multiplier),
+        sodium_mg: scaleValue(baselineSodium, multiplier),
+        organ_impacts: scaleOrganImpacts(
+          Object.keys(baselineOrganImpacts).length > 0 ? baselineOrganImpacts : undefined,
+          multiplier
+        ),
         risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
         full_analysis: analysis,
       });
@@ -382,12 +478,17 @@ export default function DishScreen() {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch {}
 
+        const scaledCalories = scaleValue(baselineCalories, multiplier);
+        const portionLabel = portionData.sharedWithCount
+          ? `Shared (${portionData.sharedWithCount})`
+          : `${portionData.portionPercent}%`;
+
         if (result.duplicate) {
           Alert.alert('Already Logged', 'This dish was already logged today.', [{ text: 'OK' }]);
         } else {
           Alert.alert(
             'Meal Logged!',
-            `${analysis.dishName || dishName} added to tracker.${analysis.nutrition_summary?.energyKcal ? `\n+${Math.round(analysis.nutrition_summary.energyKcal)} cal` : ''}`,
+            `${analysis.dishName || dishName} (${portionLabel}) added to tracker.${scaledCalories ? `\n+${Math.round(scaledCalories)} cal` : ''}`,
             [
               { text: 'View Tracker', onPress: () => router.push('/(tabs)/explore' as any) },
               { text: 'OK' },
@@ -582,6 +683,15 @@ export default function DishScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Portion Sheet for meal logging */}
+      <PortionSheet
+        visible={showPortionSheet}
+        onClose={() => setShowPortionSheet(false)}
+        onConfirm={handlePortionConfirm}
+        courseType={detectCourseType()}
+        dishName={analysis?.dishName || dishName}
+      />
     </SafeAreaView>
   );
 }

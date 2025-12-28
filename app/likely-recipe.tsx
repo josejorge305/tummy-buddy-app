@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Image,
   Linking,
@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AllergenFlag,
   DishOrgansBlock,
@@ -22,7 +23,10 @@ import {
   LikelyRecipe,
   NutritionInsights,
   NutritionSummary,
+  logMeal,
 } from '../api/api';
+import { useUserPrefs } from '../context/UserPrefsContext';
+import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
 const BG = '#020617';
 const CARD_BG = '#0f172a';
@@ -209,9 +213,14 @@ function CollapsibleSection({
   );
 }
 
+// Height of sticky footer for scroll padding
+const STICKY_FOOTER_HEIGHT = 80;
+
 export default function LikelyRecipeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  const { userId } = useUserPrefs();
 
   // Collapsible state - All sections collapsed by default
   const [ingredientsExpanded, setIngredientsExpanded] = useState(false);
@@ -227,6 +236,11 @@ export default function LikelyRecipeScreen() {
 
   // Description expansion
   const [showFullDescription, setShowFullDescription] = useState(false);
+
+  // Meal logging state
+  const [showPortionSheet, setShowPortionSheet] = useState(false);
+  const [isLogging, setIsLogging] = useState(false);
+  const [loggedToast, setLoggedToast] = useState(false);
 
   // Parse the data passed via params
   const dishName = params.dishName as string | undefined;
@@ -375,6 +389,107 @@ export default function LikelyRecipeScreen() {
   const instructionCount = hasFullRecipe
     ? fullRecipe?.instructions?.length || 0
     : likelyRecipe?.instructions?.length || 0;
+
+  // Get restaurant name from params
+  const restaurantName = params.restaurantName as string | undefined;
+
+  // Detect course type for smart portion defaults
+  const detectCourseType = useCallback((): CourseType => {
+    const name = (dishName || '').toLowerCase();
+    const section = (params.menuSection as string || '').toLowerCase();
+
+    if (section.includes('appetizer') || section.includes('starter') || name.includes('appetizer')) {
+      return 'appetizer';
+    }
+    if (section.includes('dessert') || name.includes('dessert') || name.includes('cake') || name.includes('ice cream')) {
+      return 'dessert';
+    }
+    if (section.includes('drink') || section.includes('beverage') || name.includes('smoothie') || name.includes('shake')) {
+      return 'drink';
+    }
+    if (section.includes('side') || name.includes('side')) {
+      return 'side';
+    }
+    return 'entree';
+  }, [dishName, params.menuSection]);
+
+  // Handle meal logging with portion data
+  const handleLogMeal = useCallback(async (portionData: PortionData) => {
+    if (!userId || !dishName) {
+      console.warn('Cannot log meal: missing userId or dishName');
+      setShowPortionSheet(false);
+      return;
+    }
+
+    setIsLogging(true);
+
+    try {
+      // Get baseline nutrition values (full serving) - use correct field names from NutritionSummary
+      const baselineCalories = nutrition?.energyKcal || 0;
+      const baselineProtein = nutrition?.protein_g || 0;
+      const baselineCarbs = nutrition?.carbs_g || 0;
+      const baselineFat = nutrition?.fat_g || 0;
+      const baselineFiber = nutrition?.fiber_g || 0;
+      const baselineSugar = nutrition?.sugar_g || 0;
+      const baselineSodium = nutrition?.sodium_mg || 0;
+
+      // Get organ impacts as object
+      const baselineOrganImpacts: Record<string, number> = {};
+      if (organs?.organs) {
+        organs.organs.forEach(o => {
+          if (o.organ && typeof o.score === 'number') {
+            baselineOrganImpacts[o.organ] = o.score;
+          }
+        });
+      }
+
+      // Scale by portion multiplier
+      const multiplier = portionData.portionMultiplier;
+
+      await logMeal(userId, {
+        dish_name: dishName,
+        restaurant_name: restaurantName || undefined,
+        meal_type: 'lunch', // Could be smarter based on time of day
+        // Portion data
+        portion_percent: portionData.portionPercent,
+        portion_multiplier: multiplier,
+        shared_with_count: portionData.sharedWithCount,
+        leftovers_saved: portionData.leftoversSaved,
+        portion_mode: portionData.portionMode,
+        // Baseline values
+        baseline_calories: baselineCalories,
+        baseline_protein_g: baselineProtein,
+        baseline_carbs_g: baselineCarbs,
+        baseline_fat_g: baselineFat,
+        baseline_fiber_g: baselineFiber,
+        baseline_sugar_g: baselineSugar,
+        baseline_sodium_mg: baselineSodium,
+        baseline_organ_impacts: baselineOrganImpacts,
+        // Consumed values (scaled)
+        calories: Math.round(baselineCalories * multiplier),
+        protein_g: Math.round(baselineProtein * multiplier * 10) / 10,
+        carbs_g: Math.round(baselineCarbs * multiplier * 10) / 10,
+        fat_g: Math.round(baselineFat * multiplier * 10) / 10,
+        fiber_g: Math.round(baselineFiber * multiplier * 10) / 10,
+        sugar_g: Math.round(baselineSugar * multiplier * 10) / 10,
+        sodium_mg: Math.round(baselineSodium * multiplier),
+        // Include nutrition_summary for backend fallback
+        nutrition_summary: nutrition || undefined,
+        // Include organ_levels for backend fallback
+        organ_levels: baselineOrganImpacts,
+      } as any);
+
+      setShowPortionSheet(false);
+      setLoggedToast(true);
+
+      // Hide toast after 2 seconds
+      setTimeout(() => setLoggedToast(false), 2000);
+    } catch (err) {
+      console.error('Error logging meal:', err);
+    } finally {
+      setIsLogging(false);
+    }
+  }, [userId, dishName, restaurantName, nutrition, organs]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -876,8 +991,44 @@ export default function LikelyRecipeScreen() {
           </View>
         )}
 
-        <View style={{ height: 100 }} />
+        {/* Bottom padding for sticky footer */}
+        <View style={{ height: STICKY_FOOTER_HEIGHT + insets.bottom + 20 }} />
       </ScrollView>
+
+      {/* Sticky Bottom Action Bar */}
+      <View style={[styles.stickyFooter, { paddingBottom: insets.bottom || 16 }]}>
+        <View style={styles.footerContainer}>
+          <View style={styles.footerContent}>
+            <TouchableOpacity
+              style={styles.logMealButton}
+              onPress={() => setShowPortionSheet(true)}
+              disabled={isLogging}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.logMealButtonText}>
+                {isLogging ? 'Logging...' : 'Log Meal'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Toast notification */}
+      {loggedToast && (
+        <View style={[styles.toast, { bottom: STICKY_FOOTER_HEIGHT + insets.bottom + 20 }]}>
+          <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
+          <Text style={styles.toastText}>Logged to Tracker</Text>
+        </View>
+      )}
+
+      {/* Portion Sheet */}
+      <PortionSheet
+        visible={showPortionSheet}
+        onClose={() => setShowPortionSheet(false)}
+        onConfirm={handleLogMeal}
+        courseType={detectCourseType()}
+        dishName={dishName}
+      />
     </SafeAreaView>
   );
 }
@@ -1706,5 +1857,56 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     lineHeight: 16,
     fontStyle: 'italic',
+  },
+  // Sticky Footer styles
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  footerContainer: {
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  footerContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  logMealButton: {
+    backgroundColor: TEAL,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  logMealButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  toast: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  toastText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#22c55e',
   },
 });

@@ -26,14 +26,18 @@ import {
   fetchMenuFast,
   fetchMenuWithRetry,
   getBatchStatus,
+  getMealsForDate,
+  logMeal,
   pollBatchUntilComplete,
   priorityAnalysis,
   startBatchAnalysis,
+  LoggedMeal,
 } from '../api/api';
 import { fetchPlaceDetails } from '../api/places';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { buildDishViewModel } from './utils/dishViewModel';
+import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -720,8 +724,18 @@ function buildPhotoUrl(photoRef?: string | null) {
 export default function RestaurantScreen() {
   const router = useRouter();
   const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
-  const { selectedAllergens } = useUserPrefs();
+  const { selectedAllergens, userId } = useUserPrefs();
   const { getPrefetchedMenu, isMenuReady, getPrefetchStatus } = useMenuPrefetch();
+
+  // Extract route params early (needed by callbacks)
+  const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
+  const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
+  const addressValue = Array.isArray(address) ? address[0] : address;
+  const latValueRaw = Array.isArray(lat) ? lat[0] : lat;
+  const lngValueRaw = Array.isArray(lng) ? lng[0] : lng;
+  const latValue = latValueRaw ?? undefined;
+  const lngValue = lngValueRaw ?? undefined;
+
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});
   const lastViewedItemId = useRef<string | null>(null);
@@ -730,6 +744,7 @@ export default function RestaurantScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   const [analysisByItemId, setAnalysisByItemId] = useState<
     Record<string, AnalyzeDishResponse | null>
   >({});
@@ -744,15 +759,167 @@ export default function RestaurantScreen() {
   const [jobIdByItemId, setJobIdByItemId] = useState<Record<string, string>>({});
   const batchPollingRef = useRef<boolean>(false);
 
-  const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
-  const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
-  const addressValue = Array.isArray(address) ? address[0] : address;
-  const latValueRaw = Array.isArray(lat) ? lat[0] : lat;
-  const lngValueRaw = Array.isArray(lng) ? lng[0] : lng;
+  // Quick Log state
+  const [showPortionSheet, setShowPortionSheet] = useState(false);
+  const [portionSheetDish, setPortionSheetDish] = useState<{
+    itemId: string;
+    name: string;
+    section: string;
+    analysis: AnalyzeDishResponse | null;
+  } | null>(null);
+  const [todayLoggedMeals, setTodayLoggedMeals] = useState<LoggedMeal[]>([]);
+  const [loggedToast, setLoggedToast] = useState(false);
+  const [isLogging, setIsLogging] = useState(false);
 
-  // keep as strings for now (backend will parse to numbers)
-  const latValue = latValueRaw ?? undefined;
-  const lngValue = lngValueRaw ?? undefined;
+  // Get today's date in ISO format for checking logged meals
+  const getTodayISO = () => new Date().toISOString().split('T')[0];
+
+  // Fetch today's logged meals to show "✓ Logged" state
+  useEffect(() => {
+    async function fetchTodayMeals() {
+      if (!userId) return;
+      try {
+        const meals = await getMealsForDate(userId, getTodayISO());
+        setTodayLoggedMeals(meals);
+      } catch (err) {
+        console.error('Error fetching today meals:', err);
+      }
+    }
+    fetchTodayMeals();
+  }, [userId]);
+
+  // Check if a dish is logged today (by name match)
+  const getLoggedMealForDish = useCallback(
+    (dishName: string): LoggedMeal | undefined => {
+      const normalizedName = (dishName || '').toLowerCase().trim();
+      return todayLoggedMeals.find(
+        (m) => (m.dish_name || '').toLowerCase().trim() === normalizedName
+      );
+    },
+    [todayLoggedMeals]
+  );
+
+  // Detect course type for smart portion defaults
+  const detectCourseType = useCallback((dishName: string, section: string): CourseType => {
+    const name = (dishName || '').toLowerCase();
+    const sec = (section || '').toLowerCase();
+
+    if (sec.includes('appetizer') || sec.includes('starter') || name.includes('appetizer')) {
+      return 'appetizer';
+    }
+    if (sec.includes('dessert') || name.includes('dessert') || name.includes('cake') || name.includes('ice cream')) {
+      return 'dessert';
+    }
+    if (sec.includes('drink') || sec.includes('beverage') || name.includes('smoothie') || name.includes('shake')) {
+      return 'drink';
+    }
+    if (sec.includes('side') || name.includes('side')) {
+      return 'side';
+    }
+    return 'entree';
+  }, []);
+
+  // Handle opening portion sheet for a dish
+  const handleQuickLog = useCallback(
+    (itemId: string, item: any, sectionName: string) => {
+      const analysis = analysisByItemId[itemId] || null;
+      setPortionSheetDish({
+        itemId,
+        name: item?.name || '',
+        section: sectionName,
+        analysis,
+      });
+      setShowPortionSheet(true);
+    },
+    [analysisByItemId]
+  );
+
+  // Handle meal logging with portion data
+  const handlePortionConfirm = useCallback(
+    async (portionData: PortionData) => {
+      if (!userId || !portionSheetDish) {
+        setShowPortionSheet(false);
+        return;
+      }
+
+      setIsLogging(true);
+
+      try {
+        const { name, section, analysis } = portionSheetDish;
+        const restName = restaurant?.name || restaurantNameValue || '';
+
+        // Get baseline nutrition from analysis or use zeros
+        const ns = analysis?.nutrition_summary;
+        const baselineCalories = ns?.energyKcal || 0;
+        const baselineProtein = ns?.protein_g || 0;
+        const baselineCarbs = ns?.carbs_g || 0;
+        const baselineFat = ns?.fat_g || 0;
+        const baselineFiber = ns?.fiber_g || 0;
+        const baselineSugar = ns?.sugar_g || 0;
+        const baselineSodium = ns?.sodium_mg || 0;
+
+        // Get organ impacts as object
+        const baselineOrganImpacts: Record<string, number> = {};
+        if (analysis?.organs?.organs) {
+          analysis.organs.organs.forEach((o: any) => {
+            if (o.organ && typeof o.score === 'number') {
+              baselineOrganImpacts[o.organ] = o.score;
+            }
+          });
+        }
+
+        const multiplier = portionData.portionMultiplier;
+
+        await logMeal(userId, {
+          dish_name: name,
+          restaurant_name: restName || null,
+          meal_type: 'lunch',
+          // Portion data
+          portion_percent: portionData.portionPercent,
+          portion_multiplier: multiplier,
+          shared_with_count: portionData.sharedWithCount,
+          leftovers_saved: portionData.leftoversSaved,
+          portion_mode: portionData.portionMode,
+          // Baseline values
+          baseline_calories: baselineCalories,
+          baseline_protein_g: baselineProtein,
+          baseline_carbs_g: baselineCarbs,
+          baseline_fat_g: baselineFat,
+          baseline_fiber_g: baselineFiber,
+          baseline_sugar_g: baselineSugar,
+          baseline_sodium_mg: baselineSodium,
+          baseline_organ_impacts: baselineOrganImpacts,
+          // Consumed values (scaled)
+          calories: Math.round(baselineCalories * multiplier),
+          protein_g: Math.round(baselineProtein * multiplier * 10) / 10,
+          carbs_g: Math.round(baselineCarbs * multiplier * 10) / 10,
+          fat_g: Math.round(baselineFat * multiplier * 10) / 10,
+          fiber_g: Math.round(baselineFiber * multiplier * 10) / 10,
+          sugar_g: Math.round(baselineSugar * multiplier * 10) / 10,
+          sodium_mg: Math.round(baselineSodium * multiplier),
+          // Include nutrition_summary for backend fallback
+          nutrition_summary: ns || undefined,
+          // Include organ_levels for backend fallback
+          organ_levels: baselineOrganImpacts,
+        } as any);
+
+        setShowPortionSheet(false);
+        setLoggedToast(true);
+
+        // Refresh today's meals to update "Logged" state
+        const meals = await getMealsForDate(userId, getTodayISO());
+        setTodayLoggedMeals(meals);
+
+        // Hide toast after 2 seconds
+        setTimeout(() => setLoggedToast(false), 2000);
+      } catch (err) {
+        console.error('Error logging meal:', err);
+      } finally {
+        setIsLogging(false);
+      }
+    },
+    [userId, portionSheetDish, restaurant, restaurantNameValue]
+  );
 
   useEffect(() => {
     async function loadMenu() {
@@ -1387,6 +1554,10 @@ export default function RestaurantScreen() {
                   console.log('DEBUG MENU ITEM – Egg McMuffin', item, Object.keys(item || {}));
                 }
 
+                // Check if this dish is logged today
+                const loggedMeal = getLoggedMealForDish(item?.name || '');
+                const isLoggedToday = !!loggedMeal;
+
                 return (
                   <View
                     key={itemId}
@@ -1395,30 +1566,117 @@ export default function RestaurantScreen() {
                       itemLayouts.current[itemId] = e.nativeEvent.layout.y;
                     }}
                   >
+                    {/* Image with +Log overlay */}
                     {item?.imageUrl ? (
-                      <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-                    ) : null}
+                      <View style={styles.imageContainer}>
+                        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+                        {/* Quick Log overlay button */}
+                        <TouchableOpacity
+                          style={[
+                            styles.quickLogOverlay,
+                            isLoggedToday && styles.quickLogOverlayLogged,
+                          ]}
+                          onPress={() => handleQuickLog(itemId, item, section.name || '')}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Ionicons
+                            name={isLoggedToday ? 'checkmark-circle' : 'add'}
+                            size={16}
+                            color={isLoggedToday ? '#22c55e' : TEAL}
+                          />
+                          <Text
+                            style={[
+                              styles.quickLogText,
+                              isLoggedToday && styles.quickLogTextLogged,
+                            ]}
+                          >
+                            {isLoggedToday
+                              ? `${loggedMeal?.portion_percent || 100}%`
+                              : 'Log'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      /* No image - show log button in card header area */
+                      <TouchableOpacity
+                        style={[
+                          styles.quickLogNoImage,
+                          isLoggedToday && styles.quickLogOverlayLogged,
+                        ]}
+                        onPress={() => handleQuickLog(itemId, item, section.name || '')}
+                      >
+                        <Ionicons
+                          name={isLoggedToday ? 'checkmark-circle' : 'add'}
+                          size={16}
+                          color={isLoggedToday ? '#22c55e' : TEAL}
+                        />
+                        <Text
+                          style={[
+                            styles.quickLogText,
+                            isLoggedToday && styles.quickLogTextLogged,
+                          ]}
+                        >
+                          {isLoggedToday
+                            ? `${loggedMeal?.portion_percent || 100}%`
+                            : 'Log'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
 
                     <Text style={styles.itemName} numberOfLines={2}>
                       {item?.name}
                     </Text>
 
                     {descriptionText ? (
-                      <Text style={styles.dishDescription} numberOfLines={3}>
-                        {descriptionText}
-                      </Text>
+                      <View>
+                        <Text
+                          style={styles.dishDescription}
+                          numberOfLines={expandedDescriptions[itemId] ? undefined : 3}
+                        >
+                          {descriptionText}
+                        </Text>
+                        {descriptionText.length > 120 && !expandedDescriptions[itemId] && (
+                          <TouchableOpacity
+                            onPress={() =>
+                              setExpandedDescriptions((prev) => ({ ...prev, [itemId]: true }))
+                            }
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.seeMoreText}>see more</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     ) : null}
 
                     {/* Allergen & FODMAP pills - shown when dish has been analyzed */}
                     {viewModel && (
                       <View style={styles.inlineWarningBadges}>
-                        {/* Allergen badges - teal styling */}
+                        {/* Allergen badges - color-coded by severity */}
                         {viewModel.allergens
-                          .filter((a) => a.present === 'yes')
-                          .slice(0, 4)
+                          .filter((a) => a.present === 'yes' || a.present === 'maybe')
                           .map((allergen, idx) => (
-                            <View key={`inline-allergen-${idx}`} style={styles.inlineBadgeTeal}>
-                              <Text style={styles.inlineBadgeTextTeal}>{allergen.name}</Text>
+                            <View
+                              key={`inline-allergen-${idx}`}
+                              style={[
+                                styles.inlineAllergenPill,
+                                {
+                                  backgroundColor:
+                                    allergen.present === 'maybe'
+                                      ? 'rgba(250, 204, 21, 0.15)'
+                                      : 'rgba(239, 68, 68, 0.15)',
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.inlineAllergenPillText,
+                                  {
+                                    color: allergen.present === 'maybe' ? '#facc15' : '#ef4444',
+                                  },
+                                ]}
+                              >
+                                {allergen.name}
+                              </Text>
                             </View>
                           ))}
                         {/* FODMAP badge - teal styling */}
@@ -1483,6 +1741,32 @@ export default function RestaurantScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Toast notification */}
+      {loggedToast && (
+        <View style={styles.logToast}>
+          <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
+          <Text style={styles.logToastText}>Logged to Tracker</Text>
+        </View>
+      )}
+
+      {/* Portion Sheet */}
+      <PortionSheet
+        visible={showPortionSheet}
+        onClose={() => setShowPortionSheet(false)}
+        onConfirm={handlePortionConfirm}
+        courseType={
+          portionSheetDish
+            ? detectCourseType(portionSheetDish.name, portionSheetDish.section)
+            : 'entree'
+        }
+        dishName={portionSheetDish?.name}
+        initialPortionPercent={
+          portionSheetDish
+            ? getLoggedMealForDish(portionSheetDish.name)?.portion_percent
+            : undefined
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -1575,6 +1859,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: 'rgba(255,255,255,0.75)',
+  },
+  seeMoreText: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.brandTeal,
   },
   healthInsightCallout: {
     flexDirection: 'row',
@@ -2308,6 +2598,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.brandTealLight,
   },
+  // Allergen pills matching recipe page styling
+  inlineAllergenPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  inlineAllergenPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   // NEW: Module wrapper styles for expandable cards
   moduleWrapper: {
     marginTop: 12,
@@ -2406,5 +2706,71 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.brandTealLight,
+  },
+  // Quick Log overlay styles
+  imageContainer: {
+    position: 'relative',
+  },
+  quickLogOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(20, 184, 166, 0.5)',
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  quickLogOverlayLogged: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderColor: 'rgba(34, 197, 94, 0.5)',
+  },
+  quickLogText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TEAL,
+  },
+  quickLogTextLogged: {
+    color: '#22c55e',
+  },
+  quickLogNoImage: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(20, 184, 166, 0.5)',
+    marginBottom: 8,
+  },
+  logToast: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  logToastText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#22c55e',
   },
 });

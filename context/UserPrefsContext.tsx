@@ -8,6 +8,7 @@ import {
   LoggedMeal,
   DailySummary,
   AllergenDefinition,
+  PortionMode,
   getUserProfile,
   updateUserProfile,
   setUserAllergens,
@@ -17,6 +18,7 @@ import {
   getWeeklyTracker,
   logMeal,
   deleteMeal,
+  updateMealPortion,
   getAllergenDefinitions,
   getTodayDate,
 } from '../api/api';
@@ -96,6 +98,22 @@ interface UserPrefsContextValue {
     restaurant_name?: string;
     meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     portion_factor?: number;
+    // Portion & Sharing fields
+    portion_percent?: number;
+    portion_multiplier?: number;
+    shared_with_count?: number | null;
+    leftovers_saved?: boolean;
+    portion_mode?: PortionMode;
+    // Baseline values (full serving)
+    baseline_calories?: number;
+    baseline_protein_g?: number;
+    baseline_carbs_g?: number;
+    baseline_fat_g?: number;
+    baseline_fiber_g?: number;
+    baseline_sugar_g?: number;
+    baseline_sodium_mg?: number;
+    baseline_organ_impacts?: Record<string, number>;
+    // Consumed values (after portion scaling)
     calories?: number;
     protein_g?: number;
     carbs_g?: number;
@@ -107,6 +125,16 @@ interface UserPrefsContextValue {
     risk_flags?: string[];
     full_analysis?: any;
   }) => Promise<{ success: boolean; duplicate?: boolean; error?: string }>;
+  updateMealPortionAction: (
+    mealId: number,
+    portionData: {
+      portion_percent: number;
+      portion_multiplier: number;
+      shared_with_count?: number | null;
+      leftovers_saved?: boolean;
+      portion_mode?: PortionMode;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteMealAction: (mealId: number) => Promise<boolean>;
 
   // Refresh all data
@@ -327,6 +355,22 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     restaurant_name?: string;
     meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     portion_factor?: number;
+    // Portion & Sharing fields
+    portion_percent?: number;
+    portion_multiplier?: number;
+    shared_with_count?: number | null;
+    leftovers_saved?: boolean;
+    portion_mode?: PortionMode;
+    // Baseline values (full serving)
+    baseline_calories?: number;
+    baseline_protein_g?: number;
+    baseline_carbs_g?: number;
+    baseline_fat_g?: number;
+    baseline_fiber_g?: number;
+    baseline_sugar_g?: number;
+    baseline_sodium_mg?: number;
+    baseline_organ_impacts?: Record<string, number>;
+    // Consumed values (after portion scaling)
     calories?: number;
     protein_g?: number;
     carbs_g?: number;
@@ -358,6 +402,40 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       return { success: false, error: result.error };
     } catch (e: any) {
       console.error('logMealAction error:', e);
+      return { success: false, error: e?.message || 'Unknown error' };
+    }
+  }, [userId, loadDailyTracker]);
+
+  const updateMealPortionAction = useCallback(async (
+    mealId: number,
+    portionData: {
+      portion_percent: number;
+      portion_multiplier: number;
+      shared_with_count?: number | null;
+      leftovers_saved?: boolean;
+      portion_mode?: PortionMode;
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!userId) {
+      console.error('updateMealPortionAction: No userId available');
+      return { success: false, error: 'No user ID' };
+    }
+
+    console.log('updateMealPortionAction: Updating portion for meal', mealId, portionData);
+
+    try {
+      const result = await updateMealPortion(userId, mealId, portionData);
+      console.log('updateMealPortionAction: API result', result);
+
+      if (result.ok) {
+        // Refresh tracker data to get updated totals
+        await loadDailyTracker();
+        return { success: true };
+      }
+      console.error('updateMealPortionAction: API returned not ok', result.error);
+      return { success: false, error: result.error };
+    } catch (e: any) {
+      console.error('updateMealPortionAction error:', e);
       return { success: false, error: e?.message || 'Unknown error' };
     }
   }, [userId, loadDailyTracker]);
@@ -411,6 +489,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       loadDailyTracker,
       loadWeeklyTracker,
       logMealAction,
+      updateMealPortionAction,
       deleteMealAction,
       refreshAll,
     }}>

@@ -1025,14 +1025,14 @@ export async function priorityAnalysis(
  *
  * @param batchId - Batch ID to poll
  * @param onDishComplete - Callback for each completed dish
- * @param pollIntervalMs - Polling interval (default 1500ms)
- * @param maxAttempts - Max polling attempts (default 80 = 2 minutes)
+ * @param pollIntervalMs - Polling interval (default 3000ms)
+ * @param maxAttempts - Max polling attempts (default 60 = 3 minutes)
  */
 export async function pollBatchUntilComplete(
   batchId: string,
   onDishComplete: (jobId: string, dishName: string, result: AnalyzeDishResponse) => void,
-  pollIntervalMs: number = 1500,
-  maxAttempts: number = 80
+  pollIntervalMs: number = 3000,
+  maxAttempts: number = 60
 ): Promise<BatchAnalysisResponse | null> {
   const completedJobs = new Set<string>();
 
@@ -1456,6 +1456,8 @@ export interface UserOrganPriority {
   display_name?: string;
 }
 
+export type PortionMode = 'preset' | 'custom' | 'shared' | 'leftovers' | 'count';
+
 export interface LoggedMeal {
   id: number;
   user_id: string;
@@ -1465,6 +1467,22 @@ export interface LoggedMeal {
   dish_id?: string | null;
   restaurant_name?: string | null;
   portion_factor: number;
+  // Portion & Sharing fields
+  portion_percent?: number | null;
+  portion_multiplier?: number | null;
+  shared_with_count?: number | null;
+  leftovers_saved?: boolean | null;
+  portion_mode?: PortionMode | null;
+  // Baseline values (full serving, before portion scaling)
+  baseline_calories?: number | null;
+  baseline_protein_g?: number | null;
+  baseline_carbs_g?: number | null;
+  baseline_fat_g?: number | null;
+  baseline_fiber_g?: number | null;
+  baseline_sugar_g?: number | null;
+  baseline_sodium_mg?: number | null;
+  baseline_organ_impacts?: Record<string, number> | null;
+  // Consumed values (after portion scaling) - for display
   calories?: number | null;
   protein_g?: number | null;
   carbs_g?: number | null;
@@ -1778,6 +1796,22 @@ export async function logMeal(
     restaurant_name?: string;
     meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     portion_factor?: number;
+    // Portion & Sharing fields
+    portion_percent?: number;
+    portion_multiplier?: number;
+    shared_with_count?: number | null;
+    leftovers_saved?: boolean;
+    portion_mode?: PortionMode;
+    // Baseline values (full serving)
+    baseline_calories?: number;
+    baseline_protein_g?: number;
+    baseline_carbs_g?: number;
+    baseline_fat_g?: number;
+    baseline_fiber_g?: number;
+    baseline_sugar_g?: number;
+    baseline_sodium_mg?: number;
+    baseline_organ_impacts?: Record<string, number>;
+    // Consumed values (after portion scaling)
     calories?: number;
     protein_g?: number;
     carbs_g?: number;
@@ -1846,6 +1880,14 @@ export async function getMeals(userId: string, date?: string): Promise<MealsResp
 }
 
 /**
+ * Get meals for a specific date (returns array directly)
+ */
+export async function getMealsForDate(userId: string, date?: string): Promise<LoggedMeal[]> {
+  const result = await getMeals(userId, date);
+  return result.ok && result.meals ? result.meals : [];
+}
+
+/**
  * Delete a logged meal
  */
 export async function deleteMeal(userId: string, mealId: number): Promise<DeleteMealResponse> {
@@ -1868,6 +1910,54 @@ export async function deleteMeal(userId: string, mealId: number): Promise<Delete
     return data as DeleteMealResponse;
   } catch (e: any) {
     console.error('deleteMeal error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+interface UpdateMealPortionResponse {
+  ok: boolean;
+  meal?: LoggedMeal;
+  error?: string;
+}
+
+/**
+ * Update portion data for an existing logged meal
+ * This is a local-only operation that scales baseline values
+ */
+export async function updateMealPortion(
+  userId: string,
+  mealId: number,
+  portionData: {
+    portion_percent: number;
+    portion_multiplier: number;
+    shared_with_count?: number | null;
+    leftovers_saved?: boolean;
+    portion_mode?: PortionMode;
+  }
+): Promise<UpdateMealPortionResponse> {
+  const url = `${API_BASE_URL}/api/meals/${mealId}/portion`;
+  console.log('updateMealPortion calling:', url, portionData);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ ...portionData, user_id: userId }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('updateMealPortion HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as UpdateMealPortionResponse;
+  } catch (e: any) {
+    console.error('updateMealPortion error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }

@@ -13,6 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useRouter } from 'expo-router';
+import { LoggedMeal } from '../../api/api';
+import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../components/PortionSheet';
 
 // App-wide theme colors
 const TEAL = '#14b8a6';
@@ -129,10 +131,13 @@ export default function TummyTracker() {
     isTrackerLoading,
     loadDailyTracker,
     loadWeeklyTracker,
+    updateMealPortionAction,
     deleteMealAction,
   } = useUserPrefs();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [editingMeal, setEditingMeal] = useState<LoggedMeal | null>(null);
+  const [showPortionSheet, setShowPortionSheet] = useState(false);
 
   // Load tracker data on mount
   useEffect(() => {
@@ -164,6 +169,39 @@ export default function TummyTracker() {
         },
       ]
     );
+  };
+
+  // Handle portion pill tap to edit
+  const handleEditPortion = (meal: LoggedMeal) => {
+    setEditingMeal(meal);
+    setShowPortionSheet(true);
+  };
+
+  // Handle portion update confirmation
+  const handlePortionConfirm = async (portionData: PortionData) => {
+    if (!editingMeal) return;
+
+    setShowPortionSheet(false);
+
+    const result = await updateMealPortionAction(editingMeal.id, {
+      portion_percent: portionData.portionPercent,
+      portion_multiplier: portionData.portionMultiplier,
+      shared_with_count: portionData.sharedWithCount,
+      leftovers_saved: portionData.leftoversSaved,
+      portion_mode: portionData.portionMode,
+    });
+
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to update portion.');
+    }
+
+    setEditingMeal(null);
+  };
+
+  // Close portion sheet
+  const handleClosePortionSheet = () => {
+    setShowPortionSheet(false);
+    setEditingMeal(null);
   };
 
   // Calculate progress percentages
@@ -334,7 +372,7 @@ export default function TummyTracker() {
               <Ionicons name="restaurant-outline" size={32} color="#444" />
               <Text style={styles.emptyText}>No meals logged yet</Text>
               <Text style={styles.emptyHint}>
-                Analyze a dish and tap &quot;Log Meal&quot; to track it here.
+                When you log a meal, you can adjust portion size (shared, half, a few bites).
               </Text>
             </View>
           ) : (
@@ -348,6 +386,11 @@ export default function TummyTracker() {
                       .join(' · ')
                   : '';
 
+                // Get portion display label
+                const portionPercent = meal.portion_percent ?? 100;
+                const sharedWithCount = meal.shared_with_count ?? null;
+                const portionLabel = getPortionDisplayLabel(portionPercent, sharedWithCount);
+
                 return (
                   <TouchableOpacity
                     key={meal.id}
@@ -355,22 +398,30 @@ export default function TummyTracker() {
                     onLongPress={() => handleDeleteMeal(meal.id, meal.dish_name)}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.mealName}>{meal.dish_name}</Text>
+                      <View style={styles.mealHeaderRow}>
+                        <Text style={styles.mealName}>{meal.dish_name}</Text>
+                        {/* Portion Pill - tap to edit */}
+                        <TouchableOpacity
+                          style={styles.portionPill}
+                          onPress={() => handleEditPortion(meal)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.portionPillText}>{portionLabel}</Text>
+                        </TouchableOpacity>
+                      </View>
                       <Text style={styles.mealMeta}>
                         {formatTime(meal.logged_at)}
-                        {meal.calories ? ` · ${meal.calories} cal` : ''}
+                        {meal.calories ? ` · ${Math.round(meal.calories)} cal` : ''}
                         {organScores ? ` · ${organScores}` : ''}
                       </Text>
                       {meal.restaurant_name && (
                         <Text style={styles.mealRestaurant}>{meal.restaurant_name}</Text>
                       )}
                     </View>
-                    {meal.risk_flags && meal.risk_flags.length > 0 ? (
+                    {meal.risk_flags && meal.risk_flags.length > 0 && (
                       <View style={styles.mealWarning}>
                         <Ionicons name="warning" size={16} color="#f59e0b" />
                       </View>
-                    ) : (
-                      <Text style={styles.mealTag}>Logged</Text>
                     )}
                   </TouchableOpacity>
                 );
@@ -426,6 +477,17 @@ export default function TummyTracker() {
       >
         <Ionicons name="add" size={22} color="#ffffff" />
       </TouchableOpacity>
+
+      {/* Portion Sheet for editing meal portions */}
+      <PortionSheet
+        visible={showPortionSheet}
+        onClose={handleClosePortionSheet}
+        onConfirm={handlePortionConfirm}
+        initialPortionPercent={editingMeal?.portion_percent ?? 100}
+        initialSharedWithCount={editingMeal?.shared_with_count ?? null}
+        initialLeftoversSaved={editingMeal?.leftovers_saved ?? false}
+        dishName={editingMeal?.dish_name}
+      />
     </SafeAreaView>
   );
 }
@@ -585,10 +647,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  mealHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   mealName: {
     color: '#fefefe',
     fontWeight: '600',
     fontSize: 14,
+    flex: 1,
+  },
+  portionPill: {
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: TEAL,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  portionPillText: {
+    color: TEAL,
+    fontSize: 11,
+    fontWeight: '600',
   },
   mealMeta: {
     color: '#9ca3af',
