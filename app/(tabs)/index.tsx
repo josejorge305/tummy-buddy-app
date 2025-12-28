@@ -118,7 +118,7 @@ export default function HomeScreen() {
   const [recentDishesWithCache, setRecentDishesWithCache] = useState<CachedDish[]>([]);
   const [isDishSearching, setIsDishSearching] = useState(false);
   const [showDishDropdown, setShowDishDropdown] = useState(false);
-  const dishSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const dishSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dishListRef = useRef<FlatList<any> | null>(null);
   const [selectedDishIndex, setSelectedDishIndex] = useState(0);
 
