@@ -119,13 +119,17 @@ export default function TummyTracker() {
     loadWeeklyTracker,
     updateMealPortionAction,
     deleteMealAction,
+    setWaterGlassesAction,
   } = useUserPrefs();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
-  const [waterGlasses, setWaterGlasses] = useState(0);
   const [editingMeal, setEditingMeal] = useState<LoggedMeal | null>(null);
   const [showPortionSheet, setShowPortionSheet] = useState(false);
+
+  // Get water glasses from tracker data
+  const waterGlasses = todayTracker?.water?.total_glasses || 0;
+  const waterTargetGlasses = todayTracker?.water?.target_glasses || 8;
 
   // Load tracker data on mount
   useEffect(() => {
@@ -249,9 +253,9 @@ export default function TummyTracker() {
     ? Math.round((weeklyData.weeklyAverages.avg_calories / (userTargets?.calories || 2000)) * 100)
     : undefined;
 
-  const handleWaterChange = (glasses: number) => {
-    setWaterGlasses(glasses);
-    // TODO: Persist water intake to backend
+  const handleWaterChange = async (glasses: number) => {
+    // Persist water intake to backend
+    await setWaterGlassesAction(glasses);
   };
 
   const handleLogFirstMeal = () => {
@@ -310,6 +314,7 @@ export default function TummyTracker() {
         <View style={styles.section}>
           <WaterTracker
             glasses={waterGlasses}
+            totalGlasses={waterTargetGlasses}
             onGlassPress={handleWaterChange}
           />
         </View>

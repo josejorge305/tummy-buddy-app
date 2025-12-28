@@ -16,8 +16,25 @@ interface MealCardProps {
   healthScore?: number;
   mealType?: string | null;
   restaurantName?: string | null;
+  portionPercent?: number | null;
+  sharedWithCount?: number | null;
   onPress?: () => void;
   onLongPress?: () => void;
+}
+
+// Get display label for portion
+function getPortionLabel(portionPercent?: number | null, sharedWithCount?: number | null): string | null {
+  if (!portionPercent || portionPercent === 100) return null;
+
+  if (sharedWithCount && sharedWithCount > 1) {
+    return `Split ${sharedWithCount} ways`;
+  }
+
+  if (portionPercent >= 90) return null;
+  if (portionPercent >= 70) return 'Most';
+  if (portionPercent >= 45) return 'Half';
+  if (portionPercent >= 20) return 'Some';
+  return 'Few bites';
 }
 
 export function MealCard({
@@ -28,11 +45,14 @@ export function MealCard({
   healthScore,
   mealType,
   restaurantName,
+  portionPercent,
+  sharedWithCount,
   onPress,
   onLongPress,
 }: MealCardProps) {
   const emoji = getMealEmoji(mealType, name);
   const scoreColor = healthScore ? getScoreColor(healthScore) : COLORS.primary;
+  const portionLabel = getPortionLabel(portionPercent, sharedWithCount);
 
   return (
     <TouchableOpacity
@@ -48,9 +68,16 @@ export function MealCard({
 
       {/* Meal Info */}
       <View style={styles.infoContainer}>
-        <Text style={styles.name} numberOfLines={1}>
-          {name}
-        </Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {name}
+          </Text>
+          {portionLabel && (
+            <View style={styles.portionPill}>
+              <Text style={styles.portionText}>{portionLabel}</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.meta}>
           {formatTime(time)} · {Math.round(calories)} cal
           {restaurantName ? ` · ${restaurantName}` : ''}
@@ -92,10 +119,29 @@ const styles = StyleSheet.create({
   infoContainer: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   name: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.textPrimary,
+    flexShrink: 1,
+  },
+  portionPill: {
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  portionText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '600',
   },
   meta: {
     fontSize: FONT_SIZES.xs,

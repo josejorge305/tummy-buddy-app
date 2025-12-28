@@ -9,6 +9,7 @@ import {
   DailySummary,
   AllergenDefinition,
   PortionMode,
+  WaterData,
   getUserProfile,
   updateUserProfile,
   setUserAllergens,
@@ -21,6 +22,8 @@ import {
   updateMealPortion,
   getAllergenDefinitions,
   getTodayDate,
+  getWater,
+  setWater,
 } from '../api/api';
 
 // Generate a unique user ID if not exists
@@ -45,6 +48,12 @@ interface TrackerData {
   summary: DailySummary | null;
   meals: LoggedMeal[];
   targets: UserDailyTargets | null;
+  water: {
+    total_glasses: number;
+    target_glasses: number;
+    hydration_score: number;
+    organ_impacts: Record<string, number>;
+  } | null;
 }
 
 interface WeeklyData {
@@ -136,6 +145,9 @@ interface UserPrefsContextValue {
     }
   ) => Promise<{ success: boolean; error?: string }>;
   deleteMealAction: (mealId: number) => Promise<boolean>;
+
+  // Water tracking actions
+  setWaterGlassesAction: (glasses: number) => Promise<boolean>;
 
   // Refresh all data
   refreshAll: () => Promise<void>;
@@ -315,11 +327,20 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       const result = await getDailyTracker(userId, targetDate);
 
       if (result.ok) {
+        // Water data is now included in daily tracker response
+        const waterData = (result as any).water || null;
+
         setTodayTracker({
           date: result.date,
           summary: result.summary || null,
           meals: result.meals || [],
           targets: result.targets || null,
+          water: waterData ? {
+            total_glasses: waterData.total_glasses || 0,
+            target_glasses: waterData.target_glasses || 8,
+            hydration_score: waterData.hydration_score || 0,
+            organ_impacts: waterData.organ_impacts || {},
+          } : null,
         });
       }
     } catch (e) {
@@ -458,6 +479,38 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, loadDailyTracker]);
 
+  const setWaterGlassesAction = useCallback(async (glasses: number): Promise<boolean> => {
+    if (!userId) return false;
+
+    try {
+      const result = await setWater(userId, glasses);
+
+      if (result.ok) {
+        // Optimistically update local state
+        setTodayTracker(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            water: {
+              total_glasses: glasses,
+              target_glasses: prev.water?.target_glasses || 8,
+              hydration_score: Math.min(100, Math.round((glasses / (prev.water?.target_glasses || 8)) * 100)),
+              organ_impacts: prev.water?.organ_impacts || {},
+            },
+          };
+        });
+
+        // Refresh tracker data in background to get accurate organ impacts
+        loadDailyTracker();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('setWaterGlassesAction error:', e);
+      return false;
+    }
+  }, [userId, loadDailyTracker]);
+
   const refreshAll = useCallback(async () => {
     await Promise.all([
       loadProfile(),
@@ -491,6 +544,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       logMealAction,
       updateMealPortionAction,
       deleteMealAction,
+      setWaterGlassesAction,
       refreshAll,
     }}>
       {children}

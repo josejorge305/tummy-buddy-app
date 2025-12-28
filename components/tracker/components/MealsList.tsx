@@ -19,6 +19,8 @@ interface Meal {
   restaurant_name?: string | null;
   organ_impacts?: Record<string, number> | null;
   risk_flags?: string[] | null;
+  portion_percent?: number | null;
+  shared_with_count?: number | null;
 }
 
 interface MealsListProps {
@@ -103,6 +105,8 @@ export function MealsList({
               healthScore={getHealthScore(meal)}
               mealType={meal.meal_type}
               restaurantName={meal.restaurant_name}
+              portionPercent={meal.portion_percent}
+              sharedWithCount={meal.shared_with_count}
               onPress={() => onMealPress?.(meal)}
               onLongPress={() => onMealLongPress?.(meal)}
             />

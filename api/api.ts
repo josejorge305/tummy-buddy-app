@@ -2027,6 +2027,134 @@ export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerRes
 }
 
 // ============================================================
+// Water Tracking API Functions
+// ============================================================
+
+export interface WaterData {
+  ok: boolean;
+  date?: string;
+  total_glasses: number;
+  total_ml: number;
+  target_glasses: number;
+  hydration_score: number;
+  organ_impacts: Record<string, number>;
+  error?: string;
+}
+
+/**
+ * Get water intake for a specific date
+ */
+export async function getWater(userId: string, date?: string): Promise<WaterData> {
+  const targetDate = date || getTodayDate();
+  const url = `${API_BASE_URL}/api/water?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
+  console.log('getWater calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getWater HTTP error:', res.status);
+      return {
+        ok: false,
+        total_glasses: 0,
+        total_ml: 0,
+        target_glasses: 8,
+        hydration_score: 0,
+        organ_impacts: {},
+        error: data?.error || `HTTP ${res.status}`,
+      };
+    }
+
+    return data as WaterData;
+  } catch (e: any) {
+    console.error('getWater error:', e?.message || e);
+    return {
+      ok: false,
+      total_glasses: 0,
+      total_ml: 0,
+      target_glasses: 8,
+      hydration_score: 0,
+      organ_impacts: {},
+      error: e?.message || 'Network error',
+    };
+  }
+}
+
+/**
+ * Log additional water intake (adds to existing)
+ */
+export async function logWater(
+  userId: string,
+  glasses: number = 1,
+  source: string = 'manual'
+): Promise<{ ok: boolean; glasses?: number; ml_amount?: number; error?: string }> {
+  const url = `${API_BASE_URL}/api/water/log`;
+  console.log('logWater calling:', url, { user_id: userId, glasses, source });
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, glasses, source }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('logWater HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data;
+  } catch (e: any) {
+    console.error('logWater error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Set total water glasses for today (replaces existing)
+ */
+export async function setWater(
+  userId: string,
+  totalGlasses: number
+): Promise<{ ok: boolean; total_glasses?: number; error?: string }> {
+  const url = `${API_BASE_URL}/api/water/set`;
+  console.log('setWater calling:', url, { user_id: userId, glasses: totalGlasses });
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, glasses: totalGlasses }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('setWater HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data;
+  } catch (e: any) {
+    console.error('setWater error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
 // Allergen Definitions API
 // ============================================================
 
