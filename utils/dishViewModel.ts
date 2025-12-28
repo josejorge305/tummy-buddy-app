@@ -1,11 +1,11 @@
-import type { AllergenFlag, FodmapFlag, LactoseFlag } from '../../api/api';
+import type { AllergenFlag, FodmapFlag, LactoseFlag } from '../api/api';
 import {
   AnalyzeDishResponse,
   DishOrganFlags,
   DishSummary,
   LikelyRecipe,
   NutritionInsights,
-} from '../../api/api';
+} from '../api/api';
 
 export interface DishOrganLine {
   organKey: string;
