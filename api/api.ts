@@ -728,7 +728,7 @@ export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResp
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const text = await res.text();
@@ -791,7 +791,7 @@ export async function pollOrgansStatus(
     }
 
     // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   return {
@@ -799,6 +799,261 @@ export async function pollOrgansStatus(
     ready: false,
     error: `Organs polling timed out after ${maxAttempts} attempts`,
   };
+}
+
+// ============================================================
+// Batch Analysis (parallel dish analysis for restaurant pages)
+// ============================================================
+
+export interface BatchDishInput {
+  dishName: string;
+  description?: string;
+  section?: string;
+  imageUrl?: string | null;
+  priceText?: string;
+  restaurantCalories?: number | null;
+}
+
+export interface BatchJobInfo {
+  jobId: string;
+  dishName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  result?: AnalyzeDishResponse | null;
+}
+
+export interface BatchAnalysisResponse {
+  ok: boolean;
+  batchId: string;
+  jobs: BatchJobInfo[];
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  status: 'pending' | 'processing' | 'completed' | 'partial';
+}
+
+export interface BatchStatusResponse {
+  ok: boolean;
+  batch: BatchAnalysisResponse;
+}
+
+/**
+ * Start batch analysis for multiple dishes at once.
+ * Returns immediately with job IDs for each dish.
+ * Some dishes may already have cached results.
+ *
+ * @param restaurantName - Restaurant name for context
+ * @param dishes - Array of dishes to analyze
+ * @param concurrency - Max parallel analyses (default 5)
+ */
+export async function startBatchAnalysis(
+  restaurantName: string,
+  dishes: BatchDishInput[],
+  concurrency: number = 5
+): Promise<BatchAnalysisResponse> {
+  const url = `${GATEWAY_BASE_URL}/api/analyze/batch`;
+  console.log('TB startBatchAnalysis calling:', url, 'with', dishes.length, 'dishes');
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        restaurantName,
+        dishes,
+        concurrency,
+      }),
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB startBatchAnalysis HTTP error:', res.status, text.slice(0, 200));
+      // Return a fallback response so frontend can still work with individual analysis
+      return {
+        ok: false,
+        batchId: '',
+        jobs: dishes.map((d, i) => ({
+          jobId: `fallback-${i}`,
+          dishName: d.dishName,
+          status: 'failed' as const,
+          result: null,
+        })),
+        totalCount: dishes.length,
+        completedCount: 0,
+        failedCount: dishes.length,
+        status: 'failed' as any,
+      };
+    }
+
+    const data = JSON.parse(text);
+    return data as BatchAnalysisResponse;
+  } catch (err: any) {
+    console.error('TB startBatchAnalysis error:', err?.message || err);
+    return {
+      ok: false,
+      batchId: '',
+      jobs: dishes.map((d, i) => ({
+        jobId: `error-${i}`,
+        dishName: d.dishName,
+        status: 'failed' as const,
+        result: null,
+      })),
+      totalCount: dishes.length,
+      completedCount: 0,
+      failedCount: dishes.length,
+      status: 'failed' as any,
+    };
+  }
+}
+
+/**
+ * Poll for batch analysis status.
+ * Returns current status of all jobs in the batch.
+ *
+ * @param batchId - Batch ID from startBatchAnalysis
+ * @param includeResults - Include full results in response (default true)
+ */
+export async function getBatchStatus(
+  batchId: string,
+  includeResults: boolean = true
+): Promise<BatchStatusResponse> {
+  const params = new URLSearchParams({
+    batchId,
+    results: includeResults ? '1' : '0',
+  });
+
+  const url = `${GATEWAY_BASE_URL}/api/analyze/batch/status?${params.toString()}`;
+  console.log('TB getBatchStatus calling:', url);
+
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB getBatchStatus HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        batch: {
+          ok: false,
+          batchId,
+          jobs: [],
+          totalCount: 0,
+          completedCount: 0,
+          failedCount: 0,
+          status: 'failed' as any,
+        },
+      };
+    }
+
+    const data = JSON.parse(text);
+    return data as BatchStatusResponse;
+  } catch (err: any) {
+    console.error('TB getBatchStatus error:', err?.message || err);
+    return {
+      ok: false,
+      batch: {
+        ok: false,
+        batchId,
+        jobs: [],
+        totalCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        status: 'failed' as any,
+      },
+    };
+  }
+}
+
+/**
+ * Request priority processing for a specific dish.
+ * Use when user clicks on a dish that hasn't been analyzed yet.
+ *
+ * @param jobId - Job ID from batch
+ * @param dish - Dish payload for immediate analysis if needed
+ */
+export async function priorityAnalysis(
+  jobId: string,
+  dish: BatchDishInput & { restaurantName: string }
+): Promise<{ ok: boolean; status: string; result?: AnalyzeDishResponse }> {
+  const url = `${GATEWAY_BASE_URL}/api/analyze/batch/priority`;
+  console.log('TB priorityAnalysis calling:', url, 'for job:', jobId);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, dish }),
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB priorityAnalysis HTTP error:', res.status, text.slice(0, 200));
+      // Fallback to direct analysis
+      return {
+        ok: false,
+        status: 'fallback',
+      };
+    }
+
+    const data = JSON.parse(text);
+    return data;
+  } catch (err: any) {
+    console.error('TB priorityAnalysis error:', err?.message || err);
+    return { ok: false, status: 'error' };
+  }
+}
+
+/**
+ * Poll batch status until all jobs complete or timeout.
+ *
+ * @param batchId - Batch ID to poll
+ * @param onDishComplete - Callback for each completed dish
+ * @param pollIntervalMs - Polling interval (default 1500ms)
+ * @param maxAttempts - Max polling attempts (default 80 = 2 minutes)
+ */
+export async function pollBatchUntilComplete(
+  batchId: string,
+  onDishComplete: (jobId: string, dishName: string, result: AnalyzeDishResponse) => void,
+  pollIntervalMs: number = 1500,
+  maxAttempts: number = 80
+): Promise<BatchAnalysisResponse | null> {
+  const completedJobs = new Set<string>();
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const statusRes = await getBatchStatus(batchId, true);
+
+    if (!statusRes.ok) {
+      console.log('TB pollBatchUntilComplete: batch status error, attempt', attempt);
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      continue;
+    }
+
+    const batch = statusRes.batch;
+
+    // Notify for newly completed dishes
+    for (const job of batch.jobs) {
+      if (job.status === 'completed' && job.result && !completedJobs.has(job.jobId)) {
+        completedJobs.add(job.jobId);
+        onDishComplete(job.jobId, job.dishName, job.result);
+      }
+    }
+
+    // Check if batch is done
+    if (
+      batch.status === 'completed' ||
+      batch.completedCount + batch.failedCount >= batch.totalCount
+    ) {
+      console.log('TB pollBatchUntilComplete: batch completed after', attempt, 'attempts');
+      return batch;
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  console.log('TB pollBatchUntilComplete: timeout after', maxAttempts, 'attempts');
+  return null;
 }
 
 // ============================================================
@@ -915,7 +1170,11 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error('TB getApifyJobStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      console.error(
+        'TB getApifyJobStatus JSON parse error:',
+        parseErr?.message,
+        text.slice(0, 200)
+      );
       return {
         ok: false,
         status: 'failed',
@@ -960,11 +1219,15 @@ export async function pollApifyJob(
       onStatusChange?.(result);
     }
 
-    if (result.status === 'completed' || result.status === 'failed' || result.status === 'not_found') {
+    if (
+      result.status === 'completed' ||
+      result.status === 'failed' ||
+      result.status === 'not_found'
+    ) {
       return result;
     }
 
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   return {
@@ -1087,7 +1350,7 @@ export async function getDishSuggestions(
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1334,7 +1597,7 @@ export async function getUserProfile(userId: string): Promise<UserProfileRespons
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1366,7 +1629,7 @@ export async function updateUserProfile(
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ ...profileData, user_id: userId }),
     });
@@ -1400,7 +1663,7 @@ export async function setUserAllergens(
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ user_id: userId, allergens }),
     });
@@ -1434,7 +1697,7 @@ export async function setUserOrganPriorities(
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ user_id: userId, organs }),
     });
@@ -1456,10 +1719,7 @@ export async function setUserOrganPriorities(
 /**
  * Add a weight entry and update profile
  */
-export async function addWeightEntry(
-  userId: string,
-  weightKg: number
-): Promise<WeightResponse> {
+export async function addWeightEntry(userId: string, weightKg: number): Promise<WeightResponse> {
   const url = `${API_BASE_URL}/api/profile/weight`;
   console.log('addWeightEntry calling:', url, { weight_kg: weightKg });
 
@@ -1468,7 +1728,7 @@ export async function addWeightEntry(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ user_id: userId, weight_kg: weightKg }),
     });
@@ -1522,7 +1782,7 @@ export async function logMeal(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ ...mealData, user_id: userId }),
     });
@@ -1544,10 +1804,7 @@ export async function logMeal(
 /**
  * Get meals for a specific date
  */
-export async function getMeals(
-  userId: string,
-  date?: string
-): Promise<MealsResponse> {
+export async function getMeals(userId: string, date?: string): Promise<MealsResponse> {
   const targetDate = date || getTodayDate();
   const url = `${API_BASE_URL}/api/meals?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
   console.log('getMeals calling:', url);
@@ -1555,7 +1812,7 @@ export async function getMeals(
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1575,17 +1832,14 @@ export async function getMeals(
 /**
  * Delete a logged meal
  */
-export async function deleteMeal(
-  userId: string,
-  mealId: number
-): Promise<DeleteMealResponse> {
+export async function deleteMeal(userId: string, mealId: number): Promise<DeleteMealResponse> {
   const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${encodeURIComponent(userId)}`;
   console.log('deleteMeal calling:', url);
 
   try {
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1614,13 +1868,15 @@ export async function getDailyTracker(
   date?: string
 ): Promise<DailyTrackerResponse> {
   const targetDate = date || getTodayDate();
-  const url = `${API_BASE_URL}/api/tracker/daily?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
+  const url = `${API_BASE_URL}/api/tracker/daily?user_id=${encodeURIComponent(
+    userId
+  )}&date=${targetDate}`;
   console.log('getDailyTracker calling:', url);
 
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1647,7 +1903,7 @@ export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerRes
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1678,7 +1934,7 @@ export async function getAllergenDefinitions(): Promise<AllergenDefinitionsRespo
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();
@@ -1719,7 +1975,7 @@ export async function saveDish(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(dishData),
     });
@@ -1750,7 +2006,7 @@ export async function getSavedDishes(
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
 
     const data = await res.json();

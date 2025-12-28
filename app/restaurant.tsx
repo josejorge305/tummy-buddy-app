@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,16 +21,18 @@ import {
 } from 'react-native';
 import {
   AnalyzeDishResponse,
-  analyzeDish,
-  fetchMenuWithRetry,
-  fetchMenuFast,
-  startBatchAnalysis,
-  getBatchStatus,
   BatchDishInput,
+  analyzeDish,
+  fetchMenuFast,
+  fetchMenuWithRetry,
+  getBatchStatus,
+  pollBatchUntilComplete,
+  priorityAnalysis,
+  startBatchAnalysis,
 } from '../api/api';
 import { fetchPlaceDetails } from '../api/places';
-import { useUserPrefs } from '../context/UserPrefsContext';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
+import { useUserPrefs } from '../context/UserPrefsContext';
 import { buildDishViewModel } from './utils/dishViewModel';
 
 // Enable LayoutAnimation on Android
@@ -49,14 +51,14 @@ const PREFETCH_ANALYSIS_LIMIT = 0;
 
 // Design system colors - teal-only palette for severity (matching dish.tsx redesign)
 const COLORS = {
-  brandTeal: '#14b8a6',      // Primary teal
+  brandTeal: '#14b8a6', // Primary teal
   brandTealLight: '#2dd4bf', // Lighter teal variant
-  neutral: '#6b7280',        // Gray
-  calories: '#f97316',       // Orange for calories only
-  protein: '#3b82f6',        // Blue
-  carbs: '#a855f7',          // Purple
-  fat: '#eab308',            // Yellow
-  cardBg: '#1e293b',         // Slate 800
+  neutral: '#6b7280', // Gray
+  calories: '#f97316', // Orange for calories only
+  protein: '#3b82f6', // Blue
+  carbs: '#a855f7', // Purple
+  fat: '#eab308', // Yellow
+  cardBg: '#1e293b', // Slate 800
   cardBorder: 'rgba(255,255,255,0.08)',
   textPrimary: '#ffffff',
   textSecondary: '#94a3b8',
@@ -148,29 +150,16 @@ function DishAnalysisLoader({ dishName }: { dishName: string }) {
       {/* Loader row */}
       <View style={analysisLoaderStyles.loaderRow}>
         <View style={analysisLoaderStyles.spinnerWrapper}>
-          <Animated.View
-            style={[
-              analysisLoaderStyles.spinnerGlow,
-              { opacity: pulseAnim },
-            ]}
-          />
+          <Animated.View style={[analysisLoaderStyles.spinnerGlow, { opacity: pulseAnim }]} />
           <ActivityIndicator size="small" color={TEAL} />
         </View>
         <View style={analysisLoaderStyles.messageArea}>
           <View style={analysisLoaderStyles.messageRow}>
-            <Ionicons
-              name={currentMessage.icon as any}
-              size={14}
-              color={TEAL}
-            />
-            <Text style={analysisLoaderStyles.messageText}>
-              {currentMessage.text}
-            </Text>
+            <Ionicons name={currentMessage.icon as any} size={14} color={TEAL} />
+            <Text style={analysisLoaderStyles.messageText}>{currentMessage.text}</Text>
           </View>
           {elapsedSeconds > 5 && (
-            <Text style={analysisLoaderStyles.elapsedText}>
-              {elapsedSeconds}s
-            </Text>
+            <Text style={analysisLoaderStyles.elapsedText}>{elapsedSeconds}s</Text>
           )}
         </View>
       </View>
@@ -181,7 +170,10 @@ function DishAnalysisLoader({ dishName }: { dishName: string }) {
           style={[
             analysisLoaderStyles.progressFill,
             {
-              width: `${Math.min((messageIndex + 1) / ANALYSIS_LOADING_MESSAGES.length * 100, 95)}%`,
+              width: `${Math.min(
+                ((messageIndex + 1) / ANALYSIS_LOADING_MESSAGES.length) * 100,
+                95
+              )}%`,
             },
           ]}
         />
@@ -368,22 +360,13 @@ function MenuLoadingScreen({
         <View style={loadingStyles.mainContent}>
           {/* Clean loader with pulsing glow */}
           <View style={loadingStyles.loaderWrapper}>
-            <Animated.View
-              style={[
-                loadingStyles.loaderGlow,
-                { opacity: pulseAnim },
-              ]}
-            />
+            <Animated.View style={[loadingStyles.loaderGlow, { opacity: pulseAnim }]} />
             <ActivityIndicator size="large" color={TEAL} />
           </View>
 
           {/* Status message */}
           <View style={loadingStyles.messageContainer}>
-            <Ionicons
-              name={currentMessage.icon as any}
-              size={18}
-              color={TEAL}
-            />
+            <Ionicons name={currentMessage.icon as any} size={18} color={TEAL} />
             <Text style={loadingStyles.messageText}>{currentMessage.text}</Text>
           </View>
 
@@ -402,16 +385,36 @@ function MenuLoadingScreen({
 
           {/* Phase labels */}
           <View style={loadingStyles.phaseLabels}>
-            <Text style={[loadingStyles.phaseLabel, currentPhase >= 1 && loadingStyles.phaseLabelActive]}>
+            <Text
+              style={[
+                loadingStyles.phaseLabel,
+                currentPhase >= 1 && loadingStyles.phaseLabelActive,
+              ]}
+            >
               Discover
             </Text>
-            <Text style={[loadingStyles.phaseLabel, currentPhase >= 2 && loadingStyles.phaseLabelActive]}>
+            <Text
+              style={[
+                loadingStyles.phaseLabel,
+                currentPhase >= 2 && loadingStyles.phaseLabelActive,
+              ]}
+            >
               Organize
             </Text>
-            <Text style={[loadingStyles.phaseLabel, currentPhase >= 3 && loadingStyles.phaseLabelActive]}>
+            <Text
+              style={[
+                loadingStyles.phaseLabel,
+                currentPhase >= 3 && loadingStyles.phaseLabelActive,
+              ]}
+            >
               Analyze
             </Text>
-            <Text style={[loadingStyles.phaseLabel, currentPhase >= 4 && loadingStyles.phaseLabelActive]}>
+            <Text
+              style={[
+                loadingStyles.phaseLabel,
+                currentPhase >= 4 && loadingStyles.phaseLabelActive,
+              ]}
+            >
               Ready
             </Text>
           </View>
@@ -739,7 +742,7 @@ export default function RestaurantScreen() {
   // Batch analysis state
   const [batchId, setBatchId] = useState<string | null>(null);
   const [jobIdByItemId, setJobIdByItemId] = useState<Record<string, string>>({});
-  const [batchPollingActive, setBatchPollingActive] = useState(false);
+  const batchPollingRef = useRef<boolean>(false);
 
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
   const restaurantNameValue = Array.isArray(restaurantName) ? restaurantName[0] : restaurantName;
@@ -761,7 +764,11 @@ export default function RestaurantScreen() {
         // FAST PATH: Use fetchMenuFast first - it's the fastest (~10-30s)
         const searchAddress = addressValue || restaurantNameValue || '';
         if (restaurantNameValue && searchAddress) {
-          console.log('[RestaurantScreen] Using fetchMenuFast (FAST PATH) with:', restaurantNameValue, searchAddress);
+          console.log(
+            '[RestaurantScreen] Using fetchMenuFast (FAST PATH) with:',
+            restaurantNameValue,
+            searchAddress
+          );
           data = await fetchMenuFast(restaurantNameValue, searchAddress, 50);
         }
 
@@ -805,7 +812,15 @@ export default function RestaurantScreen() {
       setError("We couldn't load this menu right now. Please try again.");
       setLoading(false);
     }
-  }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue, getPrefetchedMenu, getPrefetchStatus]);
+  }, [
+    placeIdValue,
+    restaurantNameValue,
+    addressValue,
+    latValue,
+    lngValue,
+    getPrefetchedMenu,
+    getPrefetchStatus,
+  ]);
 
   // Fetch Google Places photo reference for restaurant hero image
   useEffect(() => {
@@ -815,7 +830,10 @@ export default function RestaurantScreen() {
         console.log('[RestaurantScreen] Fetching Google photo for placeId:', placeIdValue);
         const details = await fetchPlaceDetails(placeIdValue);
         if (details.photoRef) {
-          console.log('[RestaurantScreen] Got Google photo ref:', details.photoRef.slice(0, 50) + '...');
+          console.log(
+            '[RestaurantScreen] Got Google photo ref:',
+            details.photoRef.slice(0, 50) + '...'
+          );
           setGooglePhotoRef(details.photoRef);
         }
       } catch (e: any) {
@@ -849,6 +867,124 @@ export default function RestaurantScreen() {
     }
     saveToCache();
   }, [placeIdValue, restaurantNameValue, addressValue, latValue, lngValue]);
+
+  // Start batch analysis when menu loads
+  useEffect(() => {
+    if (!menu || !menu.sections || menu.sections.length === 0) return;
+    if (batchPollingRef.current) return; // Already started
+
+    const restName = restaurant?.name || restaurantNameValue || '';
+    if (!restName) return;
+
+    // Collect all dishes for batch analysis
+    const dishes: (BatchDishInput & { itemId: string })[] = [];
+    for (const section of menu.sections) {
+      const sectionName = section.name || '';
+      const items = Array.isArray(section.items) ? section.items : [];
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const itemId = `${section.id || section.name || 'section'}-${
+          item?.id || item?.name || index
+        }`;
+        const descriptionText =
+          item?.menuDescription ??
+          item?.description ??
+          item?.subtitle ??
+          item?.shortDescription ??
+          item?.rawDescription ??
+          '';
+
+        dishes.push({
+          itemId,
+          dishName: item?.name || '',
+          description: descriptionText,
+          section: sectionName,
+          imageUrl: item?.imageUrl ?? null,
+          priceText: item?.priceText || '',
+          restaurantCalories: item?.restaurantCalories ?? null,
+        });
+      }
+    }
+
+    if (dishes.length === 0) return;
+
+    console.log('[RestaurantScreen] Starting batch analysis for', dishes.length, 'dishes');
+    batchPollingRef.current = true;
+
+    // Start batch analysis
+    startBatchAnalysis(
+      restName,
+      dishes.map((d) => ({
+        dishName: d.dishName,
+        description: d.description,
+        section: d.section,
+        imageUrl: d.imageUrl,
+        priceText: d.priceText,
+        restaurantCalories: d.restaurantCalories,
+      })),
+      5 // concurrency
+    )
+      .then((batchRes) => {
+        if (!batchRes.ok) {
+          console.log('[RestaurantScreen] Batch analysis failed, will use on-demand analysis');
+          return;
+        }
+
+        setBatchId(batchRes.batchId);
+
+        // Map job IDs to item IDs
+        const jobMap: Record<string, string> = {};
+        const initialResults: Record<string, AnalyzeDishResponse | null> = {};
+
+        batchRes.jobs.forEach((job, idx) => {
+          const dish = dishes.find((d) => d.dishName === job.dishName) || dishes[idx];
+          if (dish) {
+            jobMap[dish.itemId] = job.jobId;
+            // If already completed (cached), store the result
+            if (job.status === 'completed' && job.result) {
+              initialResults[dish.itemId] = job.result;
+            }
+          }
+        });
+
+        setJobIdByItemId(jobMap);
+        if (Object.keys(initialResults).length > 0) {
+          setAnalysisByItemId((prev) => ({ ...prev, ...initialResults }));
+        }
+
+        console.log(
+          '[RestaurantScreen] Batch started, cached results:',
+          Object.keys(initialResults).length
+        );
+
+        // Start polling for remaining results
+        if (batchRes.status !== 'completed') {
+          pollBatchUntilComplete(
+            batchRes.batchId,
+            (jobId, dishName, result) => {
+              // Find the itemId for this job
+              const itemId = Object.keys(jobMap).find((id) => jobMap[id] === jobId);
+              if (itemId) {
+                console.log('[RestaurantScreen] Batch result received for:', dishName);
+                setAnalysisByItemId((prev) => ({ ...prev, [itemId]: result }));
+                setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
+              }
+            },
+            1500, // poll interval
+            80 // max attempts (2 min)
+          ).then(() => {
+            console.log('[RestaurantScreen] Batch polling complete');
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('[RestaurantScreen] Batch analysis error:', err);
+      });
+
+    return () => {
+      batchPollingRef.current = false;
+    };
+  }, [menu, restaurant, restaurantNameValue]);
 
   const runAnalysisForItem = async ({
     itemId,
@@ -1078,29 +1214,17 @@ export default function RestaurantScreen() {
       params: {
         dishName: item?.name || 'Unknown Dish',
         imageUrl: recipeImageUrl,
-        likelyRecipe: analysis?.likely_recipe
-          ? JSON.stringify(analysis.likely_recipe)
-          : '',
-        fullRecipe: analysis?.full_recipe
-          ? JSON.stringify(analysis.full_recipe)
-          : '',
-        nutrition: analysis?.nutrition_summary
-          ? JSON.stringify(analysis.nutrition_summary)
-          : '',
+        likelyRecipe: analysis?.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
+        fullRecipe: analysis?.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
+        nutrition: analysis?.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
         nutritionInsights: analysis?.nutrition_insights
           ? JSON.stringify(analysis.nutrition_insights)
           : '',
-        allergens: analysis?.allergen_flags
-          ? JSON.stringify(analysis.allergen_flags)
-          : '[]',
+        allergens: analysis?.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
         allergenSummary: analysis?.allergen_summary || '',
-        fodmap: analysis?.fodmap_flags
-          ? JSON.stringify(analysis.fodmap_flags)
-          : '',
+        fodmap: analysis?.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
         fodmapSummary: analysis?.fodmap_summary || '',
-        organs: analysis?.organs
-          ? JSON.stringify(analysis.organs)
-          : '',
+        organs: analysis?.organs ? JSON.stringify(analysis.organs) : '',
         nutritionSource: analysis?.nutrition_source || '',
       },
     });
@@ -1136,9 +1260,35 @@ export default function RestaurantScreen() {
     setExpandedItemId(itemId);
     setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: true }));
 
-    // Always use full analysis to get full_recipe data (batch results don't include it)
-    // This ensures we have description, wine pairing, storage tips, chef's notes, etc.
-    console.log('[RestaurantScreen] Fetching full analysis for:', item?.name);
+    // Check if we have a batch job for this item - use priority fetch
+    const jobId = jobIdByItemId[itemId];
+    if (jobId && batchId) {
+      console.log('[RestaurantScreen] Using priority analysis for:', item?.name);
+      try {
+        const priorityRes = await priorityAnalysis(jobId, {
+          dishName: item?.name || '',
+          description: descriptionText,
+          section: sectionName || '',
+          imageUrl: item?.imageUrl ?? null,
+          priceText: item?.priceText || '',
+          restaurantCalories: item?.restaurantCalories ?? null,
+          restaurantName: restaurant?.name || restaurantNameValue || '',
+        });
+
+        if (priorityRes.ok && priorityRes.status === 'completed' && priorityRes.result) {
+          setAnalysisByItemId((prev) => ({ ...prev, [itemId]: priorityRes.result! }));
+          setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
+          setExpandedItemId(null);
+          navigateToRecipe(itemId, item, priorityRes.result);
+          return;
+        }
+        // If priority didn't return result, fall through to regular analysis
+      } catch (err) {
+        console.log('[RestaurantScreen] Priority analysis failed, falling back:', err);
+      }
+    }
+
+    // Fall back to direct analysis - ensures we get full_recipe data with wine pairing, storage tips, etc.
     const result = await runAnalysisForItem({
       itemId,
       item,
@@ -1156,7 +1306,11 @@ export default function RestaurantScreen() {
   };
 
   // Hero image priority: Google photo ref (fetched from place details) > menu API imageRef > menu API imageUrl
-  const heroUrl = buildPhotoUrl(googlePhotoRef) || buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
+  const heroUrl =
+    buildPhotoUrl(googlePhotoRef) ||
+    buildPhotoUrl(restaurant?.imageRef) ||
+    restaurant?.imageUrl ||
+    undefined;
 
   // Filter menu sections/items based on search query
   const filteredSections = useMemo(() => {
@@ -1176,7 +1330,11 @@ export default function RestaurantScreen() {
 
   if (loading) {
     // Compute early hero URL from available sources (googlePhotoRef may be set from a parallel fetch)
-    const earlyHeroUrl = buildPhotoUrl(googlePhotoRef) || buildPhotoUrl(restaurant?.imageRef) || restaurant?.imageUrl || undefined;
+    const earlyHeroUrl =
+      buildPhotoUrl(googlePhotoRef) ||
+      buildPhotoUrl(restaurant?.imageRef) ||
+      restaurant?.imageUrl ||
+      undefined;
     return (
       <MenuLoadingScreen
         restaurantName={restaurantNameValue || undefined}
@@ -1290,7 +1448,10 @@ export default function RestaurantScreen() {
               autoCorrect={false}
             />
             {menuSearch ? (
-              <TouchableOpacity onPress={() => setMenuSearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity
+                onPress={() => setMenuSearch('')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Ionicons name="close-circle" size={18} color="#666" />
               </TouchableOpacity>
             ) : null}
@@ -1306,7 +1467,9 @@ export default function RestaurantScreen() {
 
               {section.items?.map((item: any, index: number) => {
                 // Always include section in itemId to ensure uniqueness across menu sections
-                const itemId = `${section.id || section.name || 'section'}-${item?.id || item?.name || index}`;
+                const itemId = `${section.id || section.name || 'section'}-${
+                  item?.id || item?.name || index
+                }`;
                 const isExpanded = expandedItemId === itemId;
 
                 const analysis = analysisByItemId[itemId];
@@ -1345,7 +1508,10 @@ export default function RestaurantScreen() {
                   const low = withSentences.filter((l: any) => l.severity === 'low');
 
                   // Take all high/medium + up to 2 low, max 5 total
-                  const selected = [...highMed, ...low.slice(0, Math.max(0, 5 - highMed.length))].slice(0, 5);
+                  const selected = [
+                    ...highMed,
+                    ...low.slice(0, Math.max(0, 5 - highMed.length)),
+                  ].slice(0, 5);
 
                   // Combine sentences into a paragraph
                   const paragraph = selected
@@ -1355,7 +1521,10 @@ export default function RestaurantScreen() {
                     })
                     .join(' ');
 
-                  return paragraph || 'Overall low organ impact; most organs stay neutral or mildly supported by this plate.';
+                  return (
+                    paragraph ||
+                    'Overall low organ impact; most organs stay neutral or mildly supported by this plate.'
+                  );
                 })();
 
                 const totalCaloriesForPlate =
@@ -1400,22 +1569,24 @@ export default function RestaurantScreen() {
                     {viewModel && (
                       <View style={styles.inlineWarningBadges}>
                         {/* Allergen badges - teal styling */}
-                        {viewModel.allergens.filter(a => a.present === 'yes').slice(0, 4).map((allergen, idx) => (
-                          <View
-                            key={`inline-allergen-${idx}`}
-                            style={styles.inlineBadgeTeal}
-                          >
-                            <Text style={styles.inlineBadgeTextTeal}>{allergen.name}</Text>
-                          </View>
-                        ))}
+                        {viewModel.allergens
+                          .filter((a) => a.present === 'yes')
+                          .slice(0, 4)
+                          .map((allergen, idx) => (
+                            <View key={`inline-allergen-${idx}`} style={styles.inlineBadgeTeal}>
+                              <Text style={styles.inlineBadgeTextTeal}>{allergen.name}</Text>
+                            </View>
+                          ))}
                         {/* FODMAP badge - teal styling */}
-                        {viewModel.fodmapLevel && (viewModel.fodmapLevel === 'high' || viewModel.fodmapLevel === 'medium') && (
-                          <View style={styles.inlineBadgeTeal}>
-                            <Text style={styles.inlineBadgeTextTeal}>
-                              {viewModel.fodmapLevel === 'high' ? 'High' : 'Mod'} FODMAP
-                            </Text>
-                          </View>
-                        )}
+                        {viewModel.fodmapLevel &&
+                          (viewModel.fodmapLevel === 'high' ||
+                            viewModel.fodmapLevel === 'medium') && (
+                            <View style={styles.inlineBadgeTeal}>
+                              <Text style={styles.inlineBadgeTextTeal}>
+                                {viewModel.fodmapLevel === 'high' ? 'High' : 'Mod'} FODMAP
+                              </Text>
+                            </View>
+                          )}
                       </View>
                     )}
 
