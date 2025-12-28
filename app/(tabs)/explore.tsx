@@ -51,6 +51,10 @@ function TrackerHeader({ streak }: { streak: number }) {
 
   return (
     <View style={styles.header}>
+      {/* TEST BANNER - Remove after verifying */}
+      <View style={{ backgroundColor: '#FF0000', padding: 10, marginBottom: 10, borderRadius: 8 }}>
+        <Text style={{ color: '#FFFFFF', fontWeight: 'bold', textAlign: 'center' }}>🚀 NEW REDESIGNED VERSION 🚀</Text>
+      </View>
       <View>
         <Text style={styles.dateText}>{dateString}</Text>
         <Text style={styles.title}>Daily Tracker</Text>
