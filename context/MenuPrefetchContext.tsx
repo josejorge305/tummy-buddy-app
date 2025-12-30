@@ -3,6 +3,8 @@ import {
   startApifyScrape,
   getApifyJobStatus,
   ApifyJobStatusResponse,
+  ValidatedMenuData,
+  MenuValidation,
 } from '../api/api';
 
 interface PrefetchState {
@@ -11,7 +13,9 @@ interface PrefetchState {
   placeId: string;
   jobId: string;
   status: 'idle' | 'starting' | 'running' | 'completed' | 'failed';
-  data?: any[];
+  data?: ValidatedMenuData; // NOW uses validated data type
+  validation?: MenuValidation; // NEW: validation info
+  error?: string; // NEW: error message if failed
   startedAt: number;
 }
 
@@ -20,6 +24,8 @@ interface MenuPrefetchContextValue {
   getPrefetchedMenu: (placeId: string) => PrefetchState | null;
   isMenuReady: (placeId: string) => boolean;
   getPrefetchStatus: (placeId: string) => PrefetchState['status'];
+  getValidationConfidence: (placeId: string) => number | null; // NEW
+  getError: (placeId: string) => string | null; // NEW
   clearCache: (placeId: string) => void;
 }
 
@@ -54,11 +60,24 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
         const result = await getApifyJobStatus(jobId);
 
         if (result.status === 'completed') {
-          console.log(`[MenuPrefetch] Job completed with ${result.resultCount || result.data?.length || 0} results`);
           const state = cacheRef.current[placeId];
           if (state) {
-            state.status = 'completed';
-            state.data = result.data;
+            // CHECK: Did validation succeed?
+            if (result.ok && result.data) {
+              console.log(`[MenuPrefetch] Job completed with validated data`);
+              if (result.validation) {
+                console.log(`[MenuPrefetch] Confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
+                console.log(`[MenuPrefetch] Matched: "${result.validation.matchedName}"`);
+              }
+              state.status = 'completed';
+              state.data = result.data;
+              state.validation = result.validation;
+            } else {
+              // Validation failed - wrong restaurant or no match
+              console.warn(`[MenuPrefetch] Validation failed: ${result.error}`);
+              state.status = 'failed';
+              state.error = result.error || 'No matching restaurant found';
+            }
           }
           activePollingRef.current[jobId] = false;
           return;
@@ -69,6 +88,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
           const state = cacheRef.current[placeId];
           if (state) {
             state.status = 'failed';
+            state.error = result.error;
           }
           activePollingRef.current[jobId] = false;
           return;
@@ -85,6 +105,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
     const state = cacheRef.current[placeId];
     if (state) {
       state.status = 'failed';
+      state.error = 'Scraping timed out';
     }
     activePollingRef.current[jobId] = false;
   }, []);
@@ -117,7 +138,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
 
     // Check if we already have completed data
     const cached = cacheRef.current[placeId];
-    if (cached?.status === 'completed' && cached.data?.length) {
+    if (cached?.status === 'completed' && cached.data?.sections?.length) {
       console.log(`[MenuPrefetch] Using cached data for ${restaurantName}`);
       return cached;
     }
@@ -135,7 +156,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
     cacheRef.current[placeId] = state;
 
     try {
-      const result = await startApifyScrape(restaurantName, address, 5);
+      const result = await startApifyScrape(restaurantName, address, 3); // Reduced to 3 for better accuracy
 
       if (!result.ok || !result.jobId) {
         console.log(`[MenuPrefetch] Failed to start: ${result.message}`);
@@ -148,8 +169,12 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
       // If already cached on server
       if (result.status === 'already_cached' && result.data) {
         console.log(`[MenuPrefetch] Server had cached data`);
+        if (result.validation) {
+          console.log(`[MenuPrefetch] Cached confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
+        }
         state.status = 'completed';
         state.data = result.data;
+        state.validation = result.validation;
         return state;
       }
 
@@ -173,11 +198,22 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
 
   const isMenuReady = useCallback((placeId: string): boolean => {
     const state = cacheRef.current[placeId];
-    return state?.status === 'completed' && Boolean(state.data?.length);
+    // Check for validated data structure with sections
+    return state?.status === 'completed' && Boolean(state.data?.sections?.length);
   }, []);
 
   const getPrefetchStatus = useCallback((placeId: string): PrefetchState['status'] => {
     return cacheRef.current[placeId]?.status || 'idle';
+  }, []);
+
+  const getValidationConfidence = useCallback((placeId: string): number | null => {
+    const state = cacheRef.current[placeId];
+    return state?.validation?.confidence ?? null;
+  }, []);
+
+  const getError = useCallback((placeId: string): string | null => {
+    const state = cacheRef.current[placeId];
+    return state?.error ?? null;
   }, []);
 
   const clearCache = useCallback((placeId: string) => {
@@ -195,6 +231,8 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
         getPrefetchedMenu,
         isMenuReady,
         getPrefetchStatus,
+        getValidationConfidence,
+        getError,
         clearCache,
       }}
     >

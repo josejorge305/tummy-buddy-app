@@ -472,18 +472,120 @@ export async function fetchMenu(placeId: string) {
   }
 }
 
+// ============================================================
+// Updated Fast Menu Fetch with Validation Support
+// ============================================================
+
+// Helper to transform legacy format (backwards compatibility)
+function transformLegacyMenuData(
+  data: any,
+  restaurantName: string,
+  address: string
+): {
+  ok: boolean;
+  source: string;
+  restaurant: ValidatedRestaurant;
+  sections: ValidatedMenuSection[];
+  meta: ValidatedMenuData['meta'];
+} {
+  const items = data.data.items;
+
+  // Group items by section
+  const sectionMap: Record<string, ValidatedMenuItem[]> = {};
+  let firstImageUrl: string | null = null;
+
+  for (const item of items) {
+    const sectionName = item.section || 'Menu';
+    if (!sectionMap[sectionName]) {
+      sectionMap[sectionName] = [];
+    }
+
+    const itemImage = item.imageUrl || item.image_url || item.image || null;
+    if (!firstImageUrl && itemImage) {
+      firstImageUrl = itemImage;
+    }
+
+    sectionMap[sectionName].push({
+      id: item.id || `item-${sectionMap[sectionName].length}`,
+      name: item.name,
+      description: item.description || '',
+      menuDescription: item.description || '',
+      priceText: item.price_display || item.priceText || '',
+      priceCents: item.price || 0,
+      imageUrl: itemImage,
+      available: true,
+      soldOut: false,
+      popular: false,
+      rating: null,
+      hasCustomizations: false,
+    });
+  }
+
+  const sections: ValidatedMenuSection[] = Object.entries(sectionMap).map(
+    ([name, sectionItems], idx) => ({
+      id: `section-${idx}`,
+      name,
+      items: sectionItems,
+      itemCount: sectionItems.length,
+    })
+  );
+
+  const totalItems = sections.reduce((sum, s) => sum + s.items.length, 0);
+
+  return {
+    ok: true,
+    source: 'uber-test-legacy',
+    restaurant: {
+      id: data.data.query || '',
+      name: restaurantName,
+      address: address,
+      city: '',
+      state: '',
+      postalCode: '',
+      phone: '',
+      imageUrl: firstImageUrl,
+      rating: null,
+      reviewCount: '',
+      cuisines: [],
+      isOpen: true,
+      hours: [],
+      deliveryEta: '',
+      deliveryFee: '',
+      url: '',
+    },
+    sections,
+    meta: {
+      totalSections: sections.length,
+      totalItems,
+      availableItems: totalItems,
+      source: 'uber-eats-legacy',
+      scrapedAt: new Date().toISOString(),
+    },
+  };
+}
+
 // Fast menu fetch using /menu/uber-test (no strict Google filter)
 // This endpoint is faster (~10-30s) and more reliable than /menu/extract
+// Note: maxRows controls the number of menu ITEMS returned, not search results
 export async function fetchMenuFast(
   restaurantName: string,
   address: string,
-  maxRows: number = 50
-): Promise<any> {
+  maxRows: number = 100 // Default to 100 items for complete menu
+): Promise<{
+  ok: boolean;
+  source?: string;
+  restaurant?: ValidatedRestaurant;
+  sections?: ValidatedMenuSection[];
+  meta?: ValidatedMenuData['meta'];
+  validation?: MenuValidation;
+  error?: string;
+}> {
   const params = new URLSearchParams({
-    query: restaurantName,
-    address,
+    query: restaurantName.trim(),
+    address: address.trim(),
     maxRows: String(maxRows),
   });
+
   const url = `${RESTAURANT_API_BASE}/menu/uber-test?${params.toString()}`;
   console.log('TB fetchMenuFast calling:', url);
 
@@ -499,53 +601,33 @@ export async function fetchMenuFast(
 
     const data = JSON.parse(raw);
 
-    // Transform /menu/uber-test response to match /menu/extract format
-    if (data.ok && data.data?.items) {
-      const items = data.data.items;
-
-      // Group items by section
-      const sectionMap: Record<string, any[]> = {};
-      let firstImageUrl: string | null = null;
-
-      for (const item of items) {
-        const sectionName = item.section || 'Menu';
-        if (!sectionMap[sectionName]) {
-          sectionMap[sectionName] = [];
-        }
-
-        // Capture first item's image as potential hero
-        const itemImage = item.imageUrl || item.image_url || item.image || null;
-        if (!firstImageUrl && itemImage) {
-          firstImageUrl = itemImage;
-        }
-
-        sectionMap[sectionName].push({
-          id: item.id || `item-${sectionMap[sectionName].length}`,
-          name: item.name,
-          description: item.description,
-          menuDescription: item.description,
-          priceText: item.price_display,
-          restaurantCalories: item.restaurantCalories,
-          imageUrl: itemImage,
-        });
+    // Handle new validated response format
+    if (data.ok && data.data) {
+      // New format: data contains { restaurant, sections, meta }
+      if (data.data.restaurant && data.data.sections) {
+        return {
+          ok: true,
+          source: 'uber-test-validated',
+          restaurant: data.data.restaurant,
+          sections: data.data.sections,
+          meta: data.data.meta,
+          validation: data.validation,
+        };
       }
 
-      const sections = Object.entries(sectionMap).map(([name, sectionItems], idx) => ({
-        id: `section-${idx}`,
-        name,
-        items: sectionItems,
-      }));
+      // Legacy format: data.items array (keep for backwards compatibility)
+      if (data.data.items) {
+        return transformLegacyMenuData(data, restaurantName, address);
+      }
+    }
 
+    // Handle validation failure
+    if (!data.ok && data.debug?.rejected) {
+      console.warn('Menu validation failed:', data.error);
+      console.warn('Rejected restaurants:', data.debug.rejected);
       return {
-        ok: true,
-        source: 'uber-test-fast',
-        restaurant: {
-          id: data.data.query,
-          name: restaurantName,
-          address: address,
-          imageUrl: firstImageUrl, // Use first item image as hero fallback
-        },
-        sections,
+        ok: false,
+        error: data.error || 'No matching restaurant found',
       };
     }
 
@@ -1076,15 +1158,82 @@ export async function pollBatchUntilComplete(
 // Apify Async Menu Scraping (for background prefetching)
 // ============================================================
 
+// ============================================================
+// Updated Types for Validated Menu Data
+// ============================================================
+
+export interface ValidatedMenuItem {
+  id: string;
+  name: string;
+  description: string;
+  menuDescription: string;
+  priceText: string;
+  priceCents: number;
+  imageUrl: string | null;
+  available: boolean;
+  soldOut: boolean;
+  popular: boolean;
+  rating: string | null;
+  hasCustomizations: boolean;
+}
+
+export interface ValidatedMenuSection {
+  id: string;
+  name: string;
+  items: ValidatedMenuItem[];
+  itemCount: number;
+}
+
+export interface ValidatedRestaurant {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  phone: string;
+  imageUrl: string | null;
+  rating: number | null;
+  reviewCount: string;
+  cuisines: string[];
+  isOpen: boolean;
+  hours: Array<{ days: string; hours: string }>;
+  deliveryEta: string;
+  deliveryFee: string;
+  url: string;
+}
+
+export interface ValidatedMenuData {
+  restaurant: ValidatedRestaurant;
+  sections: ValidatedMenuSection[];
+  meta: {
+    totalSections: number;
+    totalItems: number;
+    availableItems: number;
+    source: string;
+    scrapedAt: string;
+  };
+}
+
+export interface MenuValidation {
+  confidence: number;
+  matchedName: string;
+  requestedName: string;
+  alternativeMatches?: number;
+  rejectedCount?: number;
+}
+
 export interface ApifyJobStartResponse {
   ok: boolean;
   jobId: string;
   status: 'started' | 'already_cached';
   runId?: string;
   message?: string;
-  data?: any[]; // Present if already cached
+  data?: ValidatedMenuData; // Present if already cached (validated format)
+  validation?: MenuValidation; // Validation info if data is cached
 }
 
+// Updated job status response with validation support
 export interface ApifyJobStatusResponse {
   ok: boolean;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'not_found';
@@ -1092,31 +1241,57 @@ export interface ApifyJobStatusResponse {
   runId?: string;
   datasetId?: string;
   resultCount?: number;
-  data?: any[];
+  // NEW: Validated and transformed data
+  data?: ValidatedMenuData;
+  validation?: MenuValidation;
   error?: string;
+  // Debug info for troubleshooting
+  debug?: {
+    query: string;
+    resultsCount: number;
+    rejected?: Array<{
+      name: string;
+      reason: string;
+      scores: { name: number; location: number; combined: number };
+    }>;
+  };
 }
 
 /**
  * Start an async Apify scraping job for a restaurant.
  * Returns immediately with a jobId that can be polled.
  *
- * @param restaurantName - Restaurant name to search for
- * @param address - Address/location for the search
- * @param maxRows - Max results (default 5)
+ * @param restaurantName - Restaurant name to search for (be specific!)
+ * @param address - Full address for the search (more specific = better)
+ * @param maxRows - Max results (default 3, max 5 to reduce cross-contamination)
  */
 export async function startApifyScrape(
   restaurantName: string,
   address: string,
-  maxRows: number = 5
+  maxRows: number = 3 // REDUCED from 5 to 3
 ): Promise<ApifyJobStartResponse> {
+  // Validate inputs
+  const cleanName = restaurantName.trim();
+  const cleanAddress = address.trim();
+
+  if (!cleanName || !cleanAddress) {
+    return {
+      ok: false,
+      jobId: '',
+      status: 'started',
+      message: 'Restaurant name and address are required',
+    };
+  }
+
   const params = new URLSearchParams({
-    query: restaurantName,
-    address,
-    maxRows: String(maxRows),
+    query: cleanName,
+    address: cleanAddress,
+    maxRows: String(Math.min(maxRows, 5)), // Cap at 5
   });
 
   const url = `${API_BASE_URL}/api/apify-start?${params.toString()}`;
   console.log('TB startApifyScrape calling:', url);
+  console.log('TB startApifyScrape params:', { query: cleanName, address: cleanAddress, maxRows });
 
   try {
     const res = await fetch(url);
@@ -1161,6 +1336,7 @@ export async function startApifyScrape(
 
 /**
  * Check the status of an Apify scraping job.
+ * Now returns validated and transformed menu data.
  *
  * @param jobId - The job ID returned from startApifyScrape
  */
@@ -1198,7 +1374,31 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
       };
     }
 
-    console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 200));
+    console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 300));
+
+    // Handle validation failure from backend
+    if (data.status === 'completed' && !data.ok) {
+      console.warn('TB Menu validation failed:', data.error);
+      if (data.debug?.rejected) {
+        console.warn('TB Rejected restaurants:', data.debug.rejected);
+      }
+      return {
+        ok: false,
+        status: 'failed',
+        error: data.error || 'No matching restaurant found',
+        debug: data.debug,
+      };
+    }
+
+    // Log validation info if present
+    if (data.validation) {
+      console.log('TB Menu validation:', {
+        confidence: `${(data.validation.confidence * 100).toFixed(0)}%`,
+        matched: data.validation.matchedName,
+        requested: data.validation.requestedName,
+      });
+    }
+
     return data as ApifyJobStatusResponse;
   } catch (e: any) {
     console.error('TB getApifyJobStatus error:', e?.message || String(e));
