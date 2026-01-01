@@ -33,10 +33,13 @@ import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../compone
 import {
   DailySummaryCard,
   OrganScoresRow,
+  OrganHealthSection,
   WaterTracker,
   MealsList,
   WeeklyOverview,
   QuickLogModal,
+  AIAssistantPanel,
+  generateAIInsight,
   COLORS,
   FONT_SIZES,
   SPACING,
@@ -229,12 +232,45 @@ export default function TummyTracker() {
       trend: (score as number) > 0 ? 'up' : (score as number) < 0 ? 'down' : 'stable',
       trendPercent: Math.abs(Math.round((score as number) * 4)),
     }))
-    .slice(0, 2) as Array<{
+    .slice(0, 6) as Array<{
       name: string;
       score: number;
       trend: 'up' | 'down' | 'stable';
       trendPercent: number;
     }>;
+
+  // Convert to new organ health format for OrganHealthSection
+  type OrganStatus = 'excellent' | 'good' | 'moderate' | 'attention';
+  const organHealthData = organScores.map((organ) => {
+    const status: OrganStatus =
+      organ.score >= 80 ? 'excellent' :
+      organ.score >= 60 ? 'good' :
+      organ.score >= 40 ? 'moderate' : 'attention';
+
+    return {
+      name: organ.name,
+      score: organ.score,
+      status,
+      factors: [
+        {
+          name: organ.trend === 'up' ? 'Improving' : organ.trend === 'down' ? 'Declining' : 'Stable',
+          positive: organ.trend !== 'down',
+        },
+      ],
+    };
+  });
+
+  const avgOrganScore = organScores.length > 0
+    ? Math.round(organScores.reduce((sum, o) => sum + o.score, 0) / organScores.length)
+    : 0;
+
+  // Generate AI insight
+  const aiInsight = generateAIInsight({
+    calories: { current: caloriesConsumed, target: caloriesTarget },
+    organScores: organScores,
+    waterGlasses: waterGlasses,
+    meals: meals.length,
+  });
 
   // Calculate weekly chart data
   const weeklyChartData = (weeklyData?.summaries || []).map((s) => {
@@ -263,8 +299,71 @@ export default function TummyTracker() {
   };
 
   const handleMealPress = (meal: any) => {
-    // Open portion sheet for editing
-    handleEditPortion(meal);
+    // Navigate to recipe card with dish info from full_analysis or cache
+    const analysis = meal.full_analysis;
+
+    if (analysis) {
+      // Build params from full_analysis data
+      const params: Record<string, string> = {
+        dishName: meal.dish_name || '',
+      };
+
+      // Add image URL if available
+      if (analysis.recipe_image) {
+        params.imageUrl = encodeURIComponent(analysis.recipe_image);
+      }
+
+      // Add likely recipe data
+      if (analysis.likely_recipe) {
+        params.likelyRecipe = JSON.stringify(analysis.likely_recipe);
+      }
+
+      // Add full recipe data
+      if (analysis.full_recipe) {
+        params.fullRecipe = JSON.stringify(analysis.full_recipe);
+      }
+
+      // Add nutrition data
+      if (analysis.nutrition_summary) {
+        params.nutrition = JSON.stringify(analysis.nutrition_summary);
+      }
+
+      // Add nutrition insights
+      if (analysis.nutrition_insights) {
+        params.nutritionInsights = JSON.stringify(analysis.nutrition_insights);
+      }
+
+      // Add allergen data
+      if (analysis.allergen_flags) {
+        params.allergens = JSON.stringify(analysis.allergen_flags);
+      }
+      if (analysis.allergen_summary) {
+        params.allergenSummary = analysis.allergen_summary;
+      }
+
+      // Add FODMAP data
+      if (analysis.fodmap) {
+        params.fodmap = JSON.stringify(analysis.fodmap);
+      }
+      if (analysis.fodmap_summary) {
+        params.fodmapSummary = analysis.fodmap_summary;
+      }
+
+      // Add organ data
+      if (analysis.organs) {
+        params.organs = JSON.stringify(analysis.organs);
+      }
+
+      // Add restaurant name if available
+      if (meal.restaurant_name) {
+        params.restaurantName = meal.restaurant_name;
+      }
+
+      router.push({ pathname: '/likely-recipe', params });
+    } else {
+      // Fallback: open portion sheet if no full_analysis available
+      handleEditPortion(meal);
+    }
   };
 
   const handleMealLongPress = (meal: any) => {
@@ -303,10 +402,27 @@ export default function TummyTracker() {
           fiberAlert={fiberConsumed < fiberTarget * 0.5}
         />
 
-        {/* Organ Health Scores */}
-        {organScores.length > 0 && (
+        {/* AI Assistant Panel */}
+        <View style={styles.section}>
+          <AIAssistantPanel
+            insight={aiInsight.insight}
+            suggestion={aiInsight.suggestion}
+            onAskTummy={() => router.push('/' as any)}
+          />
+        </View>
+
+        {/* Organ Health Section */}
+        {organHealthData.length > 0 && (
           <View style={styles.section}>
-            <OrganScoresRow organs={organScores} />
+            <OrganHealthSection
+              organs={organHealthData}
+              avgScore={avgOrganScore}
+              priorityInsight={
+                organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')
+                  ? `Focus on ${organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')?.name.toLowerCase()} support today`
+                  : undefined
+              }
+            />
           </View>
         )}
 
@@ -400,7 +516,7 @@ export default function TummyTracker() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bgGradientEnd,
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
@@ -426,17 +542,17 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   streakBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(0, 212, 170, 0.15)',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: 'rgba(0, 212, 170, 0.3)',
   },
   streakText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
-    color: COLORS.success,
+    color: COLORS.primary,
   },
   section: {
     marginTop: SPACING.lg,

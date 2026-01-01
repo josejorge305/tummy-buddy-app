@@ -1,13 +1,11 @@
 /**
- * DailySummaryCard Component
- * Main card showing calorie progress ring and macro bars
+ * DailySummaryCard Component (Redesigned)
+ * Main card showing calorie progress ring, macro bars, and smart insight
  */
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { CircularProgress } from './CircularProgress';
-import { MacroBar } from './MacroBar';
 import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../utils/colors';
 
 interface DailySummaryCardProps {
@@ -19,16 +17,51 @@ interface DailySummaryCardProps {
     fiber?: { current: number; target: number };
   };
   fiberAlert?: boolean;
+  smartInsight?: string;
+}
+
+// Generate a smart insight based on the data
+function generateSmartInsight(
+  calories: { current: number; target: number },
+  macros: {
+    protein: { current: number; target: number };
+    carbs: { current: number; target: number };
+    fat: { current: number; target: number };
+    fiber?: { current: number; target: number };
+  }
+): string {
+  const remaining = calories.target - calories.current;
+  const proteinRemaining = macros.protein.target - macros.protein.current;
+
+  // Find the macro most behind
+  const proteinPercent = (macros.protein.current / macros.protein.target) * 100;
+  const carbsPercent = (macros.carbs.current / macros.carbs.target) * 100;
+  const fatPercent = (macros.fat.current / macros.fat.target) * 100;
+  const fiberPercent = macros.fiber
+    ? (macros.fiber.current / macros.fiber.target) * 100
+    : 100;
+
+  if (proteinPercent < carbsPercent && proteinPercent < fatPercent && proteinPercent < 50) {
+    return `Low on protein. A meal with ${Math.max(20, Math.round(proteinRemaining * 0.3))}g+ would help meet your goal.`;
+  } else if (fiberPercent < 50 && macros.fiber) {
+    return `Low on fiber. Consider adding vegetables or whole grains.`;
+  } else if (remaining > 500) {
+    return `On track! You have room for a balanced meal.`;
+  } else if (remaining > 0) {
+    return `Almost at your goal. A light snack would round out the day.`;
+  } else {
+    return `You've reached your calorie target for today.`;
+  }
 }
 
 export function DailySummaryCard({
   calories,
   macros,
   fiberAlert = false,
+  smartInsight,
 }: DailySummaryCardProps) {
-  const fiberPercent = macros.fiber
-    ? Math.round((macros.fiber.current / macros.fiber.target) * 100)
-    : 0;
+  const remaining = Math.max(0, calories.target - calories.current);
+  const insight = smartInsight || generateSmartInsight(calories, macros);
 
   return (
     <View style={styles.card}>
@@ -38,49 +71,69 @@ export function DailySummaryCard({
           <CircularProgress
             current={calories.current}
             target={calories.target}
-            size={110}
-            strokeWidth={10}
+            size={130}
+            strokeWidth={6}
           />
-          <Text style={styles.calLabel}>calories</Text>
         </View>
 
         {/* Macro Bars */}
         <View style={styles.macrosContainer}>
-          <MacroBar
-            label="Protein"
-            current={macros.protein.current}
-            target={macros.protein.target}
-            color={COLORS.protein}
-          />
-          <MacroBar
-            label="Carbs"
-            current={macros.carbs.current}
-            target={macros.carbs.target}
-            color={COLORS.carbs}
-          />
-          <MacroBar
-            label="Fat"
-            current={macros.fat.current}
-            target={macros.fat.target}
-            color={COLORS.fat}
-          />
+          <View style={styles.macroRow}>
+            <Text style={styles.macroLabel}>Protein</Text>
+            <Text style={styles.macroValue}>{Math.round(macros.protein.current)}g</Text>
+          </View>
+          <View style={styles.macroBarContainer}>
+            <View
+              style={[
+                styles.macroBar,
+                {
+                  width: `${Math.min((macros.protein.current / macros.protein.target) * 100, 100)}%`,
+                  backgroundColor: COLORS.protein,
+                },
+              ]}
+            />
+          </View>
+
+          <View style={styles.macroRow}>
+            <Text style={styles.macroLabel}>Carbs</Text>
+            <Text style={styles.macroValue}>{Math.round(macros.carbs.current)}g</Text>
+          </View>
+          <View style={styles.macroBarContainer}>
+            <View
+              style={[
+                styles.macroBar,
+                {
+                  width: `${Math.min((macros.carbs.current / macros.carbs.target) * 100, 100)}%`,
+                  backgroundColor: COLORS.carbs,
+                },
+              ]}
+            />
+          </View>
+
+          <View style={styles.macroRow}>
+            <Text style={styles.macroLabel}>Fat</Text>
+            <Text style={styles.macroValue}>{Math.round(macros.fat.current)}g</Text>
+          </View>
+          <View style={styles.macroBarContainer}>
+            <View
+              style={[
+                styles.macroBar,
+                {
+                  width: `${Math.min((macros.fat.current / macros.fat.target) * 100, 100)}%`,
+                  backgroundColor: COLORS.fat,
+                },
+              ]}
+            />
+          </View>
         </View>
       </View>
 
-      {/* Fiber Alert */}
-      {fiberAlert && macros.fiber && fiberPercent < 50 && (
-        <View style={styles.alertContainer}>
-          <View style={styles.alertIcon}>
-            <Text style={styles.alertEmoji}>🌾</Text>
-          </View>
-          <View style={styles.alertTextContainer}>
-            <Text style={styles.alertTitle}>Low Fiber Today</Text>
-            <Text style={styles.alertSubtitle}>
-              {Math.round(macros.fiber.current)}g of {macros.fiber.target}g target
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* Smart Insight */}
+      <View style={styles.insightContainer}>
+        <Text style={styles.insightText}>
+          <Text style={styles.insightHighlight}>{remaining} cal</Text> remaining · {insight}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -89,7 +142,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.cardBg,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    padding: SPACING.xl,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -100,49 +153,50 @@ const styles = StyleSheet.create({
   },
   ringContainer: {
     alignItems: 'center',
-  },
-  calLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    flexShrink: 0,
   },
   macrosContainer: {
     flex: 1,
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
-  alertContainer: {
+  macroRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginTop: SPACING.lg,
-    gap: SPACING.md,
   },
-  alertIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  alertEmoji: {
-    fontSize: 18,
-  },
-  alertTextContainer: {
-    flex: 1,
-  },
-  alertTitle: {
+  macroLabel: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.warning,
+    color: COLORS.textMuted,
   },
-  alertSubtitle: {
-    fontSize: FONT_SIZES.xs,
-    color: 'rgba(245, 158, 11, 0.7)',
-    marginTop: 2,
+  macroValue: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  macroBarContainer: {
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginBottom: SPACING.sm,
+  },
+  macroBar: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  insightContainer: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  insightText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+  },
+  insightHighlight: {
+    color: COLORS.primary,
+    fontWeight: '500',
   },
 });

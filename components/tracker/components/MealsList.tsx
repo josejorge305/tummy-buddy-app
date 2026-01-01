@@ -1,14 +1,45 @@
 /**
- * MealsList Component
+ * MealsList Component (Redesigned)
  * Section showing today's logged meals or empty state
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { MealCard } from './MealCard';
 import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../utils/colors';
+
+// Fork and knife icon for empty state
+function ForkKnifeIcon({ size = 48, color = COLORS.textMuted }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11 9H9V2H7V9H5V2H3V9C3 11.12 4.66 12.84 6.75 12.97V22H9.25V12.97C11.34 12.84 13 11.12 13 9V2H11V9Z"
+        fill={color}
+      />
+      <Path
+        d="M16 6V14H18.5V22H21V2C18.24 2 16 4.24 16 7V6Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+// Plus circle icon
+function PlusCircleIcon({ size = 20, color = COLORS.textPrimary }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgCircle cx="12" cy="12" r="10" stroke={color} strokeWidth={2} />
+      <Path
+        d="M12 8V16M8 12H16"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
 
 interface Meal {
   id: number;
@@ -21,6 +52,11 @@ interface Meal {
   risk_flags?: string[] | null;
   portion_percent?: number | null;
   shared_with_count?: number | null;
+  // Image from full_analysis.recipe_image or cache
+  full_analysis?: {
+    recipe_image?: string | null;
+    [key: string]: any;
+  } | null;
 }
 
 interface MealsListProps {
@@ -46,30 +82,32 @@ export function MealsList({
     return Math.round(50 + avgImpact * 2);
   };
 
+  // Calculate total calories for the day
+  const totalCalories = meals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Meals Today</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Today's Meals</Text>
+          {meals.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{meals.length}</Text>
+            </View>
+          )}
+        </View>
         {meals.length > 0 && (
-          <View style={styles.countBadge}>
-            <Text style={styles.countText}>{meals.length}</Text>
-          </View>
+          <Text style={styles.totalCalories}>{Math.round(totalCalories)} cal</Text>
         )}
       </View>
 
       {/* Meals or Empty State */}
       {meals.length === 0 ? (
         <View style={styles.emptyState}>
-          {/* Illustration placeholder */}
-          <View style={styles.illustrationContainer}>
-            <Text style={styles.illustrationEmoji}>🍽️</Text>
-            <View style={styles.sparkle1}>
-              <Text style={styles.sparkleEmoji}>✨</Text>
-            </View>
-            <View style={styles.sparkle2}>
-              <Text style={styles.sparkleEmoji}>✨</Text>
-            </View>
+          {/* Icon */}
+          <View style={styles.emptyIconContainer}>
+            <ForkKnifeIcon size={40} color={COLORS.textMuted} />
           </View>
 
           <Text style={styles.emptyTitle}>No meals logged yet</Text>
@@ -88,7 +126,7 @@ export function MealsList({
               end={{ x: 1, y: 0 }}
               style={styles.ctaGradient}
             >
-              <Ionicons name="add-circle" size={20} color={COLORS.textPrimary} />
+              <PlusCircleIcon size={18} color={COLORS.textPrimary} />
               <Text style={styles.ctaText}>Log Your First Meal</Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -107,6 +145,7 @@ export function MealsList({
               restaurantName={meal.restaurant_name}
               portionPercent={meal.portion_percent}
               sharedWithCount={meal.shared_with_count}
+              imageUrl={meal.full_analysis?.recipe_image}
               onPress={() => onMealPress?.(meal)}
               onLongPress={() => onMealLongPress?.(meal)}
             />
@@ -131,13 +170,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   title: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   countBadge: {
-    backgroundColor: 'rgba(20, 184, 166, 0.2)',
+    backgroundColor: `${COLORS.primary}20`,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -147,29 +191,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.primary,
   },
+  totalCalories: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: SPACING.xl,
   },
-  illustrationContainer: {
-    position: 'relative',
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.lg,
-  },
-  illustrationEmoji: {
-    fontSize: 64,
-  },
-  sparkle1: {
-    position: 'absolute',
-    top: -8,
-    right: -16,
-  },
-  sparkle2: {
-    position: 'absolute',
-    bottom: 0,
-    left: -20,
-  },
-  sparkleEmoji: {
-    fontSize: 20,
   },
   emptyTitle: {
     fontSize: FONT_SIZES.lg,

@@ -333,6 +333,14 @@ export interface AnalyzeDishResponse {
   // Organs pending (when skip_organs=true was used)
   organs_pending?: boolean;
   organs_poll_key?: string;
+
+  // Allergens pending (when skip_allergens=true was used)
+  allergens_pending?: boolean;
+  allergens_poll_key?: string;
+
+  // Full recipe pending (when skip_full_recipe=true was used)
+  full_recipe_pending?: boolean;
+  full_recipe_poll_key?: string;
 }
 
 // Dish image lookup response
@@ -723,6 +731,12 @@ export interface AnalyzeDishPayload {
 
   // Skip organs computation (runs in background, use polling to fetch)
   skip_organs?: boolean;
+
+  // Skip detailed allergens computation (runs in background, use polling to fetch)
+  skip_allergens?: boolean;
+
+  // Skip full recipe LLM (runs in background, use polling to fetch)
+  skip_full_recipe?: boolean;
 }
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
@@ -896,6 +910,205 @@ export async function pollOrgansStatus(
     ok: false,
     ready: false,
     error: `Organs polling timed out after ${maxAttempts} attempts`,
+  };
+}
+
+// ============================================================
+// Allergens Status Polling (for skip_allergens optimization)
+// ============================================================
+
+export interface AllergensStatusResponse {
+  ok: boolean;
+  ready: boolean;
+  allergen_flags?: AllergenFlag[];
+  fodmap_flags?: FodmapFlag | null;
+  lactose_flags?: LactoseFlag | null;
+  lifestyle_tags?: LifestyleTag[];
+  lifestyle_checks?: LifestyleChecks | null;
+  allergen_breakdown?: ComponentAllergenBreakdown[] | null;
+  error?: string;
+}
+
+/**
+ * Poll for allergens computation status when skip_allergens=true was used.
+ *
+ * @param pollKey - The allergens_poll_key from the analyze-dish response
+ * @returns Status with allergen data when ready
+ */
+export async function getAllergensStatus(pollKey: string): Promise<AllergensStatusResponse> {
+  const url = `${GATEWAY_BASE_URL}/pipeline/allergens-status?key=${encodeURIComponent(pollKey)}`;
+  console.log('TB getAllergensStatus calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB getAllergensStatus HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `HTTP ${res.status}: ${text.slice(0, 100)}`,
+      };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB getAllergensStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `Invalid JSON response: ${text.slice(0, 100)}`,
+      };
+    }
+
+    console.log('TB getAllergensStatus response:', JSON.stringify(data).slice(0, 200));
+    return data as AllergensStatusResponse;
+  } catch (e: any) {
+    console.error('TB getAllergensStatus error:', e?.message || String(e));
+    return {
+      ok: false,
+      ready: false,
+      error: e?.message || 'Failed to get allergens status',
+    };
+  }
+}
+
+/**
+ * Poll for allergens computation until ready or timeout.
+ *
+ * @param pollKey - The allergens_poll_key from the analyze-dish response
+ * @param onUpdate - Optional callback when status is checked
+ * @param pollIntervalMs - Poll interval in ms (default 2000 = 2s)
+ * @param maxAttempts - Maximum poll attempts (default 30 = 60s timeout)
+ * @returns Final allergens data when ready, or error
+ */
+export async function pollAllergensStatus(
+  pollKey: string,
+  onUpdate?: (attempt: number, ready: boolean) => void,
+  pollIntervalMs: number = 2000,
+  maxAttempts: number = 30
+): Promise<AllergensStatusResponse> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await getAllergensStatus(pollKey);
+
+    onUpdate?.(attempt, result.ready);
+
+    if (result.ready || !result.ok) {
+      return result;
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return {
+    ok: false,
+    ready: false,
+    error: `Allergens polling timed out after ${maxAttempts} attempts`,
+  };
+}
+
+// ============================================================
+// Full Recipe Status Polling (for skip_full_recipe optimization)
+// ============================================================
+
+export interface FullRecipeStatusResponse {
+  ok: boolean;
+  ready: boolean;
+  full_recipe?: FullRecipeResponse | null;
+  error?: string;
+}
+
+/**
+ * Poll for full recipe status when skip_full_recipe=true was used.
+ *
+ * @param pollKey - The full_recipe_poll_key from the analyze-dish response
+ * @returns Status with full recipe data when ready
+ */
+export async function getFullRecipeStatus(pollKey: string): Promise<FullRecipeStatusResponse> {
+  const url = `${GATEWAY_BASE_URL}/pipeline/full-recipe-status?key=${encodeURIComponent(pollKey)}`;
+  console.log('TB getFullRecipeStatus calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error('TB getFullRecipeStatus HTTP error:', res.status, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `HTTP ${res.status}: ${text.slice(0, 100)}`,
+      };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr: any) {
+      console.error('TB getFullRecipeStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      return {
+        ok: false,
+        ready: false,
+        error: `Invalid JSON response: ${text.slice(0, 100)}`,
+      };
+    }
+
+    console.log('TB getFullRecipeStatus response:', JSON.stringify(data).slice(0, 200));
+    return data as FullRecipeStatusResponse;
+  } catch (e: any) {
+    console.error('TB getFullRecipeStatus error:', e?.message || String(e));
+    return {
+      ok: false,
+      ready: false,
+      error: e?.message || 'Failed to get full recipe status',
+    };
+  }
+}
+
+/**
+ * Poll for full recipe until ready or timeout.
+ *
+ * @param pollKey - The full_recipe_poll_key from the analyze-dish response
+ * @param onUpdate - Optional callback when status is checked
+ * @param pollIntervalMs - Poll interval in ms (default 2000 = 2s)
+ * @param maxAttempts - Maximum poll attempts (default 30 = 60s timeout)
+ * @returns Final full recipe data when ready, or error
+ */
+export async function pollFullRecipeStatus(
+  pollKey: string,
+  onUpdate?: (attempt: number, ready: boolean) => void,
+  pollIntervalMs: number = 2000,
+  maxAttempts: number = 30
+): Promise<FullRecipeStatusResponse> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await getFullRecipeStatus(pollKey);
+
+    onUpdate?.(attempt, result.ready);
+
+    if (result.ready || !result.ok) {
+      return result;
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return {
+    ok: false,
+    ready: false,
+    error: `Full recipe polling timed out after ${maxAttempts} attempts`,
   };
 }
 
@@ -2453,6 +2666,223 @@ export async function getSavedDishes(
     return data;
   } catch (e: any) {
     console.error('getSavedDishes error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+// ============================================================
+// AI Assistant API Functions
+// ============================================================
+
+export interface AIConversation {
+  id: number;
+  title: string | null;
+  started_at: number;
+  last_message_at: number;
+}
+
+export interface AIMessage {
+  id: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  model_used?: string | null;
+  created_at: number;
+}
+
+export interface AIChatResponse {
+  ok: boolean;
+  conversation_id?: number;
+  response?: string;
+  model_used?: string;
+  response_time_ms?: number;
+  error?: string;
+}
+
+export interface AIConversationsResponse {
+  ok: boolean;
+  conversations?: AIConversation[];
+  error?: string;
+}
+
+export interface AIMessagesResponse {
+  ok: boolean;
+  conversation_id?: number;
+  messages?: AIMessage[];
+  error?: string;
+}
+
+export interface AIContextResponse {
+  ok: boolean;
+  context?: {
+    user: {
+      sex: string | null;
+      age: number | null;
+      weight_kg: number | null;
+      height_cm: number | null;
+      activity_level: string;
+      goals: string[];
+    };
+    allergens: Array<{ name: string; severity: string }>;
+    prioritized_organs: string[];
+    today: {
+      date: string;
+      meals: Array<{
+        name: string;
+        time: string;
+        calories: number;
+        protein_g: number;
+        carbs_g: number;
+        fat_g: number;
+        organ_impacts: Record<string, number> | null;
+        risk_flags: string[];
+      }>;
+      meal_count: number;
+      totals: {
+        calories: number;
+        protein_g: number;
+        carbs_g: number;
+        fat_g: number;
+        fiber_g: number;
+        sugar_g: number;
+        sodium_mg: number;
+      } | null;
+      targets: {
+        calories: number;
+        protein_g: number;
+        fiber_g: number;
+        sugar_limit_g: number;
+        sodium_limit_mg: number;
+      } | null;
+      organ_impacts: Record<string, number>;
+      water_glasses: number;
+      water_target: number;
+    };
+  };
+  error?: string;
+}
+
+/**
+ * Send a message to the AI assistant and get a response
+ */
+export async function sendAssistantMessage(
+  userId: string,
+  message: string,
+  conversationId?: number | null
+): Promise<AIChatResponse> {
+  const url = `${API_BASE_URL}/api/assistant/chat`;
+  console.log('sendAssistantMessage calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        message,
+        conversation_id: conversationId || undefined,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('sendAssistantMessage HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AIChatResponse;
+  } catch (e: any) {
+    console.error('sendAssistantMessage error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get user's recent conversations
+ */
+export async function getAssistantConversations(
+  userId: string,
+  limit: number = 10
+): Promise<AIConversationsResponse> {
+  const url = `${API_BASE_URL}/api/assistant/conversations?user_id=${encodeURIComponent(userId)}&limit=${limit}`;
+  console.log('getAssistantConversations calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getAssistantConversations HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AIConversationsResponse;
+  } catch (e: any) {
+    console.error('getAssistantConversations error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get messages for a specific conversation
+ */
+export async function getConversationMessages(
+  conversationId: number,
+  limit: number = 50
+): Promise<AIMessagesResponse> {
+  const url = `${API_BASE_URL}/api/assistant/conversation/${conversationId}?limit=${limit}`;
+  console.log('getConversationMessages calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getConversationMessages HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AIMessagesResponse;
+  } catch (e: any) {
+    console.error('getConversationMessages error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Get current user context (for debugging/preview)
+ */
+export async function getAssistantContext(userId: string): Promise<AIContextResponse> {
+  const url = `${API_BASE_URL}/api/assistant/context?user_id=${encodeURIComponent(userId)}`;
+  console.log('getAssistantContext calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('getAssistantContext HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return data as AIContextResponse;
+  } catch (e: any) {
+    console.error('getAssistantContext error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }

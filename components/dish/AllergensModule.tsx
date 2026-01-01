@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING } from './designSystem';
 import { ExpandableCard } from './ExpandableCard';
 
@@ -19,9 +19,11 @@ type Props = {
   allergens: AllergenWithSource[];
   /** Smart sentence summary explaining the allergens in human-readable form */
   smartSentence?: string | null;
+  /** Whether detailed allergen analysis is still loading */
+  loading?: boolean;
 };
 
-export function AllergensModule({ allergens, smartSentence }: Props) {
+export function AllergensModule({ allergens, smartSentence, loading }: Props) {
   // Filter to only show detected allergens (yes or maybe)
   const detectedAllergens = allergens.filter(a => a.present === 'yes' || a.present === 'maybe');
 
@@ -45,8 +47,13 @@ export function AllergensModule({ allergens, smartSentence }: Props) {
     </View>
   );
 
-  // Build expanded content - only smart sentence (no detailed rows)
-  const expandedDetails = smartSentence ? (
+  // Build expanded content - show loading state or smart sentence
+  const expandedDetails = loading ? (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="small" color={COLORS.brandTeal} />
+      <Text style={styles.loadingText}>Analyzing allergens...</Text>
+    </View>
+  ) : smartSentence ? (
     <View style={styles.detailsList}>
       <Text style={styles.smartSentence}>{smartSentence}</Text>
     </View>
@@ -80,6 +87,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: COLORS.brandTeal,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
   detailsList: {
     gap: SPACING.md,

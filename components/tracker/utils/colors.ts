@@ -5,38 +5,45 @@
 
 export const COLORS = {
   // Primary accents
-  primary: '#14B8A6',      // Teal
-  secondary: '#06B6D4',    // Cyan
+  primary: '#00D4AA',      // Teal (new)
+  secondary: '#00B4D8',    // Cyan
 
   // Backgrounds
-  bgGradientStart: '#0A0F1C',
-  bgGradientEnd: '#111827',
-  cardBg: 'rgba(255, 255, 255, 0.08)',
-  cardBgSolid: '#111827',
+  background: '#000000',   // Pure black
+  bgGradientStart: '#000000',
+  bgGradientEnd: '#000000',
+  cardBg: '#0a0a0a',
+  cardBgSolid: '#0a0a0a',
 
   // Status colors
-  success: '#10B981',      // Green
-  warning: '#F59E0B',      // Amber
-  error: '#EF4444',        // Red
+  success: '#00D4AA',      // Teal (same as primary)
+  excellent: '#00D4AA',
+  good: '#00D4AA',
+  moderate: '#f59e0b',
+  attention: '#ef4444',
+  warning: '#f59e0b',      // Amber
+  error: '#ef4444',        // Red
 
   // Macro colors
-  protein: '#F43F5E',      // Rose
-  carbs: '#F59E0B',        // Amber
-  fat: '#8B5CF6',          // Purple
-  fiber: '#10B981',        // Green
+  protein: '#8b5cf6',      // Purple
+  carbs: '#f59e0b',        // Amber
+  fat: '#ec4899',          // Pink
+  fiber: '#00D4AA',        // Teal
 
   // Water
-  waterLight: '#06B6D4',
-  waterDark: '#0891B2',
+  waterLight: '#00D4AA',
+  waterDark: '#00B4D8',
 
   // Text
   textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.5)',
-  textMuted: 'rgba(255, 255, 255, 0.3)',
+  textSecondary: '#9CA3AF',  // gray-400
+  textMuted: '#4B5563',      // gray-600
+  textDark: '#374151',       // gray-700
 
   // Borders
-  border: 'rgba(255, 255, 255, 0.1)',
-  borderLight: 'rgba(255, 255, 255, 0.05)',
+  border: '#1a1a1a',
+  borderLight: '#1a1a1a',
+  borderDashed: '#2a2a2a',
 } as const;
 
 export const SPACING = {

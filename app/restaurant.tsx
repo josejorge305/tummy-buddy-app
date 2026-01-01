@@ -6,9 +6,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   Easing,
   Image,
   ImageBackground,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -19,6 +23,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import {
   AnalyzeDishResponse,
   BatchDishInput,
@@ -771,6 +776,14 @@ export default function RestaurantScreen() {
   const [loggedToast, setLoggedToast] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
 
+  // Category navigation state
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [isCategoryNavSticky, setIsCategoryNavSticky] = useState(false);
+  const sectionRefs = useRef<Record<string, number>>({});
+  const categoryNavRef = useRef<ScrollView>(null);
+  const categoryNavPositionRef = useRef<number>(0);
+  const categoryButtonRefs = useRef<Record<string, number>>({});
+
   // Get today's date in ISO format for checking logged meals
   const getTodayISO = () => new Date().toISOString().split('T')[0];
 
@@ -1339,6 +1352,79 @@ export default function RestaurantScreen() {
       .filter((section) => section.items && section.items.length > 0);
   }, [menu?.sections, menuSearch]);
 
+  // Get category names from filtered sections
+  const categoryNames = useMemo(() => {
+    return filteredSections.map((section) => section.name || 'Menu').filter(Boolean);
+  }, [filteredSections]);
+
+  // Set initial active category when sections load
+  useEffect(() => {
+    if (categoryNames.length > 0 && !activeCategory) {
+      setActiveCategory(categoryNames[0]);
+    }
+  }, [categoryNames, activeCategory]);
+
+  // Handle scroll to detect active category and sticky state
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const scrollY = event.nativeEvent.contentOffset.y;
+
+      // Check if category nav should be sticky (when scrolled past its position)
+      const shouldBeSticky = scrollY > categoryNavPositionRef.current - 10;
+      if (shouldBeSticky !== isCategoryNavSticky) {
+        setIsCategoryNavSticky(shouldBeSticky);
+      }
+
+      // Find which section is currently in view
+      const sectionPositions = Object.entries(sectionRefs.current)
+        .map(([name, position]) => ({ name, position }))
+        .sort((a, b) => a.position - b.position);
+
+      // Find the section that's closest to (or just above) the current scroll position
+      // Account for sticky header offset (~120px for header + search + category nav)
+      const headerOffset = 120;
+      let currentSection = sectionPositions[0]?.name;
+
+      for (const section of sectionPositions) {
+        if (section.position <= scrollY + headerOffset + 50) {
+          currentSection = section.name;
+        } else {
+          break;
+        }
+      }
+
+      if (currentSection && currentSection !== activeCategory) {
+        setActiveCategory(currentSection);
+
+        // Auto-scroll the category nav to show active category
+        const buttonX = categoryButtonRefs.current[currentSection];
+        if (buttonX !== undefined && categoryNavRef.current) {
+          const screenWidth = Dimensions.get('window').width;
+          const scrollToX = Math.max(0, buttonX - screenWidth / 2 + 60);
+          categoryNavRef.current.scrollTo({ x: scrollToX, animated: true });
+        }
+      }
+    },
+    [isCategoryNavSticky, activeCategory]
+  );
+
+  // Scroll to section when category is tapped
+  const scrollToSection = useCallback(
+    (sectionName: string) => {
+      const sectionY = sectionRefs.current[sectionName];
+      if (sectionY !== undefined && scrollViewRef.current) {
+        // Account for sticky header offset
+        const headerOffset = isCategoryNavSticky ? 100 : 60;
+        scrollViewRef.current.scrollTo({
+          y: sectionY - headerOffset,
+          animated: true,
+        });
+        setActiveCategory(sectionName);
+      }
+    },
+    [isCategoryNavSticky]
+  );
+
   if (loading) {
     // Compute early hero URL from available sources (googlePhotoRef may be set from a parallel fetch)
     const earlyHeroUrl =
@@ -1387,7 +1473,12 @@ export default function RestaurantScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
-        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.content}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.content}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+        >
           <TouchableOpacity style={styles.backRow} onPress={() => router.push('/')}>
             <Text style={styles.backText}>← Back to home</Text>
           </TouchableOpacity>
@@ -1468,12 +1559,60 @@ export default function RestaurantScreen() {
             ) : null}
           </View>
 
+          {/* Category Navigation Bar */}
+          {categoryNames.length > 0 && (
+            <View
+              style={styles.categoryNavWrapper}
+              onLayout={(e: LayoutChangeEvent) => {
+                categoryNavPositionRef.current = e.nativeEvent.layout.y;
+              }}
+            >
+              <ScrollView
+                ref={categoryNavRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryNavContent}
+              >
+                {categoryNames.map((category, index) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryPill,
+                      activeCategory === category && styles.categoryPillActive,
+                    ]}
+                    onPress={() => scrollToSection(category)}
+                    onLayout={(e: LayoutChangeEvent) => {
+                      categoryButtonRefs.current[category] = e.nativeEvent.layout.x;
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryPillText,
+                        activeCategory === category && styles.categoryPillTextActive,
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {menuSearch && filteredSections.length === 0 && (
             <Text style={styles.noResultsText}>No items found for &quot;{menuSearch}&quot;</Text>
           )}
 
           {filteredSections.map((section) => (
-            <View key={section.id || section.name} style={{ marginTop: 16 }}>
+            <View
+              key={section.id || section.name}
+              style={{ marginTop: 16 }}
+              onLayout={(e: LayoutChangeEvent) => {
+                if (section.name) {
+                  sectionRefs.current[section.name] = e.nativeEvent.layout.y;
+                }
+              }}
+            >
               {section.name ? <Text style={styles.sectionTitle}>{section.name}</Text> : null}
 
               {section.items?.map((item: any, index: number) => {
@@ -1566,18 +1705,47 @@ export default function RestaurantScreen() {
                       itemLayouts.current[itemId] = e.nativeEvent.layout.y;
                     }}
                   >
-                    {/* Image with +Log overlay */}
+                    {/* Image with +Log overlay - only show Log button when analysis is ready or already logged */}
                     {item?.imageUrl ? (
                       <View style={styles.imageContainer}>
                         <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-                        {/* Quick Log overlay button */}
+                        {/* Quick Log overlay button - only show if analysis exists or meal is logged */}
+                        {(analysis?.ok || isLoggedToday) && (
+                          <TouchableOpacity
+                            style={[
+                              styles.quickLogOverlay,
+                              isLoggedToday && styles.quickLogOverlayLogged,
+                            ]}
+                            onPress={() => handleQuickLog(itemId, item, section.name || '')}
+                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                          >
+                            <Ionicons
+                              name={isLoggedToday ? 'checkmark-circle' : 'add'}
+                              size={16}
+                              color={isLoggedToday ? '#22c55e' : TEAL}
+                            />
+                            <Text
+                              style={[
+                                styles.quickLogText,
+                                isLoggedToday && styles.quickLogTextLogged,
+                              ]}
+                            >
+                              {isLoggedToday
+                                ? `${loggedMeal?.portion_percent || 100}%`
+                                : 'Log'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : (
+                      /* No image - show log button in card header area only if analysis exists or logged */
+                      (analysis?.ok || isLoggedToday) && (
                         <TouchableOpacity
                           style={[
-                            styles.quickLogOverlay,
+                            styles.quickLogNoImage,
                             isLoggedToday && styles.quickLogOverlayLogged,
                           ]}
                           onPress={() => handleQuickLog(itemId, item, section.name || '')}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                         >
                           <Ionicons
                             name={isLoggedToday ? 'checkmark-circle' : 'add'}
@@ -1595,32 +1763,7 @@ export default function RestaurantScreen() {
                               : 'Log'}
                           </Text>
                         </TouchableOpacity>
-                      </View>
-                    ) : (
-                      /* No image - show log button in card header area */
-                      <TouchableOpacity
-                        style={[
-                          styles.quickLogNoImage,
-                          isLoggedToday && styles.quickLogOverlayLogged,
-                        ]}
-                        onPress={() => handleQuickLog(itemId, item, section.name || '')}
-                      >
-                        <Ionicons
-                          name={isLoggedToday ? 'checkmark-circle' : 'add'}
-                          size={16}
-                          color={isLoggedToday ? '#22c55e' : TEAL}
-                        />
-                        <Text
-                          style={[
-                            styles.quickLogText,
-                            isLoggedToday && styles.quickLogTextLogged,
-                          ]}
-                        >
-                          {isLoggedToday
-                            ? `${loggedMeal?.portion_percent || 100}%`
-                            : 'Log'}
-                        </Text>
-                      </TouchableOpacity>
+                      )
                     )}
 
                     <Text style={styles.itemName} numberOfLines={2}>
@@ -1649,10 +1792,10 @@ export default function RestaurantScreen() {
                     ) : null}
 
                     {/* Allergen & FODMAP pills - shown when dish has been analyzed */}
-                    {viewModel && (
+                    {analysis?.ok && (
                       <View style={styles.inlineWarningBadges}>
-                        {/* Allergen badges - color-coded by severity */}
-                        {viewModel.allergens
+                        {/* Allergen badges - use allergen_flags directly for consistency with recipe card */}
+                        {(analysis.allergen_flags || [])
                           .filter((a) => a.present === 'yes' || a.present === 'maybe')
                           .map((allergen, idx) => (
                             <View
@@ -1675,17 +1818,17 @@ export default function RestaurantScreen() {
                                   },
                                 ]}
                               >
-                                {allergen.name}
+                                {allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1)}
                               </Text>
                             </View>
                           ))}
-                        {/* FODMAP badge - teal styling */}
-                        {viewModel.fodmapLevel &&
-                          (viewModel.fodmapLevel === 'high' ||
-                            viewModel.fodmapLevel === 'medium') && (
+                        {/* FODMAP badge - use fodmap_flags directly for consistency */}
+                        {analysis.fodmap_flags &&
+                          (analysis.fodmap_flags.level === 'high' ||
+                            analysis.fodmap_flags.level === 'medium') && (
                             <View style={styles.inlineBadgeTeal}>
                               <Text style={styles.inlineBadgeTextTeal}>
-                                {viewModel.fodmapLevel === 'high' ? 'High' : 'Mod'} FODMAP
+                                {analysis.fodmap_flags.level === 'high' ? 'High' : 'Mod'} FODMAP
                               </Text>
                             </View>
                           )}
@@ -1721,6 +1864,69 @@ export default function RestaurantScreen() {
             </View>
           ))}
         </ScrollView>
+
+        {/* Sticky Category Navigation - appears when scrolled */}
+        {isCategoryNavSticky && categoryNames.length > 0 && (
+          <View style={styles.stickyCategoryNav}>
+            {Platform.OS === 'ios' ? (
+              <BlurView intensity={80} tint="dark" style={styles.stickyCategoryBlur}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryNavContent}
+                >
+                  {categoryNames.map((category) => (
+                    <TouchableOpacity
+                      key={`sticky-${category}`}
+                      style={[
+                        styles.categoryPill,
+                        activeCategory === category && styles.categoryPillActive,
+                      ]}
+                      onPress={() => scrollToSection(category)}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryPillText,
+                          activeCategory === category && styles.categoryPillTextActive,
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </BlurView>
+            ) : (
+              <View style={styles.stickyCategoryAndroid}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryNavContent}
+                >
+                  {categoryNames.map((category) => (
+                    <TouchableOpacity
+                      key={`sticky-${category}`}
+                      style={[
+                        styles.categoryPill,
+                        activeCategory === category && styles.categoryPillActive,
+                      ]}
+                      onPress={() => scrollToSection(category)}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryPillText,
+                          activeCategory === category && styles.categoryPillTextActive,
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Bottom Navigation */}
         <View style={styles.bottomNav}>
@@ -2772,5 +2978,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#22c55e',
+  },
+  // Category Navigation Styles
+  categoryNavWrapper: {
+    marginTop: 12,
+    marginBottom: 4,
+    marginHorizontal: -16,
+  },
+  categoryNavContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+  },
+  categoryPillActive: {
+    backgroundColor: '#2dd4bf',
+  },
+  categoryPillText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9ca3af',
+  },
+  categoryPillTextActive: {
+    color: '#0f172a',
+  },
+  stickyCategoryNav: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+  },
+  stickyCategoryBlur: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 10,
+    paddingBottom: 4,
+  },
+  stickyCategoryAndroid: {
+    paddingTop: 10,
+    paddingBottom: 4,
+    backgroundColor: 'rgba(2, 6, 23, 0.95)',
   },
 });

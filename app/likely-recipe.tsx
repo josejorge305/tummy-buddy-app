@@ -28,7 +28,7 @@ import {
 import { useUserPrefs } from '../context/UserPrefsContext';
 import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
-const BG = '#020617';
+const BG = '#0a1628'; // Upgraded blue background
 const CARD_BG = '#0f172a';
 const TEAL = '#14b8a6';
 const ORANGE = '#f97316';
@@ -36,6 +36,9 @@ const TEXT_PRIMARY = '#f8fafc';
 const TEXT_SECONDARY = '#94a3b8';
 const TEXT_MUTED = '#64748b';
 const DIVIDER = '#1e293b';
+// Two-tone ingredient colors
+const INGREDIENT_ROW_EVEN = 'rgba(30, 41, 59, 0.6)';
+const INGREDIENT_ROW_ODD = 'rgba(15, 23, 42, 0.9)';
 
 // Unified Design System (matching dish.tsx)
 const DESIGN = {
@@ -259,8 +262,7 @@ export default function LikelyRecipeScreen() {
   const nutritionSource = params.nutritionSource as string | undefined;
 
   let likelyRecipe: LikelyRecipe | null = null;
-  let fullRecipeResponse: FullRecipeResponse | null = null;
-  let fullRecipe: FullRecipeData | null = null;
+  let initialFullRecipe: FullRecipeData | null = null;
   let nutrition: NutritionSummary | null = null;
   let nutritionInsights: NutritionInsights | null = null;
   let allergens: AllergenFlag[] = [];
@@ -269,11 +271,31 @@ export default function LikelyRecipeScreen() {
 
   try {
     if (likelyRecipeJson) likelyRecipe = JSON.parse(likelyRecipeJson);
-    if (fullRecipeJson) fullRecipeResponse = JSON.parse(fullRecipeJson);
-    if (fullRecipeResponse?.full_recipe) {
-      fullRecipe = fullRecipeResponse.full_recipe;
-    } else if (fullRecipeResponse?.generation_method === 'llm') {
-      fullRecipe = fullRecipeResponse as unknown as FullRecipeData;
+    if (fullRecipeJson) {
+      const parsed = JSON.parse(fullRecipeJson);
+      // Handle multiple response structures from the backend
+      if (parsed?.full_recipe?.full_recipe) {
+        // Doubly nested: { full_recipe: { full_recipe: FullRecipeData } }
+        initialFullRecipe = parsed.full_recipe.full_recipe;
+      } else if (parsed?.full_recipe && typeof parsed.full_recipe === 'object') {
+        // Nested: { full_recipe: FullRecipeData, generation_method: ... }
+        initialFullRecipe = parsed.full_recipe;
+      } else if (parsed?.generation_method === 'llm' && parsed?.instructions) {
+        // Flat structure with LLM data directly
+        initialFullRecipe = parsed as unknown as FullRecipeData;
+      } else if (parsed?.instructions) {
+        // Direct FullRecipeData structure
+        initialFullRecipe = parsed;
+      }
+      // Debug: log what we parsed
+      if (__DEV__) {
+        console.log('[LikelyRecipe] Parsed fullRecipe:', {
+          hasInstructions: !!initialFullRecipe?.instructions?.length,
+          hasWinePairing: !!initialFullRecipe?.wine_pairing,
+          hasStorage: !!initialFullRecipe?.storage,
+          generationMethod: parsed?.generation_method,
+        });
+      }
     }
     if (nutritionJson) nutrition = JSON.parse(nutritionJson);
     if (nutritionInsightsJson) nutritionInsights = JSON.parse(nutritionInsightsJson);
@@ -283,6 +305,9 @@ export default function LikelyRecipeScreen() {
   } catch (e) {
     console.error('Error parsing likely recipe params:', e);
   }
+
+  // Full recipe data (loaded synchronously with initial analysis)
+  const fullRecipe = initialFullRecipe;
 
   // Determine if we have enhanced recipe data
   const hasFullRecipe = !!fullRecipe && (fullRecipe.instructions?.length || 0) > 0;
@@ -625,39 +650,49 @@ export default function LikelyRecipeScreen() {
             expanded={allergensExpanded}
             onToggle={() => setAllergensExpanded(!allergensExpanded)}
           >
+            {/* Smart Sentence Summary */}
+            {allergenSummary && (
+              <Text style={styles.allergenSmartSentence}>{allergenSummary}</Text>
+            )}
             {/* Allergen Pills */}
             <View style={styles.allergenPillsContainer}>
-              {presentAllergens.map((allergen, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.allergenPill,
-                    { backgroundColor: allergen.present === 'maybe' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(239, 68, 68, 0.15)' },
-                  ]}
-                >
-                  <Text
+              {presentAllergens.map((allergen, idx) => {
+                const displayName = allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1);
+                return (
+                  <View
+                    key={idx}
                     style={[
-                      styles.allergenPillText,
-                      { color: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                      styles.allergenPill,
+                      { backgroundColor: allergen.present === 'maybe' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(239, 68, 68, 0.15)' },
                     ]}
                   >
-                    {allergen.kind.toLowerCase()}
-                  </Text>
-                </View>
-              ))}
+                    <Text
+                      style={[
+                        styles.allergenPillText,
+                        { color: allergen.present === 'maybe' ? '#facc15' : '#ef4444' },
+                      ]}
+                    >
+                      {displayName}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
             {/* Allergen Explanations - Table Style */}
             <View style={styles.allergenExplanationsContainer}>
-              {presentAllergens.map((allergen, idx) => (
-                <View key={idx} style={styles.allergenExplanationRow}>
-                  <Text style={styles.allergenExplanationName}>
-                    {allergen.kind.toLowerCase()}
-                  </Text>
-                  <Text style={styles.allergenExplanationText}>
-                    {allergen.message || `This dish contains ${allergen.kind.toLowerCase()}.`}
-                  </Text>
-                </View>
-              ))}
+              {presentAllergens.map((allergen, idx) => {
+                const displayName = allergen.kind.charAt(0).toUpperCase() + allergen.kind.slice(1);
+                return (
+                  <View key={idx} style={styles.allergenExplanationRow}>
+                    <Text style={styles.allergenExplanationName}>
+                      {displayName}
+                    </Text>
+                    <Text style={styles.allergenExplanationText}>
+                      {allergen.message || `This dish contains ${displayName.toLowerCase()}.`}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
             {/* Allergen Substitutions inside Allergens section */}
             {substitutions.length > 0 && (
@@ -738,7 +773,7 @@ export default function LikelyRecipeScreen() {
           expanded={ingredientsExpanded}
           onToggle={() => setIngredientsExpanded(!ingredientsExpanded)}
         >
-          <View style={styles.ingredientsList}>
+          <View style={styles.ingredientsListContainer}>
             {hasFullRecipe && ingredientGroups.length > 0 ? (
               ingredientGroups.map((group, groupIdx) => (
                 <View key={groupIdx} style={styles.ingredientGroup}>
@@ -746,8 +781,14 @@ export default function LikelyRecipeScreen() {
                     <Text style={styles.ingredientGroupName}>{group.group_name}</Text>
                   )}
                   {(group.ingredients || []).map((ing, idx) => (
-                    <View key={idx} style={styles.ingredientItem}>
-                      <Text style={styles.bullet}>•</Text>
+                    <View
+                      key={idx}
+                      style={[
+                        styles.ingredientItemTwoTone,
+                        { backgroundColor: idx % 2 === 0 ? INGREDIENT_ROW_EVEN : INGREDIENT_ROW_ODD }
+                      ]}
+                    >
+                      <Text style={styles.bulletTeal}>•</Text>
                       <View style={styles.ingredientContent}>
                         <Text style={styles.ingredientText}>
                           {ing.amount && <Text style={styles.ingredientAmount}>{ing.amount} </Text>}
@@ -761,8 +802,14 @@ export default function LikelyRecipeScreen() {
               ))
             ) : hasFullRecipe && fullRecipe?.ingredients ? (
               fullRecipe.ingredients.map((ing, idx) => (
-                <View key={idx} style={styles.ingredientItem}>
-                  <Text style={styles.bullet}>•</Text>
+                <View
+                  key={idx}
+                  style={[
+                    styles.ingredientItemTwoTone,
+                    { backgroundColor: idx % 2 === 0 ? INGREDIENT_ROW_EVEN : INGREDIENT_ROW_ODD }
+                  ]}
+                >
+                  <Text style={styles.bulletTeal}>•</Text>
                   <View style={styles.ingredientContent}>
                     <Text style={styles.ingredientText}>
                       {ing.amount && <Text style={styles.ingredientAmount}>{ing.amount} </Text>}
@@ -774,8 +821,14 @@ export default function LikelyRecipeScreen() {
               ))
             ) : likelyRecipe?.ingredients && likelyRecipe.ingredients.length > 0 ? (
               likelyRecipe.ingredients.map((ing, idx) => (
-                <View key={idx} style={styles.ingredientItem}>
-                  <Text style={styles.bullet}>•</Text>
+                <View
+                  key={idx}
+                  style={[
+                    styles.ingredientItemTwoTone,
+                    { backgroundColor: idx % 2 === 0 ? INGREDIENT_ROW_EVEN : INGREDIENT_ROW_ODD }
+                  ]}
+                >
+                  <Text style={styles.bulletTeal}>•</Text>
                   <Text style={styles.ingredientText}>{formatBasicIngredient(ing)}</Text>
                 </View>
               ))
@@ -1200,7 +1253,12 @@ const styles = StyleSheet.create({
   collapsibleContent: {
     paddingBottom: 16,
   },
-  // Ingredients
+  // Ingredients - Two-tone styling
+  ingredientsListContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: CARD_BG,
+  },
   ingredientsList: {
     gap: 10,
   },
@@ -1209,10 +1267,22 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
   },
+  ingredientItemTwoTone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   bullet: {
     fontSize: 18,
     color: TEXT_SECONDARY,
     lineHeight: 24,
+  },
+  bulletTeal: {
+    fontSize: 16,
+    color: TEAL,
+    fontWeight: '600',
+    marginRight: 12,
   },
   ingredientContent: {
     flex: 1,
@@ -1714,6 +1784,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // Allergens
+  allergenSmartSentence: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    lineHeight: 22,
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
   allergenPillsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',

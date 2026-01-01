@@ -4,7 +4,9 @@ import { AnalyzeDishResponse } from '../api/api';
 const DISH_CACHE_PREFIX = '@dish_cache_';
 const RECENT_DISHES_KEY = '@recent_dish_searches';
 const MAX_RECENT_DISHES = 10;
-const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// 30 days TTL - dish analysis is stable (recipes, nutrition, allergens don't change)
+// Backend uses PIPELINE_VERSION for invalidation when logic changes
+const CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export interface CachedDish {
   dishName: string;

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 // Note: useSafeAreaInsets removed - using inline action buttons instead of sticky footer
-import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus } from '../api/api';
+import { AnalyzeDishResponse, analyzeDish, fetchDishImage, pollOrgansStatus, pollAllergensStatus } from '../api/api';
 import { buildDishViewModel, DishOrganLine } from '../utils/dishViewModel';
 import { cacheDishAnalysis, getCachedDish } from '../utils/dishCache';
 import { recordCacheHit, recordCacheMiss, recordCacheStore, logMetrics } from '../utils/cacheMetrics';
@@ -181,6 +181,7 @@ export default function DishScreen() {
   const [isLoggingMeal, setIsLoggingMeal] = useState(false);
   const [mealLogged, setMealLogged] = useState(false);
   const [organsLoading, setOrgansLoading] = useState(false);
+  const [allergensLoading, setAllergensLoading] = useState(false);
   const [showPortionSheet, setShowPortionSheet] = useState(false);
 
   // Note: Bottom sheet modals removed - using expandable modules now
@@ -266,6 +267,8 @@ export default function DishScreen() {
         imageUrl: imageUrl || null,
         fullRecipe: true,
         skip_organs: true,
+        skip_allergens: true,
+        // Note: full recipe loads synchronously by default (backend skipFullRecipe=false)
       });
 
       if (result.ok) {
@@ -280,16 +283,15 @@ export default function DishScreen() {
             .then(async (organsResult) => {
               if (organsResult.ok && organsResult.ready && organsResult.organs) {
                 // Update analysis with organs data
-                const updated = {
-                  ...result,
+                setAnalysis((prev) => prev ? {
+                  ...prev,
                   organs: organsResult.organs,
                   organs_pending: false,
                   organs_poll_key: undefined,
-                };
-                setAnalysis(updated);
+                } : prev);
                 // Update cache with organs data
                 try {
-                  await cacheDishAnalysis(correctedDishName, updated, {
+                  await cacheDishAnalysis(correctedDishName, { ...result, organs: organsResult.organs, organs_pending: false }, {
                     restaurantName,
                     restaurantAddress,
                     placeId,
@@ -306,6 +308,55 @@ export default function DishScreen() {
             })
             .finally(() => {
               setOrgansLoading(false);
+            });
+        }
+
+        // Start allergens polling in background if allergens are pending
+        if (result.allergens_pending && result.allergens_poll_key) {
+          setAllergensLoading(true);
+          pollAllergensStatus(result.allergens_poll_key)
+            .then(async (allergensResult) => {
+              if (allergensResult.ok && allergensResult.ready) {
+                // Update analysis with detailed allergen data
+                setAnalysis((prev) => prev ? {
+                  ...prev,
+                  allergen_flags: allergensResult.allergen_flags || prev.allergen_flags,
+                  fodmap_flags: allergensResult.fodmap_flags || prev.fodmap_flags,
+                  lactose_flags: allergensResult.lactose_flags || prev.lactose_flags,
+                  lifestyle_tags: allergensResult.lifestyle_tags || prev.lifestyle_tags,
+                  lifestyle_checks: allergensResult.lifestyle_checks || prev.lifestyle_checks,
+                  allergen_breakdown: allergensResult.allergen_breakdown || prev.allergen_breakdown,
+                  allergens_pending: false,
+                  allergens_poll_key: undefined,
+                } : prev);
+                // Update cache with allergen data
+                try {
+                  await cacheDishAnalysis(correctedDishName, {
+                    ...result,
+                    allergen_flags: allergensResult.allergen_flags || result.allergen_flags,
+                    fodmap_flags: allergensResult.fodmap_flags || result.fodmap_flags,
+                    lactose_flags: allergensResult.lactose_flags || result.lactose_flags,
+                    lifestyle_tags: allergensResult.lifestyle_tags || result.lifestyle_tags,
+                    lifestyle_checks: allergensResult.lifestyle_checks || result.lifestyle_checks,
+                    allergen_breakdown: allergensResult.allergen_breakdown || result.allergen_breakdown,
+                    allergens_pending: false,
+                  }, {
+                    restaurantName,
+                    restaurantAddress,
+                    placeId,
+                    imageUrl: cacheImageUrl,
+                    source: restaurantName ? 'restaurant' : 'standalone',
+                  });
+                } catch (cacheError) {
+                  console.error('Failed to cache allergens update:', cacheError);
+                }
+              }
+            })
+            .catch((e) => {
+              console.error('Allergens polling error:', e);
+            })
+            .finally(() => {
+              setAllergensLoading(false);
             });
         }
 
@@ -555,8 +606,10 @@ export default function DishScreen() {
     if (!source && flag.message) {
       source = flag.message;
     }
+    // Capitalize allergen name for display
+    const displayName = flag.kind.charAt(0).toUpperCase() + flag.kind.slice(1);
     return {
-      name: flag.kind,
+      name: displayName,
       present: flag.present,
       source,
       isUserAllergen: viewModel?.allergens?.some(a =>
@@ -654,8 +707,12 @@ export default function DishScreen() {
               />
             )}
 
-            {/* MODULE 1: Allergens - tags always visible, sources on expand */}
-            <AllergensModule allergens={allergensWithSource} />
+            {/* MODULE 1: Allergens - tags always visible, smart sentence on expand */}
+            <AllergensModule
+              allergens={allergensWithSource}
+              smartSentence={analysis?.allergen_summary || viewModel?.allergenSentence}
+              loading={allergensLoading}
+            />
 
             {/* MODULE 2: Digestive Impact - FODMAP breakdown */}
             <DigestiveImpactModule
@@ -670,6 +727,81 @@ export default function DishScreen() {
               organImpacts={organImpacts}
               loading={organsLoading}
             />
+
+            {/* INGREDIENTS SECTION - Two-tone styling */}
+            {analysis?.likely_recipe?.ingredients && analysis.likely_recipe.ingredients.length > 0 && (
+              <View style={styles.ingredientsSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="list-outline" size={20} color={COLORS.brandTeal} />
+                  <Text style={styles.sectionHeaderText}>Ingredients</Text>
+                  <Text style={styles.sectionBadge}>{analysis.likely_recipe.ingredients.length} items</Text>
+                </View>
+                <View style={styles.ingredientsList}>
+                  {(analysis.likely_recipe.ingredients as Array<{ name?: string; ingredient?: string; amount?: string; quantity?: string }>).slice(0, 8).map((ing, idx) => {
+                    const ingName = ing.name || ing.ingredient || '';
+                    const amount = ing.amount || ing.quantity || '';
+                    return (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.ingredientRow,
+                          idx % 2 === 0 ? styles.ingredientRowEven : styles.ingredientRowOdd
+                        ]}
+                      >
+                        <Text style={styles.ingredientBullet}>•</Text>
+                        {amount ? (
+                          <Text style={styles.ingredientText}>
+                            <Text style={styles.ingredientAmount}>{amount}</Text> {ingName}
+                          </Text>
+                        ) : (
+                          <Text style={styles.ingredientText}>{ingName}</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {analysis.likely_recipe.ingredients.length > 8 && (
+                    <TouchableOpacity onPress={handleViewRecipe} style={styles.viewMoreIngredients}>
+                      <Text style={styles.viewMoreText}>
+                        +{analysis.likely_recipe.ingredients.length - 8} more ingredients
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={COLORS.brandTeal} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* WINE PAIRING SECTION */}
+            {analysis?.full_recipe?.full_recipe?.wine_pairing && (
+              <View style={styles.winePairingSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="wine-outline" size={20} color="#c084fc" />
+                  <Text style={styles.sectionHeaderText}>Wine Pairing</Text>
+                </View>
+                <View style={styles.winePairingCard}>
+                  <Ionicons name="wine" size={24} color="#c084fc" />
+                  <Text style={styles.winePairingText}>
+                    {analysis.full_recipe.full_recipe.wine_pairing}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* STORAGE SECTION */}
+            {analysis?.full_recipe?.full_recipe?.storage && (
+              <View style={styles.storageSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="snow-outline" size={20} color="#38bdf8" />
+                  <Text style={styles.sectionHeaderText}>Storage</Text>
+                </View>
+                <View style={styles.storageCard}>
+                  <Ionicons name="cube-outline" size={24} color="#38bdf8" />
+                  <Text style={styles.storageText}>
+                    {analysis.full_recipe.full_recipe.storage}
+                  </Text>
+                </View>
+              </View>
+            )}
 
             {/* ACTION BUTTONS - Inline, only shown when analysis complete */}
             <InlineActionButtons
@@ -771,4 +903,117 @@ const styles = StyleSheet.create({
   retryButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.background },
   backButton: { paddingHorizontal: 24, paddingVertical: 12 },
   backButtonText: { fontSize: 16, color: COLORS.textSecondary },
+  // Ingredients Section - Two-tone styling
+  ingredientsSection: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  sectionHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  sectionBadge: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    backgroundColor: COLORS.cardSurface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  ingredientsList: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORS.cardSurface,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  ingredientRowEven: {
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+  },
+  ingredientRowOdd: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+  },
+  ingredientBullet: {
+    fontSize: 14,
+    color: COLORS.brandTeal,
+    marginRight: SPACING.sm,
+    fontWeight: '600',
+  },
+  ingredientText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  ingredientAmount: {
+    fontWeight: '600',
+    color: COLORS.brandTeal,
+  },
+  viewMoreIngredients: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    gap: 4,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+  },
+  viewMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.brandTeal,
+  },
+  // Wine Pairing Section
+  winePairingSection: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  winePairingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: 'rgba(192, 132, 252, 0.1)',
+    borderRadius: 12,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(192, 132, 252, 0.3)',
+  },
+  winePairingText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#e9d5ff',
+    lineHeight: 20,
+  },
+  // Storage Section
+  storageSection: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  storageCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderRadius: 12,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  storageText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#bae6fd',
+    lineHeight: 20,
+  },
 });
