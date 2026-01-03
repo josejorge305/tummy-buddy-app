@@ -34,6 +34,7 @@ import {
   getMealsForDate,
   logMeal,
   pollBatchUntilComplete,
+  pollOrgansStatus,
   priorityAnalysis,
   startBatchAnalysis,
   LoggedMeal,
@@ -41,6 +42,7 @@ import {
 import { fetchPlaceDetails } from '../api/places';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { useUserPrefs } from '../context/UserPrefsContext';
+import { useSetAIContext } from '../context/AIAssistantContext';
 import { buildDishViewModel } from '../utils/dishViewModel';
 import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
@@ -729,7 +731,7 @@ function buildPhotoUrl(photoRef?: string | null) {
 export default function RestaurantScreen() {
   const router = useRouter();
   const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
-  const { selectedAllergens, userId } = useUserPrefs();
+  const { selectedAllergens, userId, loadDailyTracker } = useUserPrefs();
   const { getPrefetchedMenu, isMenuReady, getPrefetchStatus } = useMenuPrefetch();
 
   // Extract route params early (needed by callbacks)
@@ -740,6 +742,15 @@ export default function RestaurantScreen() {
   const lngValueRaw = Array.isArray(lng) ? lng[0] : lng;
   const latValue = latValueRaw ?? undefined;
   const lngValue = lngValueRaw ?? undefined;
+
+  // Set AI context for this page
+  useSetAIContext({
+    screen: 'restaurant',
+    restaurantId: placeIdValue || null,
+    restaurantName: restaurantNameValue || null,
+    dishId: null,
+    dishName: null,
+  });
 
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});
@@ -834,8 +845,30 @@ export default function RestaurantScreen() {
 
   // Handle opening portion sheet for a dish
   const handleQuickLog = useCallback(
-    (itemId: string, item: any, sectionName: string) => {
-      const analysis = analysisByItemId[itemId] || null;
+    async (itemId: string, item: any, sectionName: string) => {
+      let analysis = analysisByItemId[itemId] || null;
+
+      // If organs are pending, fetch them now before showing portion sheet
+      if (analysis && analysis.organs_pending && analysis.organs_poll_key) {
+        console.log('[handleQuickLog] Fetching pending organs for:', item?.name);
+        try {
+          const organsResult = await pollOrgansStatus(analysis.organs_poll_key, undefined, 1500, 10);
+          if (organsResult.ok && organsResult.ready && organsResult.organs) {
+            // Merge organs into analysis
+            analysis = {
+              ...analysis,
+              organs: organsResult.organs,
+              organs_pending: false,
+            };
+            // Update the cache
+            setAnalysisByItemId((prev) => ({ ...prev, [itemId]: analysis }));
+            console.log('[handleQuickLog] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
+          }
+        } catch (e) {
+          console.warn('[handleQuickLog] Failed to fetch organs:', e);
+        }
+      }
+
       setPortionSheetDish({
         itemId,
         name: item?.name || '',
@@ -873,6 +906,7 @@ export default function RestaurantScreen() {
 
         // Get organ impacts as object
         const baselineOrganImpacts: Record<string, number> = {};
+        console.log('[handlePortionConfirm] analysis.organs:', JSON.stringify(analysis?.organs));
         if (analysis?.organs?.organs) {
           analysis.organs.organs.forEach((o: any) => {
             if (o.organ && typeof o.score === 'number') {
@@ -880,6 +914,7 @@ export default function RestaurantScreen() {
             }
           });
         }
+        console.log('[handlePortionConfirm] baselineOrganImpacts:', JSON.stringify(baselineOrganImpacts));
 
         const multiplier = portionData.portionMultiplier;
 
@@ -910,10 +945,14 @@ export default function RestaurantScreen() {
           fiber_g: Math.round(baselineFiber * multiplier * 10) / 10,
           sugar_g: Math.round(baselineSugar * multiplier * 10) / 10,
           sodium_mg: Math.round(baselineSodium * multiplier),
+          // Include organ_impacts for backend to store (this is what backend expects)
+          organ_impacts: baselineOrganImpacts,
           // Include nutrition_summary for backend fallback
           nutrition_summary: ns || undefined,
           // Include organ_levels for backend fallback
           organ_levels: baselineOrganImpacts,
+          // Include full analysis for R2 storage (enables viewing meal details later)
+          full_analysis: analysis || undefined,
         } as any);
 
         setShowPortionSheet(false);
@@ -923,6 +962,9 @@ export default function RestaurantScreen() {
         const meals = await getMealsForDate(userId, getTodayISO());
         setTodayLoggedMeals(meals);
 
+        // Also refresh the daily tracker context so tracker screen shows the new meal
+        loadDailyTracker();
+
         // Hide toast after 2 seconds
         setTimeout(() => setLoggedToast(false), 2000);
       } catch (err) {
@@ -931,7 +973,7 @@ export default function RestaurantScreen() {
         setIsLogging(false);
       }
     },
-    [userId, portionSheetDish, restaurant, restaurantNameValue]
+    [userId, portionSheetDish, restaurant, restaurantNameValue, loadDailyTracker]
   );
 
   useEffect(() => {
@@ -952,10 +994,47 @@ export default function RestaurantScreen() {
           data = await fetchMenuFast(restaurantNameValue, searchAddress, 50);
         }
 
-        // Fall back to fetchMenuWithRetry only if fast method fails
+        // Check if menu fetch returned a validation error (wrong restaurant)
+        if (data && !data.ok && data.error) {
+          const errorMsg = data.error;
+          // Check for validation-related errors
+          if (
+            errorMsg.includes('No matching restaurant') ||
+            errorMsg.includes('validation') ||
+            errorMsg.includes('not found')
+          ) {
+            console.log('[RestaurantScreen] Restaurant validation failed:', errorMsg);
+            setError(
+              `Sorry, we couldn't find the menu for "${restaurantNameValue || 'this restaurant'}". ` +
+              `This restaurant may not be available in our system yet. Please try searching for a different restaurant.`
+            );
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fall back to fetchMenuWithRetry only if fast method fails (but not for validation errors)
         if ((!data || !data.ok) && placeIdValue) {
           console.log('[RestaurantScreen] fetchMenuFast failed, using fetchMenuWithRetry fallback');
           data = await fetchMenuWithRetry(placeIdValue);
+
+          // Check validation errors from fallback too
+          if (data && !data.ok && data.error) {
+            const errorMsg = data.error;
+            if (
+              errorMsg.includes('No matching restaurant') ||
+              errorMsg.includes('validation') ||
+              errorMsg.includes('not found')
+            ) {
+              console.log('[RestaurantScreen] Restaurant validation failed (fallback):', errorMsg);
+              setError(
+                `Sorry, we couldn't find the menu for "${restaurantNameValue || 'this restaurant'}". ` +
+                `This restaurant may not be available in our system yet. Please try searching for a different restaurant.`
+              );
+              setLoading(false);
+              return;
+            }
+          }
         }
 
         console.log('MENU RAW DATA:', JSON.stringify(data, null, 2).slice(0, 500));
@@ -1120,8 +1199,12 @@ export default function RestaurantScreen() {
           const dish = dishes.find((d) => d.dishName === job.dishName) || dishes[idx];
           if (dish) {
             jobMap[dish.itemId] = job.jobId;
-            // If already completed (cached), store the result
-            if (job.status === 'completed' && job.result) {
+            // If already completed or cached, store the result
+            // Backend returns status "cached" for KV-cached dishes, "completed" for newly processed
+            if ((job.status === 'completed' || job.status === 'cached') && job.result) {
+              console.log('[RestaurantScreen] Cached result for:', job.dishName,
+                'hasOrgans:', !!job.result?.organs,
+                'organsPending:', job.result?.organs_pending);
               initialResults[dish.itemId] = job.result;
             }
           }
@@ -1145,7 +1228,9 @@ export default function RestaurantScreen() {
               // Find the itemId for this job
               const itemId = Object.keys(jobMap).find((id) => jobMap[id] === jobId);
               if (itemId) {
-                console.log('[RestaurantScreen] Batch result received for:', dishName);
+                console.log('[RestaurantScreen] Batch result received for:', dishName,
+                  'hasOrgans:', !!result?.organs,
+                  'organsPending:', result?.organs_pending);
                 setAnalysisByItemId((prev) => ({ ...prev, [itemId]: result }));
                 setAnalysisLoadingByItemId((prev) => ({ ...prev, [itemId]: false }));
               }
@@ -1443,9 +1528,19 @@ export default function RestaurantScreen() {
 
   if (error) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>🍽️</Text>
+          <Text style={styles.errorTitle}>Restaurant Not Available</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={() => router.push('/')}
+          >
+            <Text style={styles.errorButtonText}>← Search Different Restaurant</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -2200,10 +2295,41 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    backgroundColor: BG,
+  },
+  errorIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
   errorText: {
     fontSize: 16,
-    color: '#f97373',
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  errorButton: {
+    backgroundColor: TEAL,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  errorButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   expandedVerdictContainer: {
     marginTop: 10,

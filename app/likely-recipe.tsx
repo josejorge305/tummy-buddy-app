@@ -26,6 +26,7 @@ import {
   logMeal,
 } from '../api/api';
 import { useUserPrefs } from '../context/UserPrefsContext';
+import { useSetAIContext } from '../context/AIAssistantContext';
 import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 
 const BG = '#0a1628'; // Upgraded blue background
@@ -247,6 +248,16 @@ export default function LikelyRecipeScreen() {
 
   // Parse the data passed via params
   const dishName = params.dishName as string | undefined;
+  const restaurantName = params.restaurantName as string | undefined;
+
+  // Set AI context for this page
+  useSetAIContext({
+    screen: 'dish_detail',
+    dishId: null,
+    dishName: dishName || null,
+    restaurantId: null,
+    restaurantName: restaurantName || null,
+  });
   const rawImageUrl = params.imageUrl as string | undefined;
   const imageUrl = rawImageUrl ? decodeURIComponent(rawImageUrl) : undefined;
   const likelyRecipeJson = params.likelyRecipe as string | undefined;
@@ -414,9 +425,6 @@ export default function LikelyRecipeScreen() {
   const instructionCount = hasFullRecipe
     ? fullRecipe?.instructions?.length || 0
     : likelyRecipe?.instructions?.length || 0;
-
-  // Get restaurant name from params
-  const restaurantName = params.restaurantName as string | undefined;
 
   // Detect course type for smart portion defaults
   const detectCourseType = useCallback((): CourseType => {
@@ -590,7 +598,7 @@ export default function LikelyRecipeScreen() {
             {servings && (
               <View style={styles.metaBadge}>
                 <Ionicons name="people-outline" size={12} color={TEXT_SECONDARY} />
-                <Text style={styles.metaBadgeText}>{servings} servings</Text>
+                <Text style={styles.metaBadgeText}>Makes {servings} servings</Text>
               </View>
             )}
           </View>
@@ -617,12 +625,18 @@ export default function LikelyRecipeScreen() {
         {/* 1. Nutrition */}
         {nutrition && (
           <CollapsibleSection
-            title="Nutrition"
+            title="Nutrition (per serving)"
             icon="flame-outline"
             badge={nutrition.energyKcal ? `${Math.round(nutrition.energyKcal)} kcal` : undefined}
             expanded={nutritionExpanded}
             onToggle={() => setNutritionExpanded(!nutritionExpanded)}
           >
+            {/* Per-serving clarification when recipe makes multiple servings */}
+            {servings && servings > 1 && (
+              <Text style={styles.perServingNote}>
+                This recipe makes {servings} servings. Nutrition values below are for 1 serving.
+              </Text>
+            )}
             <View style={styles.nutritionRow}>
               <NutritionItem label="Calories" value={nutrition.energyKcal} unit="kcal" />
               <NutritionItem label="Protein" value={nutrition.protein_g} unit="g" />
@@ -1763,6 +1777,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: TEXT_MUTED,
     marginTop: 8,
+  },
+  perServingNote: {
+    fontSize: 13,
+    color: TEAL,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   nutritionItem: {
     alignItems: 'center',

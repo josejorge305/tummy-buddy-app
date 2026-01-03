@@ -73,6 +73,7 @@ export default function ProfileScreen() {
   } = useUserPrefs();
 
   // Local form state
+  const [displayName, setDisplayName] = useState('');
   const [unitSystem, setUnitSystem] = useState<'imperial' | 'metric'>('imperial');
   const [sex, setSex] = useState<'male' | 'female' | null>(null);
   const [birthYear, setBirthYear] = useState('');
@@ -90,6 +91,7 @@ export default function ProfileScreen() {
   // Initialize form from profile
   useEffect(() => {
     if (profile) {
+      setDisplayName(profile.display_name || '');
       setUnitSystem(profile.unit_system || 'imperial');
       setSex(profile.biological_sex || null);
       setActivityLevel(profile.activity_level || 'moderate');
@@ -172,6 +174,7 @@ export default function ProfileScreen() {
     try {
       // Build profile data
       const profileData: any = {
+        display_name: displayName || null,
         biological_sex: sex,
         activity_level: activityLevel,
         goals: selectedGoals,
@@ -240,6 +243,17 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+
+        {/* Display Name */}
+        <Text style={styles.fieldLabel}>Name</Text>
+        <TextInput
+          style={styles.input}
+          value={displayName}
+          onChangeText={setDisplayName}
+          placeholder="Enter your name"
+          placeholderTextColor="#666"
+          autoCapitalize="words"
+        />
 
         {/* Unit Toggle */}
         <View style={styles.unitToggle}>
@@ -536,7 +550,7 @@ export default function ProfileScreen() {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.infoText}>
-              Tummy Tracker Pro unlocks personalized targets, organ trends, and detailed insights.
+              Pro membership unlocks personalized targets, organ trends, and detailed insights.
             </Text>
           </View>
           <View style={styles.switchBlock}>

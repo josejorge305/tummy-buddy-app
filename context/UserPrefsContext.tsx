@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   UserProfile,
   UserDailyTargets,
@@ -25,23 +24,7 @@ import {
   getWater,
   setWater,
 } from '../api/api';
-
-// Generate a unique user ID if not exists
-async function getOrCreateUserId(): Promise<string> {
-  try {
-    let userId = await AsyncStorage.getItem('tummy_buddy_user_id');
-    if (!userId) {
-      // Generate a UUID-like ID
-      userId = 'user_' + Math.random().toString(36).substring(2, 15) +
-               Math.random().toString(36).substring(2, 15);
-      await AsyncStorage.setItem('tummy_buddy_user_id', userId);
-    }
-    return userId;
-  } catch {
-    // Fallback for when AsyncStorage fails
-    return 'user_' + Date.now().toString(36);
-  }
-}
+import { useAuth, getCurrentUserId } from './AuthContext';
 
 interface TrackerData {
   date: string;
@@ -156,7 +139,8 @@ interface UserPrefsContextValue {
 const UserPrefsContext = createContext<UserPrefsContextValue | undefined>(undefined);
 
 export function UserPrefsProvider({ children }: { children: ReactNode }) {
-  // User ID
+  // Get user ID from auth context (falls back to device ID if not authenticated)
+  const { userId: authUserId, isAuthenticated, isLoading: authLoading } = useAuth();
   const [userId, setUserId] = useState<string | null>(null);
 
   // Profile state
@@ -198,18 +182,34 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, allergenDefinitions]);
 
-  // Initialize user ID on mount
+  // Initialize user ID - prefer auth user ID, fall back to device ID
   useEffect(() => {
-    getOrCreateUserId().then(id => {
-      setUserId(id);
-    });
-  }, []);
+    if (authLoading) {
+      console.log('[UserPrefsContext] Auth still loading, waiting...');
+      return;
+    }
 
-  // Load profile when userId is set
+    if (isAuthenticated && authUserId) {
+      console.log('[UserPrefsContext] Using auth userId:', authUserId);
+      setUserId(authUserId);
+    } else {
+      // Get or create device user ID for anonymous usage
+      console.log('[UserPrefsContext] Getting device userId...');
+      getCurrentUserId().then(id => {
+        console.log('[UserPrefsContext] Got device userId:', id);
+        setUserId(id);
+      });
+    }
+  }, [authLoading, isAuthenticated, authUserId]);
+
+  // Load profile and tracker data when userId is set
   useEffect(() => {
     if (userId) {
+      console.log('[UserPrefsContext] userId set, loading profile and tracker data');
       loadProfile();
       loadAllergenDefinitions();
+      loadDailyTracker();
+      loadWeeklyTracker();
     }
   }, [userId]);
 
@@ -319,20 +319,47 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const loadDailyTracker = useCallback(async (date?: string) => {
-    if (!userId) return;
+    if (!userId) {
+      console.log('[loadDailyTracker] No userId, skipping');
+      return;
+    }
 
+    console.log('[loadDailyTracker] Loading for userId:', userId);
     setIsTrackerLoading(true);
     try {
       const targetDate = date || getTodayDate();
+      console.log('[loadDailyTracker] Fetching for date:', targetDate);
       const result = await getDailyTracker(userId, targetDate);
+      console.log('[loadDailyTracker] API result ok:', result.ok, 'meals:', result.meals?.length);
 
       if (result.ok) {
         // Water data is now included in daily tracker response
         const waterData = (result as any).water || null;
 
+        // Organ impacts come as top-level array from backend
+        const organImpactsArray = (result as any).organ_impacts || [];
+        console.log('[loadDailyTracker] organ_impacts from backend:', organImpactsArray);
+
+        // Convert array to object for organ_scores
+        const organScores: Record<string, number> = {};
+        if (Array.isArray(organImpactsArray)) {
+          organImpactsArray.forEach((item: { organ: string; score: number }) => {
+            if (item.organ && typeof item.score === 'number') {
+              organScores[item.organ] = item.score;
+            }
+          });
+        }
+        console.log('[loadDailyTracker] organScores converted:', organScores);
+
+        // Merge organ_scores into summary
+        const summaryWithOrgans = result.summary ? {
+          ...result.summary,
+          organ_scores: Object.keys(organScores).length > 0 ? organScores : (result.summary as any).organ_scores,
+        } : null;
+
         setTodayTracker({
           date: result.date,
-          summary: result.summary || null,
+          summary: summaryWithOrgans,
           meals: result.meals || [],
           targets: result.targets || null,
           water: waterData ? {
@@ -480,10 +507,16 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
   }, [userId, loadDailyTracker]);
 
   const setWaterGlassesAction = useCallback(async (glasses: number): Promise<boolean> => {
-    if (!userId) return false;
+    if (!userId) {
+      console.warn('setWaterGlassesAction: No userId available, cannot save water');
+      return false;
+    }
+
+    console.log('setWaterGlassesAction: Saving', glasses, 'glasses for user', userId);
 
     try {
       const result = await setWater(userId, glasses);
+      console.log('setWaterGlassesAction: API result', result);
 
       if (result.ok) {
         // Optimistically update local state
@@ -504,6 +537,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
         loadDailyTracker();
         return true;
       }
+      console.warn('setWaterGlassesAction: API returned not ok', result);
       return false;
     } catch (e) {
       console.error('setWaterGlassesAction error:', e);

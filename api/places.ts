@@ -1,4 +1,5 @@
-const GOOGLE_PLACES_API_KEY = 'AIzaSyD-s5WycqyPYBZ7PPUj5wsdMj5gzSS0WRw'; // keep your real key here
+// Google Places API calls - proxied through backend to keep API key secure
+const API_BASE_URL = 'https://api.rrginvestment.com';
 
 export type PlaceSuggestion = {
   placeId: string;
@@ -16,14 +17,9 @@ export async function fetchPlaceSuggestions(
 ): Promise<PlaceSuggestion[]> {
   if (!query.trim()) return [];
 
-  const url =
-    'https://maps.googleapis.com/maps/api/place/autocomplete/json' +
-    `?input=${encodeURIComponent(query)}` +
-    '&types=establishment' +
-    '&components=country:us' +
-    `&key=${GOOGLE_PLACES_API_KEY}`;
+  const url = `${API_BASE_URL}/api/places/autocomplete?input=${encodeURIComponent(query)}`;
 
-  console.log('Calling Google Places:', url);
+  console.log('Calling Places Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -33,26 +29,19 @@ export async function fetchPlaceSuggestions(
   }
 
   const json = await res.json();
-  if (!Array.isArray(json.predictions)) {
-    console.warn('Unexpected Places response:', json);
+  if (!json.ok) {
+    console.warn('Places proxy error:', json.error);
     return [];
   }
 
-  return json.predictions.map((p: any) => ({
-    placeId: p.place_id,
-    description: p.description,
-  }));
+  return json.predictions || [];
 }
 
-// NEW: fetch lat/lng and photo reference for a placeId
+// Fetch lat/lng and photo reference for a placeId
 export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> {
-  const url =
-    'https://maps.googleapis.com/maps/api/place/details/json' +
-    `?place_id=${encodeURIComponent(placeId)}` +
-    '&fields=geometry,photos' +
-    `&key=${GOOGLE_PLACES_API_KEY}`;
+  const url = `${API_BASE_URL}/api/places/details?place_id=${encodeURIComponent(placeId)}`;
 
-  console.log('Calling Google Place Details:', url);
+  console.log('Calling Place Details Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -66,19 +55,15 @@ export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> 
   }
 
   const json = await res.json();
-  const loc = json?.result?.geometry?.location;
-  if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
-    console.warn('Unexpected Place Details response:', json);
-    throw new Error('No geometry.location in Place Details');
+  if (!json.ok) {
+    console.warn('Place Details proxy error:', json.error);
+    throw new Error(json.error || 'Failed to get place details');
   }
 
-  // Extract first photo reference if available
-  const photoRef = json?.result?.photos?.[0]?.photo_reference || null;
-
   return {
-    lat: loc.lat,
-    lng: loc.lng,
-    photoRef,
+    lat: json.lat,
+    lng: json.lng,
+    photoRef: json.photoRef,
   };
 }
 
@@ -93,16 +78,9 @@ export async function fetchNearbyPlaces(
   lat: number,
   lng: number
 ): Promise<NearbyPlace[]> {
-  const radiusMeters = 800; // search radius ~0.5 mile
+  const url = `${API_BASE_URL}/api/places/nearby?lat=${lat}&lng=${lng}`;
 
-  const url =
-    'https://maps.googleapis.com/maps/api/place/nearbysearch/json' +
-    `?location=${lat},${lng}` +
-    `&radius=${radiusMeters}` +
-    '&type=restaurant' +
-    `&key=${GOOGLE_PLACES_API_KEY}`;
-
-  console.log('Calling Google Nearby Search:', url);
+  console.log('Calling Nearby Search Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -112,34 +90,21 @@ export async function fetchNearbyPlaces(
   }
 
   const json = await res.json();
-  if (!Array.isArray(json.results)) {
-    console.warn('Unexpected Nearby Search response:', json);
+  if (!json.ok) {
+    console.warn('Nearby Search proxy error:', json.error);
     return [];
   }
 
-  return json.results
-    .map((r: any) => ({
-      placeId: r.place_id,
-      name: r.name,
-      lat: r.geometry?.location?.lat,
-      lng: r.geometry?.location?.lng,
-    }))
-    .filter(
-      (p: NearbyPlace) => typeof p.lat === 'number' && typeof p.lng === 'number'
-    );
+  return json.results || [];
 }
 
 // Search for places/restaurants by text query
 export async function searchPlaces(query: string): Promise<any[]> {
   if (!query.trim()) return [];
 
-  const url =
-    'https://maps.googleapis.com/maps/api/place/textsearch/json' +
-    `?query=${encodeURIComponent(query + ' restaurant')}` +
-    '&type=restaurant' +
-    `&key=${GOOGLE_PLACES_API_KEY}`;
+  const url = `${API_BASE_URL}/api/places/search?query=${encodeURIComponent(query)}`;
 
-  console.log('Calling Google Text Search:', url);
+  console.log('Calling Text Search Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -149,19 +114,19 @@ export async function searchPlaces(query: string): Promise<any[]> {
   }
 
   const json = await res.json();
-  if (!Array.isArray(json.results)) {
-    console.warn('Unexpected Text Search response:', json);
+  if (!json.ok) {
+    console.warn('Text Search proxy error:', json.error);
     return [];
   }
 
-  return json.results;
+  return json.results || [];
 }
 
 export async function checkIfRestaurantAnalyzed(
   placeId: string
 ): Promise<'green' | 'orange'> {
   const url =
-    `https://api.rrginvestment.com/menu/extract?placeId=${encodeURIComponent(placeId)}`;
+    `${API_BASE_URL}/menu/extract?placeId=${encodeURIComponent(placeId)}`;
 
   try {
     const res = await fetch(url);

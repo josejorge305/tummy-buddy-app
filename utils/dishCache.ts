@@ -25,6 +25,7 @@ export interface RecentDishSearch {
   normalizedName: string;
   restaurantName?: string;
   restaurantAddress?: string;
+  placeId?: string;
   hasCache: boolean;
   searchedAt: number;
 }
@@ -42,13 +43,20 @@ export function normalizeDishName(name: string): string {
 
 /**
  * Build cache key for a dish
+ * IMPORTANT: Always include placeId or restaurantName to avoid cross-restaurant cache hits
  */
-function buildCacheKey(dishName: string, placeId?: string): string {
+function buildCacheKey(dishName: string, placeId?: string, restaurantName?: string): string {
   const normalized = normalizeDishName(dishName);
   if (placeId) {
     return `${DISH_CACHE_PREFIX}${normalized}_${placeId}`;
   }
-  return `${DISH_CACHE_PREFIX}${normalized}`;
+  // Fallback to restaurant name if no placeId (for backwards compatibility)
+  if (restaurantName) {
+    const normalizedRestaurant = normalizeDishName(restaurantName);
+    return `${DISH_CACHE_PREFIX}${normalized}_r_${normalizedRestaurant}`;
+  }
+  // Standalone dish (no restaurant context) - safe to use dish name only
+  return `${DISH_CACHE_PREFIX}${normalized}_standalone`;
 }
 
 /**
@@ -65,7 +73,7 @@ export async function cacheDishAnalysis(
     source?: 'restaurant' | 'standalone';
   }
 ): Promise<void> {
-  const key = buildCacheKey(dishName, options?.placeId);
+  const key = buildCacheKey(dishName, options?.placeId, options?.restaurantName);
   const cached: CachedDish = {
     dishName,
     normalizedName: normalizeDishName(dishName),
@@ -91,9 +99,10 @@ export async function cacheDishAnalysis(
  */
 export async function getCachedDish(
   dishName: string,
-  placeId?: string
+  placeId?: string,
+  restaurantName?: string
 ): Promise<CachedDish | null> {
-  const key = buildCacheKey(dishName, placeId);
+  const key = buildCacheKey(dishName, placeId, restaurantName);
 
   try {
     const stored = await AsyncStorage.getItem(key);
@@ -165,6 +174,7 @@ export async function addToRecentDishSearches(
   options?: {
     restaurantName?: string;
     restaurantAddress?: string;
+    placeId?: string;
     hasCache?: boolean;
   }
 ): Promise<void> {
@@ -174,8 +184,14 @@ export async function addToRecentDishSearches(
 
     const normalizedName = normalizeDishName(dishName);
 
-    // Remove existing entry for same dish
-    recent = recent.filter((r) => r.normalizedName !== normalizedName);
+    // Remove existing entry for same dish at same restaurant
+    recent = recent.filter((r) => {
+      if (r.normalizedName !== normalizedName) return true;
+      // Keep if different restaurant
+      if (options?.placeId && r.placeId !== options.placeId) return true;
+      if (options?.restaurantName && r.restaurantName !== options.restaurantName) return true;
+      return false;
+    });
 
     // Add new entry at the beginning
     recent.unshift({
@@ -183,6 +199,7 @@ export async function addToRecentDishSearches(
       normalizedName,
       restaurantName: options?.restaurantName,
       restaurantAddress: options?.restaurantAddress,
+      placeId: options?.placeId,
       hasCache: options?.hasCache ?? false,
       searchedAt: Date.now(),
     });
@@ -206,10 +223,10 @@ export async function getRecentDishSearches(): Promise<RecentDishSearch[]> {
 
     const recent = JSON.parse(stored) as RecentDishSearch[];
 
-    // Update hasCache status for each
+    // Update hasCache status for each (including placeId/restaurantName for correct lookup)
     const updated = await Promise.all(
       recent.map(async (r) => {
-        const cached = await getCachedDish(r.dishName);
+        const cached = await getCachedDish(r.dishName, r.placeId, r.restaurantName);
         return { ...r, hasCache: !!cached };
       })
     );

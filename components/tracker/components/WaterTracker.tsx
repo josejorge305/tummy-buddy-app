@@ -53,12 +53,17 @@ function WaterGlass({
   }));
 
   const handlePress = () => {
+    console.log('[WaterGlass] Glass pressed, index:', index);
     scale.value = withSequence(
       withSpring(0.85),
       withSpring(1.1),
       withSpring(1)
     );
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      console.log('[WaterGlass] Haptics error (non-critical):', e);
+    }
     onPress();
   };
 
@@ -100,8 +105,14 @@ export function WaterTracker({
     // Tapping a glass fills all glasses up to and including that one
     // If tapping the same glass that's the last filled one, unfill it
     const newFilled = filledGlasses === index + 1 ? index : index + 1;
+    console.log('[WaterTracker] handleGlassPress:', { index, filledGlasses, newFilled });
     setFilledGlasses(newFilled);
-    onGlassPress?.(newFilled);
+    if (onGlassPress) {
+      console.log('[WaterTracker] Calling onGlassPress with:', newFilled);
+      onGlassPress(newFilled);
+    } else {
+      console.log('[WaterTracker] WARNING: onGlassPress is not defined!');
+    }
   };
 
   const percentage = Math.round((filledGlasses / totalGlasses) * 100);

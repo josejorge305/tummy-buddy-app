@@ -12,7 +12,7 @@ import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../utils/colors';
 interface AIAssistantPanelProps {
   insight: string;
   suggestion?: string;
-  onAskTummy?: () => void;
+  onAskCoach?: () => void;
 }
 
 // Sparkle icon for AI branding
@@ -52,7 +52,7 @@ function AIIcon({ size = 24, color = COLORS.primary }: { size?: number; color?: 
 export function AIAssistantPanel({
   insight,
   suggestion,
-  onAskTummy,
+  onAskCoach,
 }: AIAssistantPanelProps) {
   return (
     <LinearGradient
@@ -64,11 +64,11 @@ export function AIAssistantPanel({
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <SparkleIcon size={18} />
-          <Text style={styles.title}>Tummy AI</Text>
+          <Text style={styles.title}>Health Coach</Text>
         </View>
-        {onAskTummy && (
-          <TouchableOpacity style={styles.askButton} onPress={onAskTummy}>
-            <Text style={styles.askButtonText}>Ask Tummy</Text>
+        {onAskCoach && (
+          <TouchableOpacity style={styles.askButton} onPress={onAskCoach}>
+            <Text style={styles.askButtonText}>Ask AI</Text>
           </TouchableOpacity>
         )}
       </View>

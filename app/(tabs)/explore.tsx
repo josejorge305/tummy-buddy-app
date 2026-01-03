@@ -9,22 +9,25 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
   Alert,
   SafeAreaView,
   StatusBar,
+  TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useUserPrefs } from '../../context/UserPrefsContext';
+import { useSetAIContext, useAIAssistant } from '../../context/AIAssistantContext';
 import { useRouter } from 'expo-router';
 import { LoggedMeal } from '../../api/api';
 import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../components/PortionSheet';
@@ -47,8 +50,6 @@ import {
   formatDateHeader,
 } from '../../components/tracker';
 
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
-
 // Header component with date, title, and streak
 function TrackerHeader({ streak }: { streak: number }) {
   const today = new Date();
@@ -69,48 +70,7 @@ function TrackerHeader({ streak }: { streak: number }) {
   );
 }
 
-// Floating Action Button
-function FAB({ onPress }: { onPress: () => void }) {
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.9);
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1);
-  };
-
-  const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onPress();
-  };
-
-  return (
-    <AnimatedTouchable
-      style={[styles.fab, animatedStyle]}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      onPress={handlePress}
-      activeOpacity={1}
-    >
-      <LinearGradient
-        colors={[COLORS.primary, COLORS.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.fabGradient}
-      >
-        <Ionicons name="add" size={28} color={COLORS.textPrimary} />
-      </LinearGradient>
-    </AnimatedTouchable>
-  );
-}
-
-export default function TummyTracker() {
+export default function DailyTracker() {
   const router = useRouter();
   const {
     profile,
@@ -125,20 +85,50 @@ export default function TummyTracker() {
     setWaterGlassesAction,
   } = useUserPrefs();
 
+  // Set AI context for tracker screen
+  useSetAIContext({
+    screen: 'tracker',
+    restaurantId: null,
+    restaurantName: null,
+    dishId: null,
+    dishName: null,
+  });
+
+  // Get AI assistant panel controls
+  const { openPanel: openAIPanel } = useAIAssistant();
+
   const [refreshing, setRefreshing] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [editingMeal, setEditingMeal] = useState<LoggedMeal | null>(null);
   const [showPortionSheet, setShowPortionSheet] = useState(false);
+  const [isOrgansExpanded, setIsOrgansExpanded] = useState(false);
 
   // Get water glasses from tracker data
   const waterGlasses = todayTracker?.water?.total_glasses || 0;
   const waterTargetGlasses = todayTracker?.water?.target_glasses || 8;
 
-  // Load tracker data on mount
+  // Load tracker data on mount and when userId becomes available
   useEffect(() => {
+    console.log('[DailyTracker] Loading tracker data on mount/userId change');
     loadDailyTracker();
     loadWeeklyTracker();
-  }, []);
+  }, [loadDailyTracker, loadWeeklyTracker]);
+
+  // Debug: Log tracker data when it changes
+  useEffect(() => {
+    console.log('[DailyTracker] todayTracker:', todayTracker ? {
+      meals: todayTracker.meals?.length || 0,
+      water: todayTracker.water,
+      summary: todayTracker.summary
+    } : 'null');
+  }, [todayTracker]);
+
+  useEffect(() => {
+    console.log('[DailyTracker] weeklyData:', weeklyData ? {
+      summaries: weeklyData.summaries?.length || 0,
+      weeklyAverages: weeklyData.weeklyAverages
+    } : 'null');
+  }, [weeklyData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -239,6 +229,106 @@ export default function TummyTracker() {
       trendPercent: number;
     }>;
 
+  // Helper to generate organ-specific factors based on nutrition data
+  const getOrganFactors = (organName: string): Array<{name: string; positive: boolean}> => {
+    const factors: Array<{name: string; positive: boolean}> = [];
+    const lowerName = organName.toLowerCase();
+
+    // Sodium impact (kidneys, heart)
+    if (lowerName === 'kidneys' || lowerName === 'heart') {
+      const sodiumConsumed = summary?.total_sodium_mg || 0;
+      const sodiumTarget = userTargets?.sodium_mg || 2300;
+      if (sodiumConsumed < sodiumTarget * 0.7) {
+        factors.push({ name: 'Low sodium', positive: true });
+      } else if (sodiumConsumed > sodiumTarget) {
+        factors.push({ name: 'High sodium', positive: false });
+      }
+    }
+
+    // Fiber impact (gut, stomach)
+    if (lowerName === 'gut' || lowerName === 'stomach') {
+      if (fiberConsumed >= fiberTarget * 0.8) {
+        factors.push({ name: 'Good fiber', positive: true });
+      } else if (fiberConsumed < fiberTarget * 0.3) {
+        factors.push({ name: 'Very low fiber', positive: false });
+      } else if (fiberConsumed < fiberTarget * 0.5) {
+        factors.push({ name: 'Low fiber', positive: false });
+      }
+    }
+
+    // Protein impact (liver, metabolic)
+    if (lowerName === 'liver' || lowerName === 'metabolic') {
+      if (proteinConsumed >= proteinTarget * 0.8) {
+        factors.push({ name: 'Good protein', positive: true });
+      } else if (proteinConsumed < proteinTarget * 0.3) {
+        factors.push({ name: 'Low protein', positive: false });
+      }
+    }
+
+    // Fat impact (liver, heart)
+    if (lowerName === 'liver' || lowerName === 'heart') {
+      const fatPercent = fatConsumed / fatTarget;
+      if (fatPercent >= 0.4 && fatPercent <= 0.8) {
+        factors.push({ name: 'Moderate fat', positive: true });
+      } else if (fatPercent > 1.2) {
+        factors.push({ name: 'High fat', positive: false });
+      }
+    }
+
+    // Sugar impact (liver, metabolic)
+    if (lowerName === 'liver' || lowerName === 'metabolic') {
+      const sugarConsumed = summary?.total_sugar_g || 0;
+      const sugarTarget = userTargets?.sugar_g || 50;
+      if (sugarConsumed < sugarTarget * 0.5) {
+        factors.push({ name: 'Low sugar', positive: true });
+      } else if (sugarConsumed > sugarTarget) {
+        factors.push({ name: 'High sugar', positive: false });
+      }
+    }
+
+    // Water impact (kidneys, brain, skin)
+    if (lowerName === 'kidneys' || lowerName === 'brain' || lowerName === 'skin') {
+      if (waterGlasses >= 6) {
+        factors.push({ name: 'Good hydration', positive: true });
+      } else if (waterGlasses < 3) {
+        factors.push({ name: 'Low water', positive: false });
+      }
+    }
+
+    // Brain specific - omega-3, antioxidants proxy
+    if (lowerName === 'brain') {
+      // Use fat as proxy for potential omega-3 intake
+      if (fatConsumed >= fatTarget * 0.5) {
+        factors.push({ name: 'Good glucose', positive: true });
+      } else {
+        factors.push({ name: 'Low omega-3', positive: false });
+      }
+    }
+
+    // Gut specific - prebiotics proxy
+    if (lowerName === 'gut') {
+      if (fiberConsumed < fiberTarget * 0.4) {
+        factors.push({ name: 'Low prebiotics', positive: false });
+      }
+      // Check if eating mostly processed foods (high calories, low fiber)
+      if (caloriesConsumed > 500 && fiberConsumed < 5) {
+        factors.push({ name: 'Processed foods', positive: false });
+      }
+    }
+
+    // Stomach specific - balanced pH
+    if (lowerName === 'stomach') {
+      if (fiberConsumed >= fiberTarget * 0.5 && proteinConsumed >= proteinTarget * 0.5) {
+        factors.push({ name: 'Balanced pH', positive: true });
+      }
+    }
+
+    // Return up to 3 factors, prioritize negatives for attention
+    const negatives = factors.filter(f => !f.positive);
+    const positives = factors.filter(f => f.positive);
+    return [...negatives.slice(0, 2), ...positives.slice(0, 3 - negatives.length)].slice(0, 3);
+  };
+
   // Convert to new organ health format for OrganHealthSection
   type OrganStatus = 'excellent' | 'good' | 'moderate' | 'attention';
   const organHealthData = organScores.map((organ) => {
@@ -247,11 +337,14 @@ export default function TummyTracker() {
       organ.score >= 60 ? 'good' :
       organ.score >= 40 ? 'moderate' : 'attention';
 
+    // Get nutritional factors for this organ
+    const nutritionFactors = getOrganFactors(organ.name);
+
     return {
       name: organ.name,
       score: organ.score,
       status,
-      factors: [
+      factors: nutritionFactors.length > 0 ? nutritionFactors : [
         {
           name: organ.trend === 'up' ? 'Improving' : organ.trend === 'down' ? 'Declining' : 'Stable',
           positive: organ.trend !== 'down',
@@ -370,6 +463,11 @@ export default function TummyTracker() {
     handleDeleteMeal(meal.id, meal.dish_name);
   };
 
+  const toggleOrgansExpanded = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsOrgansExpanded(!isOrgansExpanded);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -402,29 +500,14 @@ export default function TummyTracker() {
           fiberAlert={fiberConsumed < fiberTarget * 0.5}
         />
 
-        {/* AI Assistant Panel */}
+        {/* AI Health Coach Panel */}
         <View style={styles.section}>
           <AIAssistantPanel
             insight={aiInsight.insight}
             suggestion={aiInsight.suggestion}
-            onAskTummy={() => router.push('/' as any)}
+            onAskCoach={openAIPanel}
           />
         </View>
-
-        {/* Organ Health Section */}
-        {organHealthData.length > 0 && (
-          <View style={styles.section}>
-            <OrganHealthSection
-              organs={organHealthData}
-              avgScore={avgOrganScore}
-              priorityInsight={
-                organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')
-                  ? `Focus on ${organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')?.name.toLowerCase()} support today`
-                  : undefined
-              }
-            />
-          </View>
-        )}
 
         {/* Water Tracker */}
         <View style={styles.section}>
@@ -445,6 +528,50 @@ export default function TummyTracker() {
           />
         </View>
 
+        {/* Expandable Organ Health Section */}
+        {organHealthData.length > 0 && (
+          <View style={styles.section}>
+            {/* Expandable Header */}
+            <TouchableOpacity
+              style={styles.expandableHeader}
+              onPress={toggleOrgansExpanded}
+              activeOpacity={0.7}
+            >
+              <View style={styles.expandableHeaderLeft}>
+                <Text style={styles.expandableSectionTitle}>Organ Health</Text>
+                <View style={styles.avgScoreBadge}>
+                  <Text style={[
+                    styles.avgScoreBadgeText,
+                    { color: avgOrganScore >= 70 ? COLORS.primary : avgOrganScore >= 50 ? COLORS.moderate : COLORS.attention }
+                  ]}>
+                    {Math.round(avgOrganScore)}/100
+                  </Text>
+                </View>
+              </View>
+              <Ionicons
+                name={isOrgansExpanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+
+            {/* Expanded Content */}
+            {isOrgansExpanded && (
+              <View style={styles.expandableContent}>
+                <OrganHealthSection
+                  organs={organHealthData}
+                  avgScore={avgOrganScore}
+                  priorityInsight={
+                    organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')
+                      ? `Focus on ${organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')?.name.toLowerCase()} support today`
+                      : undefined
+                  }
+                />
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Weekly Overview */}
         <View style={styles.section}>
           <WeeklyOverview
@@ -464,8 +591,8 @@ export default function TummyTracker() {
           </View>
         )}
 
-        {/* Bottom padding for FAB */}
-        <View style={{ height: 100 }} />
+        {/* Bottom padding */}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* Loading Overlay */}
@@ -474,9 +601,6 @@ export default function TummyTracker() {
           <ActivityIndicator color={COLORS.primary} size="large" />
         </View>
       )}
-
-      {/* FAB */}
-      <FAB onPress={() => setShowQuickLog(true)} />
 
       {/* Quick Log Modal */}
       <QuickLogModal
@@ -595,21 +719,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fab: {
-    position: 'absolute',
-    right: SPACING.xl,
-    bottom: 100,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  fabGradient: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  // Expandable section styles
+  expandableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: COLORS.cardBg,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  expandableHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  expandableSectionTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  avgScoreBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+  },
+  avgScoreBadgeText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
+  },
+  expandableContent: {
+    marginTop: SPACING.md,
   },
 });

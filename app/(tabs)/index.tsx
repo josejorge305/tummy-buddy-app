@@ -29,6 +29,7 @@ import {
 } from '../../api/places';
 import { API_BASE_URL, getDishSuggestions, DishSuggestion, uploadDishImage } from '../../api/api';
 import { useMenuPrefetch } from '../../context/MenuPrefetchContext';
+import { useSetAIContext } from '../../context/AIAssistantContext';
 import {
   searchCachedDishes,
   getRecentDishSearches,
@@ -90,6 +91,16 @@ const DUMMY_DISH = {
 export default function HomeScreen() {
   const router = useRouter();
   const { prefetchMenu, getPrefetchStatus } = useMenuPrefetch();
+
+  // Set AI context for home screen
+  useSetAIContext({
+    screen: 'home',
+    restaurantId: null,
+    restaurantName: null,
+    dishId: null,
+    dishName: null,
+  });
+
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('restaurant');
 
@@ -134,9 +145,10 @@ export default function HomeScreen() {
     setRecentDishes(recent);
 
     // Load full cached data for recent dishes (for carousel with images)
+    // Pass placeId and restaurantName to ensure correct cache lookup
     const dishesWithCache: CachedDish[] = [];
     for (const r of recent) {
-      const cached = await getCachedDish(r.dishName);
+      const cached = await getCachedDish(r.dishName, r.placeId, r.restaurantName);
       if (cached) {
         dishesWithCache.push(cached);
       }

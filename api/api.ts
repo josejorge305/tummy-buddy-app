@@ -758,11 +758,14 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
     console.error('analyzeDish HTTP error:', res.status, raw.slice(0, 80));
     return {
       ok: false,
-      tummy_score: 82,
-      organs: {},
-      allergens: [],
-      fodmap: {},
-      insights: ['Analysis temporarily unavailable.'],
+      error: `HTTP ${res.status}`,
+      error_message: 'Analysis service temporarily unavailable. Please try again.',
+      // Don't return fake scores - let the UI handle the error state
+      tummy_score: undefined,
+      organs: undefined,
+      allergens: undefined,
+      fodmap: undefined,
+      insights: undefined,
       _raw: raw,
     } as unknown as AnalyzeDishResponse;
   }
@@ -778,11 +781,14 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
     console.error('TB analyzeDish JSON.parse failed:', e?.message || String(e));
     return {
       ok: false,
-      tummy_score: 82,
-      organs: {},
-      allergens: [],
-      fodmap: {},
-      insights: ['Analysis response was not valid JSON.'],
+      error: 'parse_error',
+      error_message: 'Failed to process analysis response. Please try again.',
+      // Don't return fake scores - let the UI handle the error state
+      tummy_score: undefined,
+      organs: undefined,
+      allergens: undefined,
+      fodmap: undefined,
+      insights: undefined,
       _raw: raw,
     } as unknown as AnalyzeDishResponse;
   }
@@ -1128,8 +1134,14 @@ export interface BatchDishInput {
 export interface BatchJobInfo {
   jobId: string;
   dishName: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cached';
   result?: AnalyzeDishResponse | null;
+  // When polling with results=1, backend includes job file data
+  data?: {
+    id: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'error';
+    result?: AnalyzeDishResponse | null;
+  };
 }
 
 export interface BatchAnalysisResponse {
@@ -1342,11 +1354,15 @@ export async function pollBatchUntilComplete(
 
     const batch = statusRes.batch;
 
-    // Notify for newly completed dishes
+    // Notify for newly completed dishes (includes 'cached' status from backend)
     for (const job of batch.jobs) {
-      if (job.status === 'completed' && job.result && !completedJobs.has(job.jobId)) {
+      // Check both paths: job.result (initial response) and job.data?.result (polling response)
+      const jobResult = job.result || job.data?.result;
+      const jobStatus = job.data?.status || job.status;
+
+      if ((jobStatus === 'completed' || jobStatus === 'cached') && jobResult && !completedJobs.has(job.jobId)) {
         completedJobs.add(job.jobId);
-        onDishComplete(job.jobId, job.dishName, job.result);
+        onDishComplete(job.jobId, job.dishName, jobResult);
       }
     }
 
@@ -1812,18 +1828,31 @@ export async function getDishSuggestions(
 // User Tracking & Meal Logging API
 // ============================================================
 
-// Get today's date in YYYY-MM-DD format (local timezone)
+// Get today's date in YYYY-MM-DD format
+// Uses local timezone but logs for debugging timezone issues
 export function getTodayDate(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const localDate = `${year}-${month}-${day}`;
+
+  // Also get UTC date for comparison
+  const utcYear = now.getUTCFullYear();
+  const utcMonth = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const utcDay = String(now.getUTCDate()).padStart(2, '0');
+  const utcDate = `${utcYear}-${utcMonth}-${utcDay}`;
+
+  console.log('[getTodayDate] Local:', localDate, 'UTC:', utcDate, 'TZ offset:', now.getTimezoneOffset(), 'minutes');
+
+  // Use UTC date to match server time (Cloudflare Workers use UTC)
+  return utcDate;
 }
 
 // User Profile Types
 export interface UserProfile {
   user_id: string;
+  display_name?: string | null;
   sex?: 'male' | 'female' | null;
   biological_sex?: 'male' | 'female' | null;
   birth_year?: number | null;
@@ -2035,6 +2064,26 @@ interface AllergenDefinitionsResponse {
 // ============================================================
 
 /**
+ * Map backend targets response to frontend interface
+ */
+function mapTargetsResponse(targets: any): UserDailyTargets | null {
+  if (!targets) return null;
+  return {
+    user_id: targets.user_id,
+    calories: targets.calories_target || targets.calories || 0,
+    protein_g: targets.protein_target_g || targets.protein_g || 0,
+    carbs_g: targets.carbs_target_g || targets.carbs_g || 0,
+    fat_g: targets.fat_target_g || targets.fat_g || 0,
+    fiber_g: targets.fiber_target_g || targets.fiber_g || 0,
+    sugar_g: targets.sugar_limit_g || targets.sugar_g || 0,
+    sodium_mg: targets.sodium_limit_mg || targets.sodium_mg || 0,
+    source: targets.source || 'calculated',
+    bmr: targets.bmr_kcal || targets.bmr || null,
+    tdee: targets.tdee_kcal || targets.tdee || null,
+  };
+}
+
+/**
  * Get user profile, targets, allergens, and organ priorities
  */
 export async function getUserProfile(userId: string): Promise<UserProfileResponse> {
@@ -2054,7 +2103,15 @@ export async function getUserProfile(userId: string): Promise<UserProfileRespons
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
-    return data as UserProfileResponse;
+    // Map targets to frontend interface
+    return {
+      ok: data.ok,
+      profile: data.profile,
+      targets: mapTargetsResponse(data.targets),
+      allergens: data.allergens,
+      organPriorities: data.organPriorities,
+      error: data.error,
+    };
   } catch (e: any) {
     console.error('getUserProfile error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
@@ -2082,13 +2139,20 @@ export async function updateUserProfile(
     });
 
     const data = await res.json();
+    console.log('updateUserProfile response:', JSON.stringify(data, null, 2));
 
     if (!res.ok) {
       console.error('updateUserProfile HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
-    return data as UpdateProfileResponse;
+    // Map targets to frontend interface
+    return {
+      ok: data.ok,
+      profile: data.profile,
+      targets: mapTargetsResponse(data.targets),
+      error: data.error,
+    };
   } catch (e: any) {
     console.error('updateUserProfile error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
@@ -2426,13 +2490,47 @@ export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerRes
     });
 
     const data = await res.json();
+    console.log('getWeeklyTracker raw response:', JSON.stringify(data, null, 2));
 
     if (!res.ok) {
       console.error('getWeeklyTracker HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
-    return data as WeeklyTrackerResponse;
+    // Map backend response fields to expected interface
+    // Backend returns: daily_summaries (with summary_date, meals_logged), averages
+    // Frontend expects: summaries (with date, meal_count), weeklyAverages
+    const rawSummaries = data.daily_summaries || data.summaries || [];
+    const mappedSummaries: DailySummary[] = rawSummaries.map((s: any) => ({
+      user_id: s.user_id,
+      date: s.summary_date || s.date,
+      total_calories: s.total_calories || 0,
+      total_protein_g: s.total_protein_g || 0,
+      total_carbs_g: s.total_carbs_g || 0,
+      total_fat_g: s.total_fat_g || 0,
+      total_fiber_g: s.total_fiber_g || 0,
+      total_sugar_g: s.total_sugar_g || 0,
+      total_sodium_mg: s.total_sodium_mg || 0,
+      meal_count: s.meals_logged ?? s.meal_count ?? 0,
+      organ_scores: s.organ_impacts_net || s.organ_scores || null,
+      daily_insight: s.daily_insight || null,
+    }));
+
+    const mappedResponse: WeeklyTrackerResponse = {
+      ok: data.ok,
+      summaries: mappedSummaries,
+      weeklyAverages: data.averages ? {
+        avg_calories: data.averages.avg_calories || 0,
+        avg_protein_g: data.averages.avg_protein_g || 0,
+        avg_carbs_g: data.averages.avg_carbs_g || 0,
+        avg_fat_g: data.averages.avg_fat_g || 0,
+        days_logged: data.days_with_data || 0,
+      } : null,
+      error: data.error,
+    };
+
+    console.log('getWeeklyTracker mapped response:', JSON.stringify(mappedResponse, null, 2));
+    return mappedResponse;
   } catch (e: any) {
     console.error('getWeeklyTracker error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
