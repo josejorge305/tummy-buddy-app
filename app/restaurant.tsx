@@ -1008,8 +1008,7 @@ export default function RestaurantScreen() {
           ) {
             console.log('[RestaurantScreen] Restaurant not available:', data.error);
             setError(
-              `Sorry, "${restaurantNameValue || 'this restaurant'}" doesn't appear to be available on Uber Eats in this area. ` +
-              `Try searching for a different restaurant or check if they offer delivery through Uber Eats.`
+              `We don't have access to "${restaurantNameValue || 'this restaurant'}" at this location. Try a different restaurant nearby.`
             );
             setLoading(false);
             return;
@@ -1034,8 +1033,7 @@ export default function RestaurantScreen() {
             ) {
               console.log('[RestaurantScreen] Restaurant not available (fallback):', data.error);
               setError(
-                `Sorry, "${restaurantNameValue || 'this restaurant'}" doesn't appear to be available on Uber Eats in this area. ` +
-                `Try searching for a different restaurant or check if they offer delivery through Uber Eats.`
+                `We don't have access to "${restaurantNameValue || 'this restaurant'}" at this location. Try a different restaurant nearby.`
               );
               setLoading(false);
               return;
