@@ -994,19 +994,22 @@ export default function RestaurantScreen() {
           data = await fetchMenuFast(restaurantNameValue, searchAddress, 50);
         }
 
-        // Check if menu fetch returned a validation error (wrong restaurant)
+        // Check if menu fetch returned a validation error (wrong restaurant) or HTTP error
         if (data && !data.ok && data.error) {
-          const errorMsg = data.error;
-          // Check for validation-related errors
+          const errorMsg = data.error.toLowerCase();
+          // Check for validation-related errors or "not on platform" errors
           if (
-            errorMsg.includes('No matching restaurant') ||
+            errorMsg.includes('no matching restaurant') ||
+            errorMsg.includes('no restaurants found') ||
             errorMsg.includes('validation') ||
-            errorMsg.includes('not found')
+            errorMsg.includes('not found') ||
+            errorMsg.includes('unavailable') ||
+            errorMsg.includes('http 404')
           ) {
-            console.log('[RestaurantScreen] Restaurant validation failed:', errorMsg);
+            console.log('[RestaurantScreen] Restaurant not available:', data.error);
             setError(
-              `Sorry, we couldn't find the menu for "${restaurantNameValue || 'this restaurant'}". ` +
-              `This restaurant may not be available in our system yet. Please try searching for a different restaurant.`
+              `Sorry, "${restaurantNameValue || 'this restaurant'}" doesn't appear to be available on Uber Eats in this area. ` +
+              `Try searching for a different restaurant or check if they offer delivery through Uber Eats.`
             );
             setLoading(false);
             return;
@@ -1020,16 +1023,19 @@ export default function RestaurantScreen() {
 
           // Check validation errors from fallback too
           if (data && !data.ok && data.error) {
-            const errorMsg = data.error;
+            const errorMsg = data.error.toLowerCase();
             if (
-              errorMsg.includes('No matching restaurant') ||
+              errorMsg.includes('no matching restaurant') ||
+              errorMsg.includes('no restaurants found') ||
               errorMsg.includes('validation') ||
-              errorMsg.includes('not found')
+              errorMsg.includes('not found') ||
+              errorMsg.includes('unavailable') ||
+              errorMsg.includes('http 404')
             ) {
-              console.log('[RestaurantScreen] Restaurant validation failed (fallback):', errorMsg);
+              console.log('[RestaurantScreen] Restaurant not available (fallback):', data.error);
               setError(
-                `Sorry, we couldn't find the menu for "${restaurantNameValue || 'this restaurant'}". ` +
-                `This restaurant may not be available in our system yet. Please try searching for a different restaurant.`
+                `Sorry, "${restaurantNameValue || 'this restaurant'}" doesn't appear to be available on Uber Eats in this area. ` +
+                `Try searching for a different restaurant or check if they offer delivery through Uber Eats.`
               );
               setLoading(false);
               return;
