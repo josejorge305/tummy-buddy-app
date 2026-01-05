@@ -1457,6 +1457,8 @@ export default function HomeScreen() {
                           <Pressable
                             style={styles.viewRestaurantButton}
                             onPress={() => {
+                              // Use the same image source logic as the display (item.imageUrl || analysis?.recipe_image)
+                              const dishImage = item.imageUrl || analysis?.recipe_image;
                               router.push({
                                 pathname: '/dish',
                                 params: {
@@ -1464,7 +1466,7 @@ export default function HomeScreen() {
                                   ...(item.restaurantName ? { restaurantName: item.restaurantName } : {}),
                                   ...(item.restaurantAddress ? { restaurantAddress: item.restaurantAddress } : {}),
                                   ...(item.placeId ? { placeId: item.placeId } : {}),
-                                  ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+                                  ...(dishImage ? { imageUrl: dishImage } : {}),
                                   fromCache: 'true',
                                 },
                               });

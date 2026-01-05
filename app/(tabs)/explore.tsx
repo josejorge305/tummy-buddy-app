@@ -3,7 +3,7 @@
  * Main daily tracking view with nutrition progress, meals, and weekly overview
  */
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +31,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useSetAIContext, useAIAssistant } from '../../context/AIAssistantContext';
 import { useRouter } from 'expo-router';
-import { LoggedMeal } from '../../api/api';
+import { LoggedMeal, getTodayDate } from '../../api/api';
 import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../components/PortionSheet';
 
 // Tracker components
@@ -107,9 +109,67 @@ export default function DailyTracker() {
   const waterGlasses = todayTracker?.water?.total_glasses || 0;
   const waterTargetGlasses = todayTracker?.water?.target_glasses || 8;
 
+  // Track the last loaded date for midnight reset detection
+  const lastLoadedDateRef = useRef<string>(getTodayDate());
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  // AppState monitoring - reload tracker when app returns to foreground
+  // This handles the case where user leaves app open overnight
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log('[DailyTracker] AppState change:', appStateRef.current, '->', nextAppState);
+
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to foreground - check if date changed
+        const currentDate = getTodayDate();
+        console.log('[DailyTracker] App foregrounded. Last loaded:', lastLoadedDateRef.current, 'Current:', currentDate);
+
+        if (currentDate !== lastLoadedDateRef.current) {
+          console.log('[DailyTracker] Date changed! Reloading fresh data for new day.');
+          lastLoadedDateRef.current = currentDate;
+          loadDailyTracker();
+          loadWeeklyTracker();
+        } else {
+          // Same day but still refresh to catch any external changes
+          console.log('[DailyTracker] Same day, refreshing tracker data.');
+          loadDailyTracker();
+        }
+      }
+
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [loadDailyTracker, loadWeeklyTracker]);
+
+  // Periodic date check - handles midnight transition while app is in foreground
+  // Checks every 60 seconds if the date has changed
+  useEffect(() => {
+    const checkDateChange = () => {
+      const currentDate = getTodayDate();
+      if (currentDate !== lastLoadedDateRef.current) {
+        console.log('[DailyTracker] Midnight detected! Date changed from', lastLoadedDateRef.current, 'to', currentDate);
+        lastLoadedDateRef.current = currentDate;
+        // Reload tracker for the new day
+        loadDailyTracker();
+        loadWeeklyTracker();
+      }
+    };
+
+    // Check immediately on mount
+    checkDateChange();
+
+    // Set up interval to check every 60 seconds
+    const intervalId = setInterval(checkDateChange, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [loadDailyTracker, loadWeeklyTracker]);
+
   // Load tracker data on mount and when userId becomes available
   useEffect(() => {
     console.log('[DailyTracker] Loading tracker data on mount/userId change');
+    lastLoadedDateRef.current = getTodayDate();
     loadDailyTracker();
     loadWeeklyTracker();
   }, [loadDailyTracker, loadWeeklyTracker]);

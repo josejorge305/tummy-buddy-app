@@ -42,9 +42,12 @@ import {
 import { fetchPlaceDetails } from '../api/places';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { useUserPrefs } from '../context/UserPrefsContext';
-import { useSetAIContext } from '../context/AIAssistantContext';
+import { useSetAIContext, useAIAssistant, MenuItem } from '../context/AIAssistantContext';
+import { useDisclaimer } from '../context/DisclaimerContext';
+import { AllergenBanner, RestaurantAllergenPopup } from '../components/legal';
 import { buildDishViewModel } from '../utils/dishViewModel';
 import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
+import { MealLogModal, MealLogData } from '../components/MealLogModal';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -733,6 +736,7 @@ export default function RestaurantScreen() {
   const { placeId, restaurantName, address, lat, lng } = useLocalSearchParams();
   const { selectedAllergens, userId, loadDailyTracker } = useUserPrefs();
   const { getPrefetchedMenu, isMenuReady, getPrefetchStatus } = useMenuPrefetch();
+  const { shouldShowRestaurantPopup, markRestaurantPopupShown } = useDisclaimer();
 
   // Extract route params early (needed by callbacks)
   const placeIdValue = Array.isArray(placeId) ? placeId[0] : placeId;
@@ -743,7 +747,10 @@ export default function RestaurantScreen() {
   const latValue = latValueRaw ?? undefined;
   const lngValue = lngValueRaw ?? undefined;
 
-  // Set AI context for this page
+  // Get AI assistant context setter
+  const { setPageContext } = useAIAssistant();
+
+  // Set AI context for this page (basic info first)
   useSetAIContext({
     screen: 'restaurant',
     restaurantId: placeIdValue || null,
@@ -751,6 +758,29 @@ export default function RestaurantScreen() {
     dishId: null,
     dishName: null,
   });
+
+  // Update AI context with menu items when menu loads
+  React.useEffect(() => {
+    if (menu?.sections && menu.sections.length > 0) {
+      // Extract all menu items for AI context
+      const allItems: MenuItem[] = [];
+      for (const section of menu.sections) {
+        for (const item of section.items || []) {
+          allItems.push({
+            name: item.name,
+            description: item.description || item.menuDescription || undefined,
+            section: section.name || section.title,
+            price: item.priceText || (item.rawPrice ? `$${item.rawPrice.toFixed(2)}` : undefined),
+            calories: item.restaurantCalories || null,
+          });
+        }
+      }
+      // Update the AI context with menu items
+      setPageContext({
+        menuItems: allItems,
+      });
+    }
+  }, [menu, setPageContext]);
 
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});
@@ -786,6 +816,16 @@ export default function RestaurantScreen() {
   const [todayLoggedMeals, setTodayLoggedMeals] = useState<LoggedMeal[]>([]);
   const [loggedToast, setLoggedToast] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
+  const [showAllergenPopup, setShowAllergenPopup] = useState(false);
+
+  // Meal Log Modal state (new photo analysis flow)
+  const [showMealLogModal, setShowMealLogModal] = useState(false);
+  const [mealLogDish, setMealLogDish] = useState<{
+    itemId: string;
+    name: string;
+    section: string;
+    analysis: AnalyzeDishResponse | null;
+  } | null>(null);
 
   // Category navigation state
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -843,12 +883,12 @@ export default function RestaurantScreen() {
     return 'entree';
   }, []);
 
-  // Handle opening portion sheet for a dish
+  // Handle opening meal log modal for a dish (new photo analysis flow)
   const handleQuickLog = useCallback(
     async (itemId: string, item: any, sectionName: string) => {
       let analysis = analysisByItemId[itemId] || null;
 
-      // If organs are pending, fetch them now before showing portion sheet
+      // If organs are pending, fetch them now before showing modal
       if (analysis && analysis.organs_pending && analysis.organs_poll_key) {
         console.log('[handleQuickLog] Fetching pending organs for:', item?.name);
         try {
@@ -866,6 +906,140 @@ export default function RestaurantScreen() {
           }
         } catch (e) {
           console.warn('[handleQuickLog] Failed to fetch organs:', e);
+        }
+      }
+
+      // Show the new MealLogModal with photo analysis option
+      setMealLogDish({
+        itemId,
+        name: item?.name || '',
+        section: sectionName,
+        analysis,
+      });
+      setShowMealLogModal(true);
+    },
+    [analysisByItemId]
+  );
+
+  // Handle meal log completion from MealLogModal
+  const handleMealLogComplete = useCallback(
+    async (logData: MealLogData) => {
+      if (!userId || !mealLogDish) {
+        setShowMealLogModal(false);
+        return;
+      }
+
+      setIsLogging(true);
+
+      try {
+        const { name, section, analysis } = mealLogDish;
+        const restName = restaurant?.name || restaurantNameValue || '';
+
+        // Get baseline nutrition from analysis or use zeros
+        const ns = analysis?.nutrition_summary;
+        const baselineCalories = ns?.calories || 0;
+        const baselineProtein = ns?.protein_g || 0;
+        const baselineCarbs = ns?.carbs_g || 0;
+        const baselineFat = ns?.fat_g || 0;
+        const baselineFiber = ns?.fiber_g || 0;
+        const baselineSugar = ns?.sugar_g || 0;
+        const baselineSodium = ns?.sodium_mg || 0;
+
+        // Calculate consumed values based on portion
+        const portionMultiplier = logData.portionPercent / 100;
+
+        // Get risk flags from allergens
+        const riskFlags: string[] = [];
+        if (analysis?.allergen_flags) {
+          analysis.allergen_flags.forEach((af: any) => {
+            if (af.present === 'yes' || af.present === 'likely') {
+              riskFlags.push(af.kind);
+            }
+          });
+        }
+
+        // Prepare organ impacts
+        const baselineOrgans: Record<string, number> = {};
+        if (analysis?.organs?.organs) {
+          analysis.organs.organs.forEach((o: any) => {
+            baselineOrgans[o.organ] = o.score;
+          });
+        }
+
+        // Call logMeal API with photo status if using photo analysis
+        await logMeal(userId, {
+          dish_name: name,
+          dish_id: mealLogDish.itemId,
+          restaurant_name: restName,
+          portion_factor: portionMultiplier,
+          portion_percent: logData.portionPercent,
+          portion_multiplier: portionMultiplier,
+          shared_with_count: logData.sharedWithCount,
+          leftovers_saved: logData.leftoversSaved,
+          portion_mode: logData.portionMode,
+          baseline_calories: baselineCalories,
+          baseline_protein_g: baselineProtein,
+          baseline_carbs_g: baselineCarbs,
+          baseline_fat_g: baselineFat,
+          baseline_fiber_g: baselineFiber,
+          baseline_sugar_g: baselineSugar,
+          baseline_sodium_mg: baselineSodium,
+          baseline_organ_impacts: baselineOrgans,
+          calories: Math.round(baselineCalories * portionMultiplier),
+          protein_g: Math.round(baselineProtein * portionMultiplier),
+          carbs_g: Math.round(baselineCarbs * portionMultiplier),
+          fat_g: Math.round(baselineFat * portionMultiplier),
+          fiber_g: Math.round(baselineFiber * portionMultiplier),
+          sugar_g: Math.round(baselineSugar * portionMultiplier),
+          sodium_mg: Math.round(baselineSodium * portionMultiplier),
+          risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
+          full_analysis: analysis,
+        });
+
+        // Refresh today's meals
+        const updatedMeals = await getMealsForDate(userId, getTodayISO());
+        setTodayLoggedMeals(updatedMeals);
+
+        // Show toast
+        setLoggedToast(true);
+        setTimeout(() => setLoggedToast(false), 2500);
+
+        // Reload tracker
+        loadDailyTracker();
+      } catch (err) {
+        console.error('[handleMealLogComplete] Error logging meal:', err);
+      }
+
+      setIsLogging(false);
+      setShowMealLogModal(false);
+      setMealLogDish(null);
+    },
+    [userId, mealLogDish, restaurant?.name, restaurantNameValue, loadDailyTracker]
+  );
+
+  // Handle opening portion sheet for a dish (legacy, still used for editing)
+  const handleOpenPortionSheet = useCallback(
+    async (itemId: string, item: any, sectionName: string) => {
+      let analysis = analysisByItemId[itemId] || null;
+
+      // If organs are pending, fetch them now before showing portion sheet
+      if (analysis && analysis.organs_pending && analysis.organs_poll_key) {
+        console.log('[handleOpenPortionSheet] Fetching pending organs for:', item?.name);
+        try {
+          const organsResult = await pollOrgansStatus(analysis.organs_poll_key, undefined, 1500, 10);
+          if (organsResult.ok && organsResult.ready && organsResult.organs) {
+            // Merge organs into analysis
+            analysis = {
+              ...analysis,
+              organs: organsResult.organs,
+              organs_pending: false,
+            };
+            // Update the cache
+            setAnalysisByItemId((prev) => ({ ...prev, [itemId]: analysis }));
+            console.log('[handleOpenPortionSheet] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
+          }
+        } catch (e) {
+          console.warn('[handleOpenPortionSheet] Failed to fetch organs:', e);
         }
       }
 
@@ -1084,6 +1258,15 @@ export default function RestaurantScreen() {
     getPrefetchedMenu,
     getPrefetchStatus,
   ]);
+
+  // Show allergen popup on first visit to this restaurant
+  useEffect(() => {
+    if (!loading && menu && placeIdValue && shouldShowRestaurantPopup(placeIdValue)) {
+      // Small delay so the menu renders first
+      const timer = setTimeout(() => setShowAllergenPopup(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, menu, placeIdValue, shouldShowRestaurantPopup]);
 
   // Fetch Google Places photo reference for restaurant hero image
   useEffect(() => {
@@ -1658,6 +1841,9 @@ export default function RestaurantScreen() {
             ) : null}
           </View>
 
+          {/* Allergen Disclaimer Banner */}
+          <AllergenBanner style={{ marginHorizontal: 0, marginTop: 8 }} />
+
           {/* Category Navigation Bar */}
           {categoryNames.length > 0 && (
             <View
@@ -1942,11 +2128,48 @@ export default function RestaurantScreen() {
                       </View>
                     )}
 
+                    {/* Inline Nutrition Facts - shown when dish has been analyzed */}
+                    {analysis?.ok && analysis.nutrition_summary && (
+                      <View style={styles.inlineNutritionRow}>
+                        <View style={styles.inlineNutritionItem}>
+                          <Text style={styles.inlineNutritionValue}>
+                            {Math.round(analysis.nutrition_summary.energyKcal || 0)}
+                          </Text>
+                          <Text style={styles.inlineNutritionLabel}>kcal</Text>
+                        </View>
+                        <View style={styles.inlineNutritionDivider} />
+                        <View style={styles.inlineNutritionItem}>
+                          <Text style={styles.inlineNutritionValue}>
+                            {Math.round(analysis.nutrition_summary.protein_g || 0)}g
+                          </Text>
+                          <Text style={styles.inlineNutritionLabel}>Protein</Text>
+                        </View>
+                        <View style={styles.inlineNutritionDivider} />
+                        <View style={styles.inlineNutritionItem}>
+                          <Text style={styles.inlineNutritionValue}>
+                            {Math.round(analysis.nutrition_summary.carbs_g || 0)}g
+                          </Text>
+                          <Text style={styles.inlineNutritionLabel}>Carbs</Text>
+                        </View>
+                        <View style={styles.inlineNutritionDivider} />
+                        <View style={styles.inlineNutritionItem}>
+                          <Text style={styles.inlineNutritionValue}>
+                            {Math.round(analysis.nutrition_summary.fat_g || 0)}g
+                          </Text>
+                          <Text style={styles.inlineNutritionLabel}>Fat</Text>
+                        </View>
+                      </View>
+                    )}
+
                     <TouchableOpacity
                       onPress={() => handleShowAnalysis(String(itemId), item, section.name || '')}
                     >
                       <Text style={styles.showMoreText}>
-                        {isAnalysisLoading ? 'Analyzing…' : 'Show analysis'}
+                        {isAnalysisLoading
+                          ? 'Analyzing…'
+                          : analysis?.ok
+                            ? 'Show Digestive Impact, Recipe, Wine Pairing...'
+                            : 'Show analysis'}
                       </Text>
                     </TouchableOpacity>
 
@@ -2063,7 +2286,7 @@ export default function RestaurantScreen() {
         </View>
       )}
 
-      {/* Portion Sheet */}
+      {/* Portion Sheet (legacy, for editing existing meals) */}
       <PortionSheet
         visible={showPortionSheet}
         onClose={() => setShowPortionSheet(false)}
@@ -2079,6 +2302,29 @@ export default function RestaurantScreen() {
             ? getLoggedMealForDish(portionSheetDish.name)?.portion_percent
             : undefined
         }
+      />
+
+      {/* Meal Log Modal (new photo analysis flow) */}
+      <MealLogModal
+        visible={showMealLogModal}
+        onClose={() => {
+          setShowMealLogModal(false);
+          setMealLogDish(null);
+        }}
+        onLogComplete={handleMealLogComplete}
+        dishName={mealLogDish?.name || ''}
+        dishId={mealLogDish?.itemId}
+        restaurantName={restaurant?.name || restaurantNameValue || ''}
+        analysis={mealLogDish?.analysis || undefined}
+        userId={userId || ''}
+      />
+
+      {/* Restaurant Allergen Popup - shows once per restaurant */}
+      <RestaurantAllergenPopup
+        restaurantId={placeIdValue || ''}
+        restaurantName={restaurantNameValue || restaurant?.name || 'this restaurant'}
+        visible={showAllergenPopup}
+        onDismiss={() => setShowAllergenPopup(false)}
       />
     </SafeAreaView>
   );
@@ -2951,6 +3197,38 @@ const styles = StyleSheet.create({
   inlineAllergenPillText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  // Inline nutrition facts row (compact version for dish cards)
+  inlineNutritionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(45, 212, 191, 0.08)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  inlineNutritionItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  inlineNutritionValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  inlineNutritionLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  inlineNutritionDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   // NEW: Module wrapper styles for expandable cards
   moduleWrapper: {

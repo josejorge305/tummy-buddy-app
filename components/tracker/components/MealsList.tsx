@@ -52,6 +52,8 @@ interface Meal {
   risk_flags?: string[] | null;
   portion_percent?: number | null;
   shared_with_count?: number | null;
+  // Photo analysis status
+  photo_status?: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null;
   // Image from full_analysis.recipe_image or cache
   full_analysis?: {
     recipe_image?: string | null;
@@ -145,6 +147,7 @@ export function MealsList({
               restaurantName={meal.restaurant_name}
               portionPercent={meal.portion_percent}
               sharedWithCount={meal.shared_with_count}
+              photoStatus={meal.photo_status}
               imageUrl={meal.full_analysis?.recipe_image}
               onPress={() => onMealPress?.(meal)}
               onLongPress={() => onMealLongPress?.(meal)}

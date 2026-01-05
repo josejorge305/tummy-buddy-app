@@ -606,7 +606,7 @@ export async function fetchMenuFast(
     console.log('fetchMenuFast raw snippet:', raw.slice(0, 200));
 
     if (!res.ok) {
-      console.error('fetchMenuFast HTTP error:', res.status);
+      console.error('fetchMenuFast HTTP error:', res.status, 'URL:', url, 'Response:', raw.slice(0, 300));
       return { ok: false, error: `HTTP ${res.status}` };
     }
 
@@ -1159,6 +1159,7 @@ export interface BatchAnalysisResponse {
 
 export interface BatchStatusResponse {
   ok: boolean;
+  rateLimited?: boolean;
   batch: BatchAnalysisResponse;
 }
 
@@ -1257,8 +1258,11 @@ export async function getBatchStatus(
 
     if (!res.ok) {
       console.error('TB getBatchStatus HTTP error:', res.status, text.slice(0, 200));
+      // Return special status for rate limiting so polling can back off
+      const isRateLimited = res.status === 429;
       return {
         ok: false,
+        rateLimited: isRateLimited,
         batch: {
           ok: false,
           batchId,
@@ -1266,7 +1270,7 @@ export async function getBatchStatus(
           totalCount: 0,
           completedCount: 0,
           failedCount: 0,
-          status: 'failed' as any,
+          status: isRateLimited ? ('rate_limited' as any) : ('failed' as any),
         },
       };
     }
@@ -1345,15 +1349,29 @@ export async function pollBatchUntilComplete(
   maxAttempts: number = 60
 ): Promise<BatchAnalysisResponse | null> {
   const completedJobs = new Set<string>();
+  let currentInterval = pollIntervalMs;
+  let rateLimitBackoffs = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const statusRes = await getBatchStatus(batchId, true);
 
     if (!statusRes.ok) {
+      // Handle rate limiting with exponential backoff
+      if (statusRes.rateLimited) {
+        rateLimitBackoffs++;
+        const backoffMs = Math.min(pollIntervalMs * Math.pow(2, rateLimitBackoffs), 30000);
+        console.log(`TB pollBatchUntilComplete: rate limited, backing off ${backoffMs}ms (attempt ${attempt})`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
       console.log('TB pollBatchUntilComplete: batch status error, attempt', attempt);
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await new Promise((resolve) => setTimeout(resolve, currentInterval));
       continue;
     }
+
+    // Reset backoff on successful request
+    rateLimitBackoffs = 0;
+    currentInterval = pollIntervalMs;
 
     const batch = statusRes.batch;
 
@@ -1379,7 +1397,7 @@ export async function pollBatchUntilComplete(
     }
 
     // Wait before next poll
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    await new Promise((resolve) => setTimeout(resolve, currentInterval));
   }
 
   console.log('TB pollBatchUntilComplete: timeout after', maxAttempts, 'attempts');
@@ -1903,6 +1921,26 @@ export interface UserOrganPriority {
 
 export type PortionMode = 'preset' | 'custom' | 'shared' | 'leftovers' | 'count';
 
+// Photo analysis status for meal logging
+export type PhotoAnalysisStatus = 'pending_after_photo' | 'analyzing' | 'completed' | 'manual';
+
+// Individual item breakdown from photo analysis
+export interface PhotoAnalysisItem {
+  name: string;
+  percentConsumed: number;
+  caloriesEaten: number;
+  caloriesLeft: number;
+}
+
+// Photo analysis result
+export interface PhotoAnalysisResult {
+  percentConsumed: number;
+  caloriesEaten: number;
+  caloriesLeft: number;
+  items: PhotoAnalysisItem[];
+  confidence: number;
+}
+
 export interface LoggedMeal {
   id: number;
   user_id: string;
@@ -1918,6 +1956,11 @@ export interface LoggedMeal {
   shared_with_count?: number | null;
   leftovers_saved?: boolean | null;
   portion_mode?: PortionMode | null;
+  // Photo analysis fields
+  photo_status?: PhotoAnalysisStatus | null;
+  before_photo_url?: string | null;
+  after_photo_url?: string | null;
+  photo_analysis?: PhotoAnalysisResult | null;
   // Baseline values (full serving, before portion scaling)
   baseline_calories?: number | null;
   baseline_protein_g?: number | null;
@@ -2863,12 +2906,28 @@ export interface AIContextResponse {
 }
 
 /**
+ * Menu context for AI assistant (when user is viewing a restaurant)
+ */
+export interface AIMenuContext {
+  restaurantName: string;
+  restaurantId?: string | null;
+  menuItems: Array<{
+    name: string;
+    description?: string;
+    section?: string;
+    price?: string;
+    calories?: number | null;
+  }>;
+}
+
+/**
  * Send a message to the AI assistant and get a response
  */
 export async function sendAssistantMessage(
   userId: string,
   message: string,
-  conversationId?: number | null
+  conversationId?: number | null,
+  menuContext?: AIMenuContext | null
 ): Promise<AIChatResponse> {
   const url = `${API_BASE_URL}/api/assistant/chat`;
   console.log('sendAssistantMessage calling:', url);
@@ -2884,6 +2943,7 @@ export async function sendAssistantMessage(
         user_id: userId,
         message,
         conversation_id: conversationId || undefined,
+        menu_context: menuContext || undefined,
       }),
     });
 
@@ -2986,4 +3046,150 @@ export async function getAssistantContext(userId: string): Promise<AIContextResp
     console.error('getAssistantContext error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
+}
+
+// ============================================================
+// Photo-Based Meal Logging
+// ============================================================
+
+/**
+ * Upload a meal photo (before or after) and get a URL back.
+ * Photos are stored temporarily for analysis.
+ */
+export async function uploadMealPhoto(
+  userId: string,
+  photoUri: string,
+  photoType: 'before' | 'after'
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const url = `${GATEWAY_BASE_URL}/api/meal-photo/upload`;
+  console.log('TB uploadMealPhoto calling:', url, photoType);
+
+  try {
+    // Create form data for upload
+    const formData = new FormData();
+    const filename = `${photoType}_${Date.now()}.jpg`;
+
+    // @ts-ignore - React Native FormData accepts this format
+    formData.append('photo', {
+      uri: photoUri,
+      type: 'image/jpeg',
+      name: filename,
+    });
+    formData.append('userId', userId);
+    formData.append('photoType', photoType);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('uploadMealPhoto HTTP error:', res.status, data);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, url: data.url };
+  } catch (e: any) {
+    console.error('uploadMealPhoto error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Upload failed' };
+  }
+}
+
+/**
+ * Analyze before and after photos to determine consumption percentage.
+ * Returns detailed breakdown by item.
+ */
+export async function analyzePhotoConsumption(
+  beforePhotoUrl: string,
+  afterPhotoUrl: string,
+  dishName: string,
+  baselineCalories: number
+): Promise<{ ok: boolean; analysis?: PhotoAnalysisResult; error?: string }> {
+  const url = `${GATEWAY_BASE_URL}/api/meal-photo/analyze`;
+  console.log('TB analyzePhotoConsumption calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        beforePhotoUrl,
+        afterPhotoUrl,
+        dishName,
+        baselineCalories,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('analyzePhotoConsumption HTTP error:', res.status, data);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, analysis: data.analysis };
+  } catch (e: any) {
+    console.error('analyzePhotoConsumption error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Analysis failed' };
+  }
+}
+
+/**
+ * Update a logged meal with after photo and analysis results.
+ * Call this after user takes the after photo.
+ */
+export async function updateMealWithPhotoAnalysis(
+  userId: string,
+  mealId: number,
+  afterPhotoUrl: string,
+  analysis: PhotoAnalysisResult
+): Promise<{ ok: boolean; meal?: LoggedMeal; error?: string }> {
+  const url = `${GATEWAY_BASE_URL}/api/tracker/meals/${mealId}/photo-analysis`;
+  console.log('TB updateMealWithPhotoAnalysis calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        afterPhotoUrl,
+        analysis,
+        photoStatus: 'completed',
+        // Update portion based on analysis
+        portionPercent: analysis.percentConsumed,
+        calories: analysis.caloriesEaten,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('updateMealWithPhotoAnalysis HTTP error:', res.status, data);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, meal: data.meal };
+  } catch (e: any) {
+    console.error('updateMealWithPhotoAnalysis error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Update failed' };
+  }
+}
+
+/**
+ * Get meals that are pending after photo (status = 'pending_after_photo').
+ * These are meals where user took before photo but hasn't taken after photo yet.
+ */
+export async function getPendingPhotoMeals(
+  userId: string,
+  date?: string
+): Promise<LoggedMeal[]> {
+  const targetDate = date || getTodayISO();
+  const allMeals = await getMealsForDate(userId, targetDate);
+  return allMeals.filter((meal) => meal.photo_status === 'pending_after_photo');
 }

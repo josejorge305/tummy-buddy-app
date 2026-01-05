@@ -23,6 +23,8 @@ interface MealCardProps {
   portionPercent?: number | null;
   sharedWithCount?: number | null;
   imageUrl?: string | null;
+  // Photo analysis status
+  photoStatus?: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null;
   onPress?: () => void;
   onLongPress?: () => void;
 }
@@ -91,16 +93,19 @@ export function MealCard({
   portionPercent,
   sharedWithCount,
   imageUrl,
+  photoStatus,
   onPress,
   onLongPress,
 }: MealCardProps) {
   const scoreColor = healthScore ? getScoreColor(healthScore) : COLORS.primary;
   const portionLabel = getPortionLabel(portionPercent, sharedWithCount);
   const isRestaurant = !!restaurantName;
+  const isPendingPhoto = photoStatus === 'pending_after_photo';
+  const isAnalyzing = photoStatus === 'analyzing';
 
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.container, isPendingPhoto && styles.containerPending]}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={0.7}
@@ -122,6 +127,20 @@ export function MealCard({
             )}
           </View>
         )}
+        {/* Pending indicator dot */}
+        {isPendingPhoto && (
+          <View style={styles.pendingIndicator}>
+            <View style={styles.pendingDot} />
+          </View>
+        )}
+        {/* Complete indicator checkmark */}
+        {photoStatus === 'completed' && (
+          <View style={styles.completeIndicator}>
+            <Svg width={10} height={10} viewBox="0 0 24 24" fill="none">
+              <Path d="M5 12l5 5L20 7" stroke="#0a0f1a" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </View>
+        )}
       </View>
 
       {/* Meal Info */}
@@ -130,7 +149,12 @@ export function MealCard({
           <Text style={styles.name} numberOfLines={1}>
             {name}
           </Text>
-          {portionLabel && (
+          {isPendingPhoto && (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>After photo needed</Text>
+            </View>
+          )}
+          {!isPendingPhoto && portionLabel && (
             <View style={styles.portionPill}>
               <Text style={styles.portionText}>{portionLabel}</Text>
             </View>
@@ -139,7 +163,9 @@ export function MealCard({
         <View style={styles.metaRow}>
           <Text style={styles.time}>{formatTime(time)}</Text>
           <Text style={styles.metaSeparator}>·</Text>
-          <Text style={styles.calories}>{Math.round(calories)} cal</Text>
+          <Text style={[styles.calories, isPendingPhoto && styles.caloriesPending]}>
+            {isPendingPhoto ? `~${Math.round(calories)} cal` : `${Math.round(calories)} cal`}
+          </Text>
           {restaurantName && (
             <>
               <Text style={styles.metaSeparator}>·</Text>
@@ -147,6 +173,15 @@ export function MealCard({
             </>
           )}
         </View>
+        {/* Progress bar for pending meals */}
+        {isPendingPhoto && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressTrack}>
+              <View style={styles.progressFill} />
+            </View>
+            <Text style={styles.progressLabel}>Tap when done eating</Text>
+          </View>
+        )}
       </View>
 
       {/* Health Score Badge */}
@@ -252,5 +287,75 @@ const styles = StyleSheet.create({
   scoreText: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
+  },
+  // Pending photo styles
+  containerPending: {
+    borderColor: 'rgba(45, 212, 191, 0.4)',
+    backgroundColor: 'rgba(13, 26, 31, 0.5)',
+  },
+  pendingIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 14,
+    height: 14,
+    backgroundColor: '#0a0f1a',
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingDot: {
+    width: 10,
+    height: 10,
+    backgroundColor: '#2dd4bf',
+    borderRadius: 5,
+  },
+  completeIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    backgroundColor: '#2dd4bf',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingBadge: {
+    backgroundColor: 'rgba(45, 212, 191, 0.2)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  pendingBadgeText: {
+    color: '#2dd4bf',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  caloriesPending: {
+    color: '#2dd4bf',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: '#1e293b',
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    width: '50%',
+    height: '100%',
+    backgroundColor: '#2dd4bf',
+    borderRadius: 100,
+  },
+  progressLabel: {
+    fontSize: 11,
+    color: '#2dd4bf',
   },
 });

@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CircularProgress } from './CircularProgress';
 import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../utils/colors';
+import { InfoIconTooltip } from '../../legal';
 
 interface DailySummaryCardProps {
   calories: { current: number; target: number };
@@ -130,9 +131,12 @@ export function DailySummaryCard({
 
       {/* Smart Insight */}
       <View style={styles.insightContainer}>
-        <Text style={styles.insightText}>
-          <Text style={styles.insightHighlight}>{remaining} cal</Text> remaining · {insight}
-        </Text>
+        <View style={styles.insightRow}>
+          <Text style={styles.insightText}>
+            <Text style={styles.insightHighlight}>{remaining} cal</Text> remaining · {insight}
+          </Text>
+          <InfoIconTooltip type="calorie" size={14} color={COLORS.textMuted} />
+        </View>
       </View>
     </View>
   );
@@ -189,6 +193,11 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  insightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   insightText: {
     fontSize: FONT_SIZES.sm,

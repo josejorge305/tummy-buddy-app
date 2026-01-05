@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -190,45 +190,45 @@ export default function DishScreen() {
     loadDishAnalysis();
   }, [dishName]);
 
-  // Auto-redirect to likely-recipe screen once analysis completes
-  useEffect(() => {
-    if (!isLoading && analysis && analysis.ok && !error) {
-      const dishImageUrl = imageUrl || analysis.recipe_image || fetchedImageUrl || '';
-      const vm = buildDishViewModel(analysis, selectedAllergens);
+  // Helper function to redirect to likely-recipe screen with all data
+  const redirectToLikelyRecipe = useCallback((analysisData: AnalyzeDishResponse, finalImageUrl: string) => {
+    const vm = buildDishViewModel(analysisData, selectedAllergens);
 
-      router.replace({
-        pathname: '/likely-recipe',
-        params: {
-          dishName: analysis.dishName || dishName || 'Unknown Dish',
-          imageUrl: dishImageUrl,
-          likelyRecipe: analysis.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
-          fullRecipe: analysis.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
-          nutrition: analysis.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
-          nutritionInsights: analysis.nutrition_insights ? JSON.stringify(analysis.nutrition_insights) : '',
-          nutritionSourceLabel: vm?.nutritionSourceLabel || '',
-          allergens: analysis.allergen_flags ? JSON.stringify(analysis.allergen_flags) : '[]',
-          allergenSummary: analysis.allergen_summary || '',
-          fodmap: analysis.fodmap_flags ? JSON.stringify(analysis.fodmap_flags) : '',
-          fodmapSummary: analysis.fodmap_summary || '',
-          organs: analysis.organs ? JSON.stringify(analysis.organs) : '',
-          nutritionSource: analysis.nutrition_source || '',
-          restaurantName: restaurantName || '',
-          restaurantAddress: restaurantAddress || '',
-        },
-      });
-    }
-  }, [isLoading, analysis, error]);
+    router.replace({
+      pathname: '/likely-recipe',
+      params: {
+        dishName: analysisData.dishName || dishName || 'Unknown Dish',
+        imageUrl: finalImageUrl,
+        likelyRecipe: analysisData.likely_recipe ? JSON.stringify(analysisData.likely_recipe) : '',
+        fullRecipe: analysisData.full_recipe ? JSON.stringify(analysisData.full_recipe) : '',
+        nutrition: analysisData.nutrition_summary ? JSON.stringify(analysisData.nutrition_summary) : '',
+        nutritionInsights: analysisData.nutrition_insights ? JSON.stringify(analysisData.nutrition_insights) : '',
+        nutritionSourceLabel: vm?.nutritionSourceLabel || '',
+        allergens: analysisData.allergen_flags ? JSON.stringify(analysisData.allergen_flags) : '[]',
+        allergenSummary: analysisData.allergen_summary || '',
+        fodmap: analysisData.fodmap_flags ? JSON.stringify(analysisData.fodmap_flags) : '',
+        fodmapSummary: analysisData.fodmap_summary || '',
+        organs: analysisData.organs ? JSON.stringify(analysisData.organs) : '',
+        nutritionSource: analysisData.nutrition_source || '',
+        restaurantName: restaurantName || '',
+        restaurantAddress: restaurantAddress || '',
+      },
+    });
+  }, [dishName, restaurantName, restaurantAddress, selectedAllergens, router]);
 
-  const fetchImageIfNeeded = async (currentImageUrl: string | null | undefined) => {
-    if (currentImageUrl) return;
+  // Fetch dish image if not already available - returns the image URL
+  const fetchImageIfNeeded = async (currentImageUrl: string | null | undefined): Promise<string | null> => {
+    if (currentImageUrl) return currentImageUrl;
     try {
       const imageResult = await fetchDishImage(dishName);
       if (imageResult.ok && imageResult.image) {
         setFetchedImageUrl(imageResult.image);
+        return imageResult.image;
       }
     } catch (e) {
       console.log('Failed to fetch dish image:', e);
     }
+    return null;
   };
 
   const loadDishAnalysis = async () => {
@@ -248,12 +248,20 @@ export default function DishScreen() {
         if (cached && cached.analysis) {
           recordCacheHit(dishName);
           logMetrics(); // Log current stats
+
+          // Determine final image URL - fetch if needed
+          let finalImageUrl = imageUrl || cached.imageUrl || cached.analysis.recipe_image || '';
+          if (!finalImageUrl) {
+            const fetchedImage = await fetchImageIfNeeded(null);
+            if (fetchedImage) {
+              finalImageUrl = fetchedImage;
+            }
+          }
+
+          // Redirect directly with the image URL (don't rely on state/useEffect)
           setAnalysis(cached.analysis);
           setIsLoading(false);
-          const cachedImage = cached.imageUrl || cached.analysis.recipe_image;
-          if (!imageUrl && !cachedImage) {
-            fetchImageIfNeeded(null);
-          }
+          redirectToLikelyRecipe(cached.analysis, finalImageUrl);
           return;
         }
         recordCacheMiss(dishName);
@@ -272,7 +280,6 @@ export default function DishScreen() {
       });
 
       if (result.ok) {
-        setAnalysis(result);
         const correctedDishName = result.dishName || dishName;
         const cacheImageUrl = imageUrl || result.recipe_image || undefined;
 
@@ -360,24 +367,36 @@ export default function DishScreen() {
             });
         }
 
+        // Fetch image if not available from route params or analysis response
+        // This must complete BEFORE redirect so the recipe card shows the image
+        let finalImageUrl = imageUrl || result.recipe_image || '';
+        if (!finalImageUrl) {
+          const fetchedImage = await fetchImageIfNeeded(null);
+          if (fetchedImage) {
+            finalImageUrl = fetchedImage;
+          }
+        }
+
         await cacheDishAnalysis(correctedDishName, result, {
           restaurantName,
           restaurantAddress,
           placeId,
-          imageUrl: cacheImageUrl,
+          imageUrl: finalImageUrl || undefined,
           source: restaurantName ? 'restaurant' : 'standalone',
         });
         recordCacheStore(correctedDishName);
-        if (!imageUrl && !result.recipe_image) {
-          fetchImageIfNeeded(null);
-        }
+
+        // Set state and redirect directly with the final image URL
+        setAnalysis(result);
+        setIsLoading(false);
+        redirectToLikelyRecipe(result, finalImageUrl);
       } else {
         setError(result.error || 'Analysis failed');
+        setIsLoading(false);
       }
     } catch (e: any) {
       console.error('Dish analysis error:', e);
       setError(e?.message || 'Failed to analyze dish');
-    } finally {
       setIsLoading(false);
     }
   };

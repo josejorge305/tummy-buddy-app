@@ -1,21 +1,20 @@
 import React, { createContext, useContext, useRef, useCallback, ReactNode } from 'react';
 import {
-  startApifyScrape,
-  getApifyJobStatus,
-  ApifyJobStatusResponse,
+  fetchMenuFast,
   ValidatedMenuData,
   MenuValidation,
+  ValidatedRestaurant,
+  ValidatedMenuSection,
 } from '../api/api';
 
 interface PrefetchState {
   restaurantName: string;
   address: string;
   placeId: string;
-  jobId: string;
   status: 'idle' | 'starting' | 'running' | 'completed' | 'failed';
-  data?: ValidatedMenuData; // NOW uses validated data type
-  validation?: MenuValidation; // NEW: validation info
-  error?: string; // NEW: error message if failed
+  data?: ValidatedMenuData;
+  validation?: MenuValidation;
+  error?: string;
   startedAt: number;
 }
 
@@ -24,8 +23,8 @@ interface MenuPrefetchContextValue {
   getPrefetchedMenu: (placeId: string) => PrefetchState | null;
   isMenuReady: (placeId: string) => boolean;
   getPrefetchStatus: (placeId: string) => PrefetchState['status'];
-  getValidationConfidence: (placeId: string) => number | null; // NEW
-  getError: (placeId: string) => string | null; // NEW
+  getValidationConfidence: (placeId: string) => number | null;
+  getError: (placeId: string) => string | null;
   clearCache: (placeId: string) => void;
 }
 
@@ -37,85 +36,15 @@ interface MenuPrefetchCache {
 
 export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
   const cacheRef = useRef<MenuPrefetchCache>({});
-  const activePollingRef = useRef<{ [jobId: string]: boolean }>({});
   const currentPrefetchRef = useRef<string | null>(null);
-
-  const pollJobInBackground = useCallback(async (placeId: string, jobId: string) => {
-    const maxWaitMs = 90000;
-    const pollIntervalMs = 3000;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxWaitMs) {
-      if (!activePollingRef.current[jobId]) {
-        console.log(`[MenuPrefetch] Polling cancelled for job ${jobId}`);
-        return;
-      }
-
-      if (currentPrefetchRef.current !== placeId) {
-        console.log(`[MenuPrefetch] Different restaurant selected, stopping poll`);
-        return;
-      }
-
-      try {
-        const result = await getApifyJobStatus(jobId);
-
-        if (result.status === 'completed') {
-          const state = cacheRef.current[placeId];
-          if (state) {
-            // CHECK: Did validation succeed?
-            if (result.ok && result.data) {
-              console.log(`[MenuPrefetch] Job completed with validated data`);
-              if (result.validation) {
-                console.log(`[MenuPrefetch] Confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
-                console.log(`[MenuPrefetch] Matched: "${result.validation.matchedName}"`);
-              }
-              state.status = 'completed';
-              state.data = result.data;
-              state.validation = result.validation;
-            } else {
-              // Validation failed - wrong restaurant or no match
-              console.warn(`[MenuPrefetch] Validation failed: ${result.error}`);
-              state.status = 'failed';
-              state.error = result.error || 'No matching restaurant found';
-            }
-          }
-          activePollingRef.current[jobId] = false;
-          return;
-        }
-
-        if (result.status === 'failed' || result.status === 'not_found') {
-          console.log(`[MenuPrefetch] Job failed: ${result.error || 'unknown'}`);
-          const state = cacheRef.current[placeId];
-          if (state) {
-            state.status = 'failed';
-            state.error = result.error;
-          }
-          activePollingRef.current[jobId] = false;
-          return;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-      } catch (e) {
-        console.error(`[MenuPrefetch] Poll error:`, e);
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-      }
-    }
-
-    console.log(`[MenuPrefetch] Job timed out`);
-    const state = cacheRef.current[placeId];
-    if (state) {
-      state.status = 'failed';
-      state.error = 'Scraping timed out';
-    }
-    activePollingRef.current[jobId] = false;
-  }, []);
+  const abortControllersRef = useRef<{ [placeId: string]: AbortController }>({});
 
   const prefetchMenu = useCallback(async (
     placeId: string,
     restaurantName: string,
     address: string
   ): Promise<PrefetchState> => {
-    // If same restaurant is already being prefetched, skip
+    // If same restaurant is already being prefetched or completed, use cached
     if (currentPrefetchRef.current === placeId) {
       const existing = cacheRef.current[placeId];
       if (existing && (existing.status === 'running' || existing.status === 'completed')) {
@@ -124,13 +53,14 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Cancel any previous prefetch tracking
+    // Cancel any previous prefetch
     if (currentPrefetchRef.current && currentPrefetchRef.current !== placeId) {
       const prevId = currentPrefetchRef.current;
-      const prevState = cacheRef.current[prevId];
-      if (prevState?.jobId) {
-        console.log(`[MenuPrefetch] Cancelling tracking for previous restaurant`);
-        activePollingRef.current[prevState.jobId] = false;
+      const prevController = abortControllersRef.current[prevId];
+      if (prevController) {
+        console.log(`[MenuPrefetch] Cancelling previous prefetch`);
+        prevController.abort();
+        delete abortControllersRef.current[prevId];
       }
     }
 
@@ -149,48 +79,63 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
       restaurantName,
       address,
       placeId,
-      jobId: '',
-      status: 'starting',
+      status: 'running',
       startedAt: Date.now(),
     };
     cacheRef.current[placeId] = state;
 
+    // Create abort controller for this prefetch
+    const abortController = new AbortController();
+    abortControllersRef.current[placeId] = abortController;
+
     try {
-      const result = await startApifyScrape(restaurantName, address, 3); // Reduced to 3 for better accuracy
+      // Use fetchMenuFast which calls the in-house scraper
+      const result = await fetchMenuFast(restaurantName, address, 100);
 
-      if (!result.ok || !result.jobId) {
-        console.log(`[MenuPrefetch] Failed to start: ${result.message}`);
-        state.status = 'failed';
+      // Check if this prefetch was cancelled
+      if (abortController.signal.aborted) {
+        console.log(`[MenuPrefetch] Prefetch was cancelled for ${restaurantName}`);
         return state;
       }
 
-      state.jobId = result.jobId;
-
-      // If already cached on server
-      if (result.status === 'already_cached' && result.data) {
-        console.log(`[MenuPrefetch] Server had cached data`);
+      if (result.ok && result.sections && result.sections.length > 0) {
+        console.log(`[MenuPrefetch] Prefetch completed with ${result.sections.length} sections`);
         if (result.validation) {
-          console.log(`[MenuPrefetch] Cached confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
+          console.log(`[MenuPrefetch] Confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
         }
+
         state.status = 'completed';
-        state.data = result.data;
+        state.data = {
+          restaurant: result.restaurant as ValidatedRestaurant,
+          sections: result.sections,
+          meta: result.meta || {
+            totalSections: result.sections.length,
+            totalItems: result.sections.reduce((sum, s) => sum + s.items.length, 0),
+            availableItems: result.sections.reduce((sum, s) => sum + s.items.filter(i => i.available !== false).length, 0),
+            source: result.source || 'inhouse',
+            scrapedAt: new Date().toISOString(),
+          },
+        };
         state.validation = result.validation;
-        return state;
+      } else {
+        console.warn(`[MenuPrefetch] Prefetch failed: ${result.error}`);
+        state.status = 'failed';
+        state.error = result.error || 'No menu data found';
       }
-
-      state.status = 'running';
-      activePollingRef.current[result.jobId] = true;
-
-      // Start background polling
-      pollJobInBackground(placeId, result.jobId);
-
-      return state;
     } catch (e: any) {
-      console.error(`[MenuPrefetch] Error:`, e?.message || e);
-      state.status = 'failed';
-      return state;
+      if (e.name === 'AbortError') {
+        console.log(`[MenuPrefetch] Prefetch aborted for ${restaurantName}`);
+      } else {
+        console.error(`[MenuPrefetch] Error:`, e?.message || e);
+        state.status = 'failed';
+        state.error = e?.message || 'Failed to prefetch menu';
+      }
+    } finally {
+      delete abortControllersRef.current[placeId];
     }
-  }, [pollJobInBackground]);
+
+    return state;
+  }, []);
 
   const getPrefetchedMenu = useCallback((placeId: string): PrefetchState | null => {
     return cacheRef.current[placeId] || null;
@@ -198,7 +143,6 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
 
   const isMenuReady = useCallback((placeId: string): boolean => {
     const state = cacheRef.current[placeId];
-    // Check for validated data structure with sections
     return state?.status === 'completed' && Boolean(state.data?.sections?.length);
   }, []);
 
@@ -217,9 +161,10 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearCache = useCallback((placeId: string) => {
-    const state = cacheRef.current[placeId];
-    if (state?.jobId) {
-      activePollingRef.current[state.jobId] = false;
+    const controller = abortControllersRef.current[placeId];
+    if (controller) {
+      controller.abort();
+      delete abortControllersRef.current[placeId];
     }
     delete cacheRef.current[placeId];
   }, []);

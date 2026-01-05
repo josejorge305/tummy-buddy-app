@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 // App-wide theme color
 const TEAL = '#14b8a6';
 import { useUserPrefs } from '../../context/UserPrefsContext';
+import { SettingsLegalSection } from '../../components/legal';
 
 const ACTIVITY_LEVELS = [
   { key: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
@@ -565,6 +566,9 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.linkText}>Manage billing (coming soon)</Text>
       </View>
+
+      {/* Legal & Disclosures Section */}
+      <SettingsLegalSection />
       </ScrollView>
 
       {/* Loading Overlay */}

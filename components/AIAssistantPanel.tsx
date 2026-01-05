@@ -26,6 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAIAssistant } from '../context/AIAssistantContext';
 import { COLORS, FONT_SIZES, SPACING, RADIUS } from './tracker/utils/colors';
+import { HealthCoachFirstUseModal, HealthCoachDisclaimer } from './legal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PANEL_HEIGHT = SCREEN_HEIGHT * 0.6;
@@ -323,6 +324,9 @@ export function AIAssistantPanel() {
               </View>
             </View>
 
+            {/* AI Disclaimer */}
+            <HealthCoachDisclaimer style={{ paddingHorizontal: 16, paddingBottom: 8 }} />
+
             {/* Messages */}
             <FlatList
               ref={flatListRef}
@@ -385,6 +389,9 @@ export function AIAssistantPanel() {
           </View>
         )}
       </Animated.View>
+
+      {/* Health Coach First Use Modal */}
+      <HealthCoachFirstUseModal />
     </>
   );
 }

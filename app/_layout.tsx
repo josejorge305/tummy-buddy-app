@@ -6,7 +6,9 @@ import { AuthProvider } from '../context/AuthContext';
 import { UserPrefsProvider } from '../context/UserPrefsContext';
 import { MenuPrefetchProvider } from '../context/MenuPrefetchContext';
 import { AIAssistantProvider } from '../context/AIAssistantContext';
+import { DisclaimerProvider } from '../context/DisclaimerContext';
 import { AIAssistantPanel } from '../components/AIAssistantPanel';
+import { WelcomeModal } from '../components/legal/WelcomeModal';
 import { initSentry, addNavigationBreadcrumb } from '../utils/sentry';
 
 // Initialize Sentry on app start
@@ -31,22 +33,26 @@ function RootLayoutContent() {
   return (
     <AuthProvider>
       <UserPrefsProvider>
-        <MenuPrefetchProvider>
-          <AIAssistantProvider>
-            <NavigationTracker>
-              <View style={styles.container}>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    animation: 'slide_from_right',
-                  }}
-                />
-                {/* AI Assistant Panel - persists across all pages */}
-                <AIAssistantPanel />
-              </View>
-            </NavigationTracker>
-          </AIAssistantProvider>
-        </MenuPrefetchProvider>
+        <DisclaimerProvider>
+          <MenuPrefetchProvider>
+            <AIAssistantProvider>
+              <NavigationTracker>
+                <View style={styles.container}>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      animation: 'slide_from_right',
+                    }}
+                  />
+                  {/* AI Assistant Panel - persists across all pages */}
+                  <AIAssistantPanel />
+                  {/* Legal onboarding modal - shows once on first app launch */}
+                  <WelcomeModal />
+                </View>
+              </NavigationTracker>
+            </AIAssistantProvider>
+          </MenuPrefetchProvider>
+        </DisclaimerProvider>
       </UserPrefsProvider>
     </AuthProvider>
   );

@@ -12,6 +12,7 @@ import {
   SPACING,
   RADIUS,
 } from './designSystem';
+import { EdamamBadgeInline, InfoIconTooltip } from '../legal';
 
 type NutritionData = {
   calories?: number | null;
@@ -145,7 +146,11 @@ export const NutritionCard: React.FC<Props> = ({
           </View>
         )}
 
-        {/* Source disclaimer */}
+        {/* Source disclaimer + Edamam attribution */}
+        <View style={styles.sourceRow}>
+          <EdamamBadgeInline />
+          <InfoIconTooltip type="macro" size={14} color={COLORS.textSecondary} />
+        </View>
         {sourceLabel && (
           <Text style={styles.sourceText}>{sourceLabel}</Text>
         )}
@@ -213,6 +218,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fcd34d',
     lineHeight: 18,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    paddingTop: SPACING.sm,
   },
   sourceText: {
     ...TYPOGRAPHY.disclaimer,

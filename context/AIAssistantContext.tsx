@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
-import { sendAssistantMessage } from '../api/api';
+import { sendAssistantMessage, AIMenuContext } from '../api/api';
 import { getCurrentUserId } from './AuthContext';
 
 interface Message {
@@ -10,12 +10,22 @@ interface Message {
   isLoading?: boolean;
 }
 
+export interface MenuItem {
+  name: string;
+  description?: string;
+  section?: string;
+  price?: string;
+  calories?: number | null;
+}
+
 interface PageContext {
   screen: string;
   restaurantId: string | null;
   restaurantName: string | null;
   dishId: string | null;
   dishName: string | null;
+  // Menu items available at current restaurant (when on restaurant screen)
+  menuItems: MenuItem[] | null;
 }
 
 interface AIAssistantContextType {
@@ -61,6 +71,7 @@ export function AIAssistantProvider({ children }: { children: ReactNode }) {
     restaurantName: null,
     dishId: null,
     dishName: null,
+    menuItems: null,
   });
 
   // Track if we've shown the welcome message
@@ -144,7 +155,17 @@ export function AIAssistantProvider({ children }: { children: ReactNode }) {
         contextualMessage = `[User is viewing their daily tracker] ${contextualMessage}`;
       }
 
-      const response = await sendAssistantMessage(userId, contextualMessage, conversationId);
+      // Build menu context if on restaurant screen with menu items
+      let menuContext: AIMenuContext | null = null;
+      if (pageContext.screen === 'restaurant' && pageContext.restaurantName && pageContext.menuItems?.length) {
+        menuContext = {
+          restaurantName: pageContext.restaurantName,
+          restaurantId: pageContext.restaurantId,
+          menuItems: pageContext.menuItems.slice(0, 50), // Limit to first 50 items to avoid huge payloads
+        };
+      }
+
+      const response = await sendAssistantMessage(userId, contextualMessage, conversationId, menuContext);
 
       if (response.ok && response.response) {
         if (response.conversation_id && !conversationId) {
@@ -266,6 +287,7 @@ export function useSetAIContext(context: {
   restaurantName?: string | null;
   dishId?: string | null;
   dishName?: string | null;
+  menuItems?: MenuItem[] | null;
 }) {
   const { setPageContext } = useAIAssistant();
 
@@ -276,6 +298,7 @@ export function useSetAIContext(context: {
       restaurantName: context.restaurantName ?? null,
       dishId: context.dishId ?? null,
       dishName: context.dishName ?? null,
+      menuItems: context.menuItems ?? null,
     });
   }, [
     context.screen,
@@ -283,6 +306,7 @@ export function useSetAIContext(context: {
     context.restaurantName,
     context.dishId,
     context.dishName,
+    context.menuItems,
     setPageContext,
   ]);
 }
