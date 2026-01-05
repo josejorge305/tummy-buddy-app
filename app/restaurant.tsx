@@ -81,26 +81,6 @@ const COLORS = {
   tagBorder: '#475569',
 };
 
-// Loading status messages - cycle through these to keep users engaged
-const LOADING_MESSAGES = [
-  { icon: 'search-outline', text: 'Discovering menu items...', phase: 1 },
-  { icon: 'restaurant-outline', text: 'Reading the menu...', phase: 1 },
-  { icon: 'list-outline', text: 'Organizing menu sections...', phase: 2 },
-  { icon: 'nutrition-outline', text: 'Preparing nutrition analysis...', phase: 2 },
-  { icon: 'flask-outline', text: 'Setting up allergen detection...', phase: 3 },
-  { icon: 'leaf-outline', text: 'Configuring FODMAP analysis...', phase: 3 },
-  { icon: 'sparkles-outline', text: 'Almost ready...', phase: 4 },
-];
-
-// Fun facts to show while loading
-const LOADING_TIPS = [
-  'Tip: Tap any dish to see detailed allergen and nutrition info',
-  'Did you know? We analyze ingredients for 14 major allergens',
-  'Tip: Your allergen preferences are saved for personalized warnings',
-  'Fun fact: FODMAP stands for Fermentable Oligosaccharides, Disaccharides, Monosaccharides, and Polyols',
-  'Tip: Check the "Likely Recipe" to see estimated ingredients',
-];
-
 // Dish analysis loading messages
 const ANALYSIS_LOADING_MESSAGES = [
   { icon: 'search-outline', text: 'Finding recipe match...' },
@@ -266,6 +246,28 @@ const analysisLoaderStyles = StyleSheet.create({
   },
 });
 
+// Sample menu items for discovery animation
+const DISCOVERY_MENU_ITEMS = [
+  { name: 'House Special Tacos', category: 'Tacos' },
+  { name: 'Grilled Chicken Burrito', category: 'Burritos' },
+  { name: 'Carne Asada Fajitas', category: 'Fajitas' },
+  { name: 'Vegetable Quesadilla', category: 'Appetizers' },
+  { name: 'Fresh Horchata', category: 'Drinks' },
+  { name: 'Churros con Chocolate', category: 'Desserts' },
+  { name: 'Guacamole Fresco', category: 'Sides' },
+  { name: 'Queso Fundido', category: 'Appetizers' },
+  { name: 'Fish Tacos', category: 'Tacos' },
+  { name: 'Veggie Burrito Bowl', category: 'Bowls' },
+];
+
+// Loading phases for the progress indicator
+const LOADING_PHASES = [
+  { name: 'Locating', description: 'Finding menu source' },
+  { name: 'Reading', description: 'Extracting dishes' },
+  { name: 'Analyzing', description: 'Mapping ingredients' },
+  { name: 'Optimizing', description: 'Building your experience' },
+];
+
 // Animated loading screen component
 function MenuLoadingScreen({
   restaurantName,
@@ -276,24 +278,25 @@ function MenuLoadingScreen({
   restaurantAddress?: string;
   heroImageUrl?: string;
 }) {
-  const [messageIndex, setMessageIndex] = useState(0);
-  const [tipIndex, setTipIndex] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+  const [progress, setProgress] = useState(0);
+  const [currentPhase, setCurrentPhase] = useState(0);
+  const [discoveredItems, setDiscoveredItems] = useState<typeof DISCOVERY_MENU_ITEMS>([]);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const spinAnim = useRef(new Animated.Value(0)).current;
 
-  // Pulsing glow animation
+  // Pulsing animation for the live indicator dot
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1200,
+          toValue: 0.6,
+          duration: 1000,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
-          toValue: 0.3,
-          duration: 1200,
+          toValue: 1,
+          duration: 1000,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
@@ -303,167 +306,236 @@ function MenuLoadingScreen({
     return () => pulse.stop();
   }, [pulseAnim]);
 
-  // Cycle through messages every 4 seconds
+  // Spinning animation for the scanner
   useEffect(() => {
-    const messageTimer = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
-    }, 4000);
-    return () => clearInterval(messageTimer);
+    const spin = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    spin.start();
+    return () => spin.stop();
+  }, [spinAnim]);
+
+  // Progress animation (0-100 over ~20 seconds)
+  useEffect(() => {
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(progressInterval);
+          return 100;
+        }
+        return prev + 0.5;
+      });
+    }, 100);
+
+    return () => clearInterval(progressInterval);
   }, []);
 
-  // Cycle tips every 8 seconds
+  // Update phase based on progress
   useEffect(() => {
-    const tipTimer = setInterval(() => {
-      setTipIndex((prev) => (prev + 1) % LOADING_TIPS.length);
-    }, 8000);
-    return () => clearInterval(tipTimer);
+    const newPhase = Math.min(Math.floor(progress / 25), 3);
+    setCurrentPhase(newPhase);
+  }, [progress]);
+
+  // Discover items progressively
+  useEffect(() => {
+    const itemInterval = setInterval(() => {
+      setDiscoveredItems((prev) => {
+        if (prev.length >= DISCOVERY_MENU_ITEMS.length) return prev;
+        return [...prev, DISCOVERY_MENU_ITEMS[prev.length]];
+      });
+    }, 1200);
+
+    return () => clearInterval(itemInterval);
   }, []);
 
-  // Track elapsed time
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const spinInterpolate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
-  const currentMessage = LOADING_MESSAGES[messageIndex];
-  const currentPhase = currentMessage.phase;
-
-  // Show longer wait message after 30 seconds
-  const showLongWaitMessage = elapsedSeconds > 30;
+  // Benefits list
+  const benefits = [
+    { title: 'Smart Recommendations', desc: 'Dishes matched to your preferences' },
+    { title: 'Ingredient Breakdown', desc: 'Full lists for allergies & diets' },
+    { title: 'Instant Access', desc: 'Fast loading for all future visits' },
+  ];
 
   return (
     <View style={loadingStyles.container}>
-      <SafeAreaView style={loadingStyles.safeArea}>
-        {/* Restaurant Hero Card */}
-        <View style={loadingStyles.heroCard}>
-          {heroImageUrl ? (
-            <ImageBackground
-              source={{ uri: heroImageUrl }}
-              style={loadingStyles.heroImage}
-              imageStyle={{ borderRadius: 16 }}
-            >
-              <View style={loadingStyles.heroOverlay}>
-                <Text style={loadingStyles.heroName} numberOfLines={2}>
+      {/* Subtle gradient overlay */}
+      <View style={loadingStyles.gradientOverlay} />
+
+      <ScrollView
+        style={loadingStyles.scrollView}
+        contentContainerStyle={loadingStyles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <SafeAreaView>
+          {/* Pioneer Badge */}
+          <View style={loadingStyles.pioneerBadge}>
+            <View style={loadingStyles.pioneerIconContainer}>
+              <Ionicons name="trophy-outline" size={24} color="#d4af37" />
+            </View>
+            <View style={loadingStyles.pioneerTextContainer}>
+              <Text style={loadingStyles.pioneerTitle}>YOU&apos;RE A PIONEER</Text>
+              <Text style={loadingStyles.pioneerDescription}>
+                First to unlock this restaurant. This takes about 2 minutes once — after you, it
+                loads instantly for everyone.
+              </Text>
+            </View>
+          </View>
+
+          {/* Restaurant Card */}
+          <View style={loadingStyles.restaurantCard}>
+            {heroImageUrl ? (
+              <ImageBackground
+                source={{ uri: heroImageUrl }}
+                style={loadingStyles.heroImage}
+                imageStyle={{ borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
+              >
+                <View style={loadingStyles.heroOverlay}>
+                  <Text style={loadingStyles.heroName} numberOfLines={2}>
+                    {restaurantName || 'Loading restaurant...'}
+                  </Text>
+                  {restaurantAddress ? (
+                    <Text style={loadingStyles.heroAddress} numberOfLines={1}>
+                      {restaurantAddress}
+                    </Text>
+                  ) : null}
+                </View>
+              </ImageBackground>
+            ) : (
+              <View style={loadingStyles.heroPlaceholder}>
+                <Ionicons name="restaurant" size={28} color={TEAL} />
+                <Text style={loadingStyles.heroNameNoImage} numberOfLines={2}>
                   {restaurantName || 'Loading restaurant...'}
                 </Text>
                 {restaurantAddress ? (
-                  <Text style={loadingStyles.heroAddress} numberOfLines={1}>
+                  <Text style={loadingStyles.heroAddressNoImage} numberOfLines={1}>
                     {restaurantAddress}
                   </Text>
                 ) : null}
               </View>
-            </ImageBackground>
-          ) : (
-            <View style={loadingStyles.heroPlaceholder}>
-              <Ionicons name="restaurant" size={28} color={TEAL} />
-              <Text style={loadingStyles.heroNameNoImage} numberOfLines={2}>
-                {restaurantName || 'Loading restaurant...'}
-              </Text>
-              {restaurantAddress ? (
-                <Text style={loadingStyles.heroAddressNoImage} numberOfLines={1}>
-                  {restaurantAddress}
-                </Text>
-              ) : null}
+            )}
+          </View>
+
+          {/* Live Discovery Feed */}
+          <View style={loadingStyles.discoveryFeed}>
+            <View style={loadingStyles.discoveryHeader}>
+              <View style={loadingStyles.discoveryHeaderLeft}>
+                <Animated.View style={[loadingStyles.liveDot, { opacity: pulseAnim }]} />
+                <Text style={loadingStyles.discoveryTitle}>Discovering menu</Text>
+              </View>
+              <Text style={loadingStyles.itemCount}>{discoveredItems.length} items found</Text>
             </View>
-          )}
-        </View>
 
-        {/* Main loading area */}
-        <View style={loadingStyles.mainContent}>
-          {/* Clean loader with pulsing glow */}
-          <View style={loadingStyles.loaderWrapper}>
-            <Animated.View style={[loadingStyles.loaderGlow, { opacity: pulseAnim }]} />
-            <ActivityIndicator size="large" color={TEAL} />
-          </View>
+            {/* Scrolling items list */}
+            <View style={loadingStyles.itemsList}>
+              {/* Fade overlay at top */}
+              <View style={loadingStyles.fadeOverlay} />
 
-          {/* Status message */}
-          <View style={loadingStyles.messageContainer}>
-            <Ionicons name={currentMessage.icon as any} size={18} color={TEAL} />
-            <Text style={loadingStyles.messageText}>{currentMessage.text}</Text>
-          </View>
+              {discoveredItems.slice(-5).map((item, index) => {
+                const isLatest = index === discoveredItems.slice(-5).length - 1;
+                const opacity = 1 - (discoveredItems.slice(-5).length - 1 - index) * 0.2;
+                return (
+                  <View
+                    key={item.name}
+                    style={[
+                      loadingStyles.discoveredItem,
+                      isLatest && loadingStyles.discoveredItemLatest,
+                      { opacity },
+                    ]}
+                  >
+                    <Text style={loadingStyles.itemName}>{item.name}</Text>
+                    <Text style={loadingStyles.itemCategory}>{item.category}</Text>
+                  </View>
+                );
+              })}
 
-          {/* Progress dots */}
-          <View style={loadingStyles.progressRow}>
-            {[1, 2, 3, 4].map((phase) => (
-              <View
-                key={phase}
-                style={[
-                  loadingStyles.progressDot,
-                  phase <= currentPhase && loadingStyles.progressDotActive,
-                ]}
-              />
-            ))}
-          </View>
-
-          {/* Phase labels */}
-          <View style={loadingStyles.phaseLabels}>
-            <Text
-              style={[
-                loadingStyles.phaseLabel,
-                currentPhase >= 1 && loadingStyles.phaseLabelActive,
-              ]}
-            >
-              Discover
-            </Text>
-            <Text
-              style={[
-                loadingStyles.phaseLabel,
-                currentPhase >= 2 && loadingStyles.phaseLabelActive,
-              ]}
-            >
-              Organize
-            </Text>
-            <Text
-              style={[
-                loadingStyles.phaseLabel,
-                currentPhase >= 3 && loadingStyles.phaseLabelActive,
-              ]}
-            >
-              Analyze
-            </Text>
-            <Text
-              style={[
-                loadingStyles.phaseLabel,
-                currentPhase >= 4 && loadingStyles.phaseLabelActive,
-              ]}
-            >
-              Ready
-            </Text>
-          </View>
-        </View>
-
-        {/* Bottom section */}
-        <View style={loadingStyles.bottomSection}>
-          {/* Info box */}
-          <View style={loadingStyles.infoBox}>
-            <View style={loadingStyles.infoHeader}>
-              <Ionicons name="time-outline" size={18} color={TEAL} />
-              <Text style={loadingStyles.infoTitle}>One-time setup</Text>
+              {/* Scanning indicator */}
+              {discoveredItems.length < DISCOVERY_MENU_ITEMS.length && (
+                <View style={loadingStyles.scanningRow}>
+                  <Animated.View
+                    style={[
+                      loadingStyles.spinner,
+                      { transform: [{ rotate: spinInterpolate }] },
+                    ]}
+                  />
+                  <Text style={loadingStyles.scanningText}>Scanning...</Text>
+                </View>
+              )}
             </View>
-            <Text style={loadingStyles.infoText}>
-              We&apos;re preparing this menu for the first time. Future visits will load instantly!
-            </Text>
-            {showLongWaitMessage ? (
-              <Text style={loadingStyles.longWaitText}>
-                This menu has a lot of items - hang tight, we&apos;re almost there!
-              </Text>
-            ) : null}
+          </View>
+
+          {/* Progress Section */}
+          <View style={loadingStyles.progressSection}>
+            {/* Progress bar */}
+            <View style={loadingStyles.progressBarContainer}>
+              <View style={[loadingStyles.progressBarFill, { width: `${progress}%` }]}>
+                <View style={loadingStyles.progressDot} />
+              </View>
+            </View>
+
+            {/* Phase indicators - horizontal timeline */}
+            <View style={loadingStyles.phasesContainer}>
+              {/* Connecting line */}
+              <View style={loadingStyles.connectingLine} />
+
+              {LOADING_PHASES.map((phase, index) => (
+                <View key={index} style={loadingStyles.phaseItem}>
+                  <View
+                    style={[
+                      loadingStyles.phaseCircle,
+                      index <= currentPhase && loadingStyles.phaseCircleActive,
+                    ]}
+                  >
+                    {index < currentPhase && (
+                      <Ionicons name="checkmark" size={10} color="#0a0a0a" />
+                    )}
+                    {index === currentPhase && <View style={loadingStyles.phaseInnerDot} />}
+                  </View>
+                  <Text
+                    style={[
+                      loadingStyles.phaseLabel,
+                      index <= currentPhase && loadingStyles.phaseLabelActive,
+                    ]}
+                  >
+                    {phase.name}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* What you're unlocking */}
+          <View style={loadingStyles.benefitsCard}>
+            <Text style={loadingStyles.benefitsTitle}>WHAT YOU&apos;RE UNLOCKING</Text>
+            <View style={loadingStyles.benefitsList}>
+              {benefits.map((item, index) => (
+                <View key={index} style={loadingStyles.benefitItem}>
+                  <View style={loadingStyles.benefitIcon}>
+                    <Ionicons name="checkmark" size={16} color="#00b4a0" />
+                  </View>
+                  <View style={loadingStyles.benefitTextContainer}>
+                    <Text style={loadingStyles.benefitTitle}>{item.title}</Text>
+                    <Text style={loadingStyles.benefitDesc}>{item.desc}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
           </View>
 
           {/* Tip */}
-          <View style={loadingStyles.tipBox}>
-            <Ionicons name="bulb-outline" size={16} color="#facc15" />
-            <Text style={loadingStyles.tipText}>{LOADING_TIPS[tipIndex]}</Text>
-          </View>
-
-          {/* Elapsed time */}
-          {elapsedSeconds > 10 ? (
-            <Text style={loadingStyles.elapsedTime}>{elapsedSeconds}s</Text>
-          ) : null}
-        </View>
-      </SafeAreaView>
+          <Text style={loadingStyles.tipText}>
+            Tip: Check &quot;Likely Recipe&quot; on any dish to see estimated ingredients
+          </Text>
+        </SafeAreaView>
+      </ScrollView>
     </View>
   );
 }
@@ -472,183 +544,351 @@ function MenuLoadingScreen({
 const loadingStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#0a0a0a',
   },
-  safeArea: {
+  gradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: -25,
+    right: -25,
+    height: '40%',
+    backgroundColor: 'transparent',
+    // Simulating radial gradient with a subtle teal tint at top
+    borderBottomLeftRadius: 999,
+    borderBottomRightRadius: 999,
+    opacity: 0.08,
+  },
+  scrollView: {
     flex: 1,
   },
-  // Hero card styles
-  heroCard: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 16,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
-  heroImage: {
-    height: 160,
-    justifyContent: 'flex-end',
+
+  // Pioneer Badge
+  pioneerBadge: {
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.25)',
+    borderRadius: 14,
+    padding: 18,
+    marginTop: 12,
+    marginBottom: 28,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  pioneerIconContainer: {
+    width: 44,
+    height: 44,
+    backgroundColor: 'rgba(212, 175, 55, 0.2)',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pioneerTextContainer: {
+    flex: 1,
+  },
+  pioneerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#d4af37',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  pioneerDescription: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    lineHeight: 21,
+  },
+
+  // Restaurant Card
+  restaurantCard: {
     borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 28,
+  },
+  heroImage: {
+    width: '100%',
+    height: 180,
+    justifyContent: 'flex-end',
   },
   heroOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    padding: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    padding: 20,
+    paddingTop: 24,
+    backgroundColor: 'transparent',
+    // Gradient simulation with dark overlay
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -40 },
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
   },
   heroName: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#ffffff',
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   heroAddress: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 4,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   heroPlaceholder: {
-    height: 120,
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
+    height: 140,
+    backgroundColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
   },
   heroNameNoImage: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#ffffff',
     marginTop: 12,
     textAlign: 'center',
   },
   heroAddressNoImage: {
-    fontSize: 14,
-    color: '#9ca3af',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginTop: 4,
     textAlign: 'center',
   },
-  // Main content
-  mainContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 20,
+
+  // Discovery Feed
+  discoveryFeed: {
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 28,
   },
-  loaderWrapper: {
-    width: 70,
-    height: 70,
-    justifyContent: 'center',
+  discoveryHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  discoveryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    backgroundColor: '#00b4a0',
+    borderRadius: 4,
+    shadowColor: '#00b4a0',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  discoveryTitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.9)',
+    letterSpacing: 0.2,
+  },
+  itemCount: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
+  itemsList: {
+    position: 'relative',
+    maxHeight: 160,
+    overflow: 'hidden',
+  },
+  fadeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+    zIndex: 1,
+  },
+  discoveredItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  discoveredItemLatest: {
+    backgroundColor: 'rgba(0, 180, 160, 0.08)',
+  },
+  itemName: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '400',
+  },
+  itemCategory: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.35)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scanningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  spinner: {
+    width: 14,
+    height: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderTopColor: '#00b4a0',
+    borderRadius: 7,
+  },
+  scanningText: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.3)',
+  },
+
+  // Progress Section
+  progressSection: {
+    marginBottom: 28,
+  },
+  progressBarContainer: {
+    height: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 10,
+    overflow: 'visible',
     marginBottom: 20,
   },
-  loaderGlow: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(20, 184, 166, 0.2)',
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    gap: 10,
-    paddingHorizontal: 16,
-  },
-  messageText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    flexShrink: 1,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-    width: '60%',
-    marginBottom: 10,
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#00b4a0',
+    borderRadius: 10,
+    position: 'relative',
   },
   progressDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#374151',
+    position: 'absolute',
+    right: -3,
+    top: -1.5,
+    width: 6,
+    height: 6,
+    backgroundColor: '#00b4a0',
+    borderRadius: 3,
+    shadowColor: '#00b4a0',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  progressDotActive: {
-    backgroundColor: '#14b8a6',
-  },
-  phaseLabels: {
+  phasesContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    position: 'relative',
+  },
+  connectingLine: {
+    position: 'absolute',
+    top: 11,
+    left: 40,
+    right: 40,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  phaseItem: {
     alignItems: 'center',
-    justifyContent: 'space-evenly',
-    width: '100%',
-    paddingHorizontal: 8,
+    gap: 10,
+    zIndex: 1,
+  },
+  phaseCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phaseCircleActive: {
+    backgroundColor: '#00b4a0',
+    borderColor: '#00b4a0',
+  },
+  phaseInnerDot: {
+    width: 6,
+    height: 6,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 3,
   },
   phaseLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#4b5563',
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.3)',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    textAlign: 'center',
+    letterSpacing: 0.5,
+    fontWeight: '500',
   },
   phaseLabelActive: {
-    color: '#14b8a6',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  bottomSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 16,
+
+  // Benefits Card
+  benefitsCard: {
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    padding: 20,
   },
-  infoBox: {
-    backgroundColor: 'rgba(20, 184, 166, 0.1)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+  benefitsTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.4)',
+    letterSpacing: 1,
+    marginBottom: 16,
   },
-  infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
+  benefitsList: {
+    gap: 14,
   },
-  infoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#14b8a6',
-  },
-  infoText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#9ca3af',
-  },
-  longWaitText: {
-    marginTop: 8,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#f59e0b',
-    fontStyle: 'italic',
-  },
-  tipBox: {
+  benefitItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(250, 204, 21, 0.08)',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    gap: 10,
+    gap: 14,
   },
-  tipText: {
+  benefitIcon: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(0, 180, 160, 0.1)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  benefitTextContainer: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#d1d5db',
   },
-  elapsedTime: {
+  benefitTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 2,
+  },
+  benefitDesc: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.45)',
+    lineHeight: 18,
+  },
+
+  // Tip
+  tipText: {
+    marginTop: 24,
     fontSize: 12,
-    color: '#4b5563',
+    color: 'rgba(255, 255, 255, 0.3)',
+    lineHeight: 18,
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });
 
