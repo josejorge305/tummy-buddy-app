@@ -330,6 +330,9 @@ export interface AnalyzeDishResponse {
   // Recipe image from provider (Spoonacular/Edamam)
   recipe_image?: string | null;
 
+  // Generated description from recipe introduction (fallback when Uber Eats has no description)
+  generated_description?: string | null;
+
   // Organs pending (when skip_organs=true was used)
   organs_pending?: boolean;
   organs_poll_key?: string;

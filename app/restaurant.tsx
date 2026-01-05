@@ -1780,16 +1780,24 @@ export default function RestaurantScreen() {
                   viewModel?.nutrition && typeof viewModel.nutrition.calories === 'number'
                     ? Math.round(viewModel.nutrition.calories)
                     : null;
+                // Use generated_description from analysis as fallback when Uber Eats has no description
+                // Use || instead of ?? to treat empty strings as falsy
                 const descriptionText =
-                  item?.menuDescription ??
-                  item?.description ??
-                  item?.subtitle ??
-                  item?.shortDescription ??
-                  item?.rawDescription ??
+                  item?.menuDescription ||
+                  item?.description ||
+                  analysis?.generated_description ||
+                  item?.subtitle ||
+                  item?.shortDescription ||
+                  item?.rawDescription ||
                   '';
 
                 if (item?.name && item.name.toLowerCase().includes('egg mcmuffin')) {
                   console.log('DEBUG MENU ITEM – Egg McMuffin', item, Object.keys(item || {}));
+                }
+
+                // DEBUG: Log generated_description usage (check for falsy values including empty strings)
+                if (analysis?.generated_description && !item?.description?.trim() && !item?.menuDescription?.trim()) {
+                  console.log('[DESC DEBUG]', item?.name, 'using generated_description:', analysis.generated_description?.substring(0, 50));
                 }
 
                 // Check if this dish is logged today
