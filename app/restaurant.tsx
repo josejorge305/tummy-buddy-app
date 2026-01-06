@@ -42,7 +42,7 @@ import {
 import { fetchPlaceDetails } from '../api/places';
 import { useMenuPrefetch } from '../context/MenuPrefetchContext';
 import { useUserPrefs } from '../context/UserPrefsContext';
-import { useSetAIContext, useAIAssistant, MenuItem } from '../context/AIAssistantContext';
+import { useSetAIContext } from '../context/AIAssistantContext';
 import { useDisclaimer } from '../context/DisclaimerContext';
 import { AllergenBanner, RestaurantAllergenPopup } from '../components/legal';
 import { buildDishViewModel } from '../utils/dishViewModel';
@@ -987,40 +987,14 @@ export default function RestaurantScreen() {
   const latValue = latValueRaw ?? undefined;
   const lngValue = lngValueRaw ?? undefined;
 
-  // Get AI assistant context setter
-  const { setPageContext } = useAIAssistant();
-
-  // Set AI context for this page (basic info first)
+  // Set AI context for this page - backend fetches full menu using placeId
   useSetAIContext({
     screen: 'restaurant',
-    restaurantId: placeIdValue || null,
+    placeId: placeIdValue || null,
     restaurantName: restaurantNameValue || null,
     dishId: null,
     dishName: null,
   });
-
-  // Update AI context with menu items when menu loads
-  React.useEffect(() => {
-    if (menu?.sections && menu.sections.length > 0) {
-      // Extract all menu items for AI context
-      const allItems: MenuItem[] = [];
-      for (const section of menu.sections) {
-        for (const item of section.items || []) {
-          allItems.push({
-            name: item.name,
-            description: item.description || item.menuDescription || undefined,
-            section: section.name || section.title,
-            price: item.priceText || (item.rawPrice ? `$${item.rawPrice.toFixed(2)}` : undefined),
-            calories: item.restaurantCalories || null,
-          });
-        }
-      }
-      // Update the AI context with menu items
-      setPageContext({
-        menuItems: allItems,
-      });
-    }
-  }, [menu, setPageContext]);
 
   const scrollViewRef = useRef<ScrollView | null>(null);
   const itemLayouts = useRef<Record<string, number>>({});

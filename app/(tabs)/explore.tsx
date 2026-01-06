@@ -90,7 +90,7 @@ export default function DailyTracker() {
   // Set AI context for tracker screen
   useSetAIContext({
     screen: 'tracker',
-    restaurantId: null,
+    placeId: null,
     restaurantName: null,
     dishId: null,
     dishName: null,

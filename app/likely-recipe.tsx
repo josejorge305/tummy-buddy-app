@@ -255,7 +255,7 @@ export default function LikelyRecipeScreen() {
     screen: 'dish_detail',
     dishId: null,
     dishName: dishName || null,
-    restaurantId: null,
+    placeId: null,
     restaurantName: restaurantName || null,
   });
   const rawImageUrl = params.imageUrl as string | undefined;
