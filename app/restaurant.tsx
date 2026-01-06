@@ -2273,9 +2273,17 @@ export default function RestaurantScreen() {
                       )
                     )}
 
-                    <Text style={styles.itemName} numberOfLines={2}>
-                      {item?.name}
-                    </Text>
+                    <View style={styles.itemNameRow}>
+                      <Text style={styles.itemName} numberOfLines={2}>
+                        {item?.name}
+                      </Text>
+                      {analysis?.ok && !isLoggedToday && (
+                        <View style={styles.analyzedBadge}>
+                          <Ionicons name="checkmark-circle" size={12} color="#22c55e" />
+                          <Text style={styles.analyzedBadgeText}>Analyzed</Text>
+                        </View>
+                      )}
+                    </View>
 
                     {descriptionText ? (
                       <View>
@@ -2378,12 +2386,12 @@ export default function RestaurantScreen() {
                     <TouchableOpacity
                       onPress={() => handleShowAnalysis(String(itemId), item, section.name || '')}
                     >
-                      <Text style={styles.showMoreText}>
+                      <Text style={[styles.showMoreText, analysis?.ok && styles.showMoreTextReady]}>
                         {isAnalysisLoading
                           ? 'Analyzing…'
                           : analysis?.ok
-                            ? 'Show Digestive Impact, Recipe, Wine Pairing...'
-                            : 'Show analysis'}
+                            ? '✓ Tap to see Digestive Impact, Recipe, Wine Pairing...'
+                            : 'Analyze this dish'}
                       </Text>
                     </TouchableOpacity>
 
@@ -2657,11 +2665,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   itemName: {
     fontSize: 22, // xl - dish names
     fontWeight: '700',
     color: '#ffffff',
     lineHeight: 28,
+    flex: 1,
+  },
+  analyzedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+    marginTop: 4,
+  },
+  analyzedBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#22c55e',
   },
   itemPrice: {
     marginTop: 2,
@@ -2730,6 +2760,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: TEAL,
+  },
+  showMoreTextReady: {
+    color: '#22c55e', // Green to indicate ready/analyzed
   },
   verdictTitle: {
     marginTop: 14,
