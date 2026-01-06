@@ -3136,6 +3136,63 @@ export async function uploadMealPhoto(
 }
 
 /**
+ * Food identification result from photo analysis
+ */
+export interface FoodIdentificationResult {
+  ok: boolean;
+  dishName?: string;
+  dishDescription?: string;
+  portionSize?: string;
+  ingredients?: Array<{ name: string; estimatedAmount: string; visible: boolean }>;
+  nutrition?: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    fiber_g?: number | null;
+    sodium_mg?: number | null;
+  };
+  allergens?: string[];
+  confidence?: number;
+  notes?: string | null;
+  source?: string;
+  error?: string;
+}
+
+/**
+ * Identify food in a photo using Claude Vision.
+ * Returns dish name, ingredients, calories, and allergens based on the ACTUAL visible food.
+ * Use this for the "before" photo to get calorie estimates from the real portion.
+ */
+export async function identifyFoodInPhoto(
+  photoUrl: string,
+  context?: string
+): Promise<FoodIdentificationResult> {
+  const url = `${GATEWAY_BASE_URL}/api/meal-photo/identify`;
+  console.log('TB identifyFoodInPhoto calling:', url);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photoUrl, context }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('identifyFoodInPhoto HTTP error:', res.status, data);
+      return { ok: false, error: data?.error || data?.hint || `HTTP ${res.status}` };
+    }
+
+    return data;
+  } catch (e: any) {
+    console.error('identifyFoodInPhoto error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Identification failed' };
+  }
+}
+
+/**
  * Analyze before and after photos to determine consumption percentage.
  * Returns detailed breakdown by item.
  */
