@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 
 import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useDisclaimer } from '../../context/DisclaimerContext';
@@ -73,6 +74,8 @@ const cmToFeetInches = (cm: number) => {
 const feetInchesToCm = (feet: number, inches: number) => (feet * 12 + inches) * 2.54;
 
 export default function ProfileScreen() {
+  const router = useRouter();
+
   const {
     profile,
     targets,
@@ -838,15 +841,23 @@ export default function ProfileScreen() {
 
             {/* Legal */}
             <View style={styles.card}>
-              <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => router.push('/terms')}
+              >
                 <View style={styles.menuItemLeft}>
                   <Text style={styles.menuIcon}>📄</Text>
-                  <Text style={styles.menuItemText}>Terms & Disclosures</Text>
+                  <Text style={styles.menuItemText}>Terms of Service</Text>
                 </View>
                 <Text style={styles.menuChevron}>›</Text>
               </TouchableOpacity>
               <View style={styles.menuDivider} />
-              <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => router.push('/privacy-policy')}
+              >
                 <View style={styles.menuItemLeft}>
                   <Text style={styles.menuIcon}>🔒</Text>
                   <Text style={styles.menuItemText}>Privacy Policy</Text>
