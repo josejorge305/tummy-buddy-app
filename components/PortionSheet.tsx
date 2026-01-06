@@ -346,14 +346,14 @@ export const PortionSheet: React.FC<PortionSheetProps> = ({
                 <TouchableOpacity
                   style={[
                     styles.shareChip,
-                    sharedWithCount && sharedWithCount > 5 && styles.shareChipActive,
+                    sharedWithCount != null && sharedWithCount > 5 && styles.shareChipActive,
                   ]}
                   onPress={() => handleShareCountSelect(6)}
                 >
                   <Text
                     style={[
                       styles.shareChipText,
-                      sharedWithCount && sharedWithCount > 5 && styles.shareChipTextActive,
+                      sharedWithCount != null && sharedWithCount > 5 && styles.shareChipTextActive,
                     ]}
                   >
                     5+
