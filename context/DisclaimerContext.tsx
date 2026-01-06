@@ -4,6 +4,7 @@ import { DISCLAIMER_VERSION } from '../components/legal/legalDesignSystem';
 
 // Storage keys
 const STORAGE_KEYS = {
+  featureTourCompleted: '@tb_feature_tour_completed',
   onboardingAcknowledged: '@tb_legal_onboarding_ack',
   onboardingVersion: '@tb_legal_onboarding_version',
   onboardingTimestamp: '@tb_legal_onboarding_ts',
@@ -15,6 +16,8 @@ const STORAGE_KEYS = {
 
 export interface DisclaimerState {
   isLoading: boolean;
+  // Feature Tour (intro carousel)
+  hasCompletedFeatureTour: boolean;
   // Onboarding
   hasAcknowledgedOnboarding: boolean;
   onboardingVersion: string | null;
@@ -28,6 +31,10 @@ export interface DisclaimerState {
 }
 
 export interface DisclaimerContextValue extends DisclaimerState {
+  // Feature Tour
+  completeFeatureTour: () => Promise<void>;
+  shouldShowFeatureTour: () => boolean;
+
   // Onboarding acknowledgment
   acknowledgeOnboarding: () => Promise<void>;
   shouldShowOnboardingModal: () => boolean;
@@ -54,6 +61,7 @@ const DisclaimerContext = createContext<DisclaimerContextValue | null>(null);
 export function DisclaimerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DisclaimerState>({
     isLoading: true,
+    hasCompletedFeatureTour: false,
     hasAcknowledgedOnboarding: false,
     onboardingVersion: null,
     onboardingTimestamp: null,
@@ -71,6 +79,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
   const loadStoredState = async () => {
     try {
       const [
+        featureTourCompleted,
         onboardingAck,
         onboardingVersion,
         onboardingTs,
@@ -79,6 +88,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
         healthCoachAck,
         healthCoachTs,
       ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.featureTourCompleted),
         AsyncStorage.getItem(STORAGE_KEYS.onboardingAcknowledged),
         AsyncStorage.getItem(STORAGE_KEYS.onboardingVersion),
         AsyncStorage.getItem(STORAGE_KEYS.onboardingTimestamp),
@@ -103,6 +113,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
 
       setState({
         isLoading: false,
+        hasCompletedFeatureTour: featureTourCompleted === 'true',
         hasAcknowledgedOnboarding: hasValidOnboarding,
         onboardingVersion: onboardingVersion,
         onboardingTimestamp: onboardingTs ? parseInt(onboardingTs, 10) : null,
@@ -116,6 +127,22 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
       setState(prev => ({ ...prev, isLoading: false }));
     }
   };
+
+  // ========== Feature Tour ==========
+  const completeFeatureTour = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.featureTourCompleted, 'true');
+      setState(prev => ({ ...prev, hasCompletedFeatureTour: true }));
+      if (__DEV__) console.log('[DisclaimerContext] Feature tour completed');
+    } catch (e) {
+      if (__DEV__) console.error('[DisclaimerContext] Error completing feature tour:', e);
+    }
+  }, []);
+
+  const shouldShowFeatureTour = useCallback((): boolean => {
+    if (state.isLoading) return false;
+    return !state.hasCompletedFeatureTour;
+  }, [state.isLoading, state.hasCompletedFeatureTour]);
 
   // ========== Onboarding ==========
   const acknowledgeOnboarding = useCallback(async () => {
@@ -224,6 +251,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
   const resetAllAcknowledgments = useCallback(async () => {
     try {
       await Promise.all([
+        AsyncStorage.removeItem(STORAGE_KEYS.featureTourCompleted),
         AsyncStorage.removeItem(STORAGE_KEYS.onboardingAcknowledged),
         AsyncStorage.removeItem(STORAGE_KEYS.onboardingVersion),
         AsyncStorage.removeItem(STORAGE_KEYS.onboardingTimestamp),
@@ -234,6 +262,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
       ]);
       setState({
         isLoading: false,
+        hasCompletedFeatureTour: false,
         hasAcknowledgedOnboarding: false,
         onboardingVersion: null,
         onboardingTimestamp: null,
@@ -252,6 +281,8 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
     <DisclaimerContext.Provider
       value={{
         ...state,
+        completeFeatureTour,
+        shouldShowFeatureTour,
         acknowledgeOnboarding,
         shouldShowOnboardingModal,
         dismissAllergenBanner,

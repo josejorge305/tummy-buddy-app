@@ -8,7 +8,7 @@ import { MenuPrefetchProvider } from '../context/MenuPrefetchContext';
 import { AIAssistantProvider } from '../context/AIAssistantContext';
 import { DisclaimerProvider } from '../context/DisclaimerContext';
 import { AIAssistantPanel } from '../components/AIAssistantPanel';
-import { WelcomeModal } from '../components/legal/WelcomeModal';
+import { OnboardingFlow } from '../components/onboarding/OnboardingFlow';
 import { initSentry, addNavigationBreadcrumb } from '../utils/sentry';
 
 // Initialize Sentry on app start
@@ -46,8 +46,8 @@ function RootLayoutContent() {
                   />
                   {/* AI Assistant Panel - persists across all pages */}
                   <AIAssistantPanel />
-                  {/* Legal onboarding modal - shows once on first app launch */}
-                  <WelcomeModal />
+                  {/* Onboarding flow - feature tour then legal disclaimer */}
+                  <OnboardingFlow />
                 </View>
               </NavigationTracker>
             </AIAssistantProvider>
