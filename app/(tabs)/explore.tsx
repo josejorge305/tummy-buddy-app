@@ -272,17 +272,30 @@ export default function DailyTracker() {
   // Calculate streak
   const streak = (weeklyData?.summaries || []).filter(s => s.meal_count > 0).length;
 
+  // Default organs to always show in tracker (baseline at 50/100)
+  const DEFAULT_ORGANS = ['heart', 'liver', 'gut', 'kidneys', 'brain', 'stomach'];
+
   // Calculate organ scores from today's data with trends
   const organImpacts = summary?.organ_scores || {};
-  const organScores = Object.entries(organImpacts)
-    .filter(([, score]) => typeof score === 'number')
-    .map(([organ, score]) => ({
-      name: organ.charAt(0).toUpperCase() + organ.slice(1),
-      score: Math.round(50 + (score as number) * 2), // Normalize to 0-100
-      trend: (score as number) > 0 ? 'up' : (score as number) < 0 ? 'down' : 'stable',
-      trendPercent: Math.abs(Math.round((score as number) * 4)),
-    }))
-    .slice(0, 6) as Array<{
+
+  // Build organ scores - use data if available, otherwise show defaults at baseline
+  const hasOrganData = Object.keys(organImpacts).length > 0;
+  const organScores = hasOrganData
+    ? Object.entries(organImpacts)
+        .filter(([, score]) => typeof score === 'number')
+        .map(([organ, score]) => ({
+          name: organ.charAt(0).toUpperCase() + organ.slice(1),
+          score: Math.round(50 + (score as number) * 2), // Normalize to 0-100
+          trend: (score as number) > 0 ? 'up' : (score as number) < 0 ? 'down' : 'stable',
+          trendPercent: Math.abs(Math.round((score as number) * 4)),
+        }))
+        .slice(0, 6)
+    : DEFAULT_ORGANS.map(organ => ({
+        name: organ.charAt(0).toUpperCase() + organ.slice(1),
+        score: 50, // Baseline score
+        trend: 'stable' as const,
+        trendPercent: 0,
+      })) as Array<{
       name: string;
       score: number;
       trend: 'up' | 'down' | 'stable';
@@ -452,6 +465,39 @@ export default function DailyTracker() {
   };
 
   const handleMealPress = (meal: any) => {
+    // Check if this meal has a pending after photo
+    if (meal.photo_status === 'pending_after_photo') {
+      // Show prompt to take after photo
+      Alert.alert(
+        'Take After Photo',
+        `Ready to complete your meal log for "${meal.dish_name}"?\n\nTake a photo of what's left on your plate to calculate how much you actually ate.`,
+        [
+          { text: 'Not Yet', style: 'cancel' },
+          {
+            text: 'Take Photo',
+            onPress: () => {
+              // Navigate to after photo capture
+              // We'll pass the meal data to complete the analysis
+              router.push({
+                pathname: '/after-photo-capture',
+                params: {
+                  mealId: String(meal.id),
+                  dishName: meal.dish_name,
+                  beforePhotoUrl: meal.before_photo_url || '',
+                  baselineCalories: String(meal.baseline_calories || meal.calories || 0),
+                },
+              });
+            },
+          },
+          {
+            text: 'Mark Complete Manually',
+            onPress: () => handleEditPortion(meal),
+          },
+        ]
+      );
+      return;
+    }
+
     // Navigate to recipe card with dish info from full_analysis or cache
     const analysis = meal.full_analysis;
 
@@ -622,9 +668,11 @@ export default function DailyTracker() {
                   organs={organHealthData}
                   avgScore={avgOrganScore}
                   priorityInsight={
-                    organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')
-                      ? `Focus on ${organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')?.name.toLowerCase()} support today`
-                      : undefined
+                    !hasOrganData
+                      ? 'Log a meal to see how your food choices affect your organs'
+                      : organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')
+                        ? `Focus on ${organHealthData.find(o => o.status === 'attention' || o.status === 'moderate')?.name.toLowerCase()} support today`
+                        : undefined
                   }
                 />
               </View>

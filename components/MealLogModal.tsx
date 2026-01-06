@@ -28,6 +28,8 @@ import {
   AnalyzeDishResponse,
   uploadMealPhoto,
   analyzePhotoConsumption,
+  identifyFoodInPhoto,
+  FoodIdentificationResult,
 } from '../api/api';
 import { PortionData, PortionMode } from './PortionSheet';
 
@@ -79,11 +81,18 @@ export interface MealLogData {
   // Photo data
   beforePhotoUri?: string;
   afterPhotoUri?: string;
+  beforePhotoUrl?: string;
+  afterPhotoUrl?: string;
+  // Food identification from before photo (real calories from vision)
+  foodIdentification?: FoodIdentificationResult;
+  // Consumption analysis comparing before/after
   photoAnalysis?: PhotoAnalysisResult;
   // If photo analysis was used
   usePhotoAnalysis: boolean;
   // Full analysis data for nutrition
   analysis?: AnalyzeDishResponse;
+  // Pending after photo (user can take it later)
+  afterPhotoPending?: boolean;
 }
 
 // Portion preset options for quick log
@@ -119,6 +128,8 @@ export function MealLogModal({
 
   // Analysis state
   const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysisResult | null>(null);
+  // Food identification from before photo (real calorie/nutrition data from vision)
+  const [foodIdentification, setFoodIdentification] = useState<FoodIdentificationResult | null>(null);
 
   // Quick log state
   const [portionPercent, setPortionPercent] = useState(100);
@@ -137,6 +148,7 @@ export function MealLogModal({
       setBeforePhotoUrl(null);
       setAfterPhotoUrl(null);
       setPhotoAnalysis(null);
+      setFoodIdentification(null);
       setPortionPercent(100);
       setSelectedPreset(100);
       setShowCustomSlider(false);
@@ -193,14 +205,30 @@ export function MealLogModal({
 
       // Upload the photo
       const uploadResult = await uploadMealPhoto(userId, uri, 'before');
-      setIsLoading(false);
 
       if (uploadResult.ok && uploadResult.url) {
         setBeforePhotoUrl(uploadResult.url);
+
+        // Identify the food in the photo using Claude Vision
+        // This gives us REAL calorie estimates based on the visible portion
+        console.log('[MealLogModal] Identifying food in before photo...');
+        const context = dishName ? `User is logging: ${dishName}${restaurantName ? ` from ${restaurantName}` : ''}` : undefined;
+        const foodResult = await identifyFoodInPhoto(uploadResult.url, context);
+
+        if (foodResult.ok) {
+          console.log('[MealLogModal] Food identified:', foodResult.dishName, 'Calories:', foodResult.nutrition?.calories);
+          setFoodIdentification(foodResult);
+        } else {
+          console.warn('[MealLogModal] Food identification failed:', foodResult.error);
+          // Continue without food identification - will fall back to recipe data
+        }
+
+        setIsLoading(false);
         setStep('saved');
       } else {
         // Still proceed even if upload fails - we have the local URI
         console.warn('Before photo upload failed, using local URI');
+        setIsLoading(false);
         setStep('saved');
       }
     }
@@ -220,31 +248,45 @@ export function MealLogModal({
       if (uploadResult.ok && uploadResult.url) {
         setAfterPhotoUrl(uploadResult.url);
 
-        // Run photo analysis if we have both URLs
+        // Run photo analysis if we have before photo URL
         if (beforePhotoUrl) {
-          const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
+          console.log('[MealLogModal] Analyzing consumption with before/after photos...');
+
+          // Pass the food identification from before photo if available
+          // The backend will use this for more accurate analysis
           const analysisResult = await analyzePhotoConsumption(
             beforePhotoUrl,
             uploadResult.url,
-            dishName,
-            baselineCalories
+            foodIdentification?.dishName || dishName,
+            foodIdentification?.nutrition?.calories || analysis?.nutrition_summary?.energyKcal || 0
           );
 
           if (analysisResult.ok && analysisResult.analysis) {
+            console.log('[MealLogModal] Photo analysis complete:', analysisResult.analysis);
             setPhotoAnalysis(analysisResult.analysis);
           } else {
-            // Fallback: mock analysis for demo
-            setPhotoAnalysis(createMockAnalysis(baselineCalories));
+            console.warn('[MealLogModal] Photo analysis failed:', analysisResult.error);
+            Alert.alert(
+              'Analysis Error',
+              'Could not analyze the photos. You can still log the meal manually.',
+              [{ text: 'OK' }]
+            );
           }
         } else {
-          // No before photo URL, use mock analysis
-          const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
-          setPhotoAnalysis(createMockAnalysis(baselineCalories));
+          console.warn('[MealLogModal] No before photo URL available');
+          Alert.alert(
+            'Missing Before Photo',
+            'The before photo was not uploaded. Please try again.',
+            [{ text: 'OK' }]
+          );
         }
       } else {
-        // Fallback analysis even if upload fails
-        const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
-        setPhotoAnalysis(createMockAnalysis(baselineCalories));
+        console.error('[MealLogModal] After photo upload failed');
+        Alert.alert(
+          'Upload Error',
+          'Could not upload the after photo. Please try again.',
+          [{ text: 'OK' }]
+        );
       }
 
       setIsLoading(false);
@@ -314,8 +356,11 @@ export function MealLogModal({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (!photoAnalysis) return;
 
+    // Use food identification data for base nutrition if available
+    const useVisionNutrition = foodIdentification?.ok && foodIdentification?.nutrition;
+
     onLogComplete({
-      dishName,
+      dishName: foodIdentification?.dishName || dishName,
       dishId,
       restaurantName,
       portionPercent: photoAnalysis.percentConsumed,
@@ -324,18 +369,82 @@ export function MealLogModal({
       leftoversSaved: false,
       beforePhotoUri: beforePhotoUri || undefined,
       afterPhotoUri: afterPhotoUri || undefined,
+      beforePhotoUrl: beforePhotoUrl || undefined,
+      afterPhotoUrl: afterPhotoUrl || undefined,
+      foodIdentification: foodIdentification || undefined,
       photoAnalysis,
       usePhotoAnalysis: true,
-      analysis,
+      analysis: useVisionNutrition
+        ? {
+            ok: true,
+            dishName: foodIdentification?.dishName || dishName,
+            dishDescription: foodIdentification?.dishDescription || '',
+            nutrition_summary: {
+              // Apply the consumption percentage to vision-based calories
+              energyKcal: Math.round((foodIdentification?.nutrition?.calories || 0) * (photoAnalysis.percentConsumed / 100)),
+              protein_g: Math.round((foodIdentification?.nutrition?.protein_g || 0) * (photoAnalysis.percentConsumed / 100)),
+              carbs_g: Math.round((foodIdentification?.nutrition?.carbs_g || 0) * (photoAnalysis.percentConsumed / 100)),
+              fat_g: Math.round((foodIdentification?.nutrition?.fat_g || 0) * (photoAnalysis.percentConsumed / 100)),
+              fiber_g: foodIdentification?.nutrition?.fiber_g ? Math.round(foodIdentification.nutrition.fiber_g * (photoAnalysis.percentConsumed / 100)) : null,
+              sodium_mg: foodIdentification?.nutrition?.sodium_mg ? Math.round(foodIdentification.nutrition.sodium_mg * (photoAnalysis.percentConsumed / 100)) : null,
+              sugar_g: null, // Vision analysis doesn't provide sugar breakdown
+            },
+            allergen_flags: foodIdentification?.allergens?.map(a => ({ kind: a, present: 'yes' as const, message: 'Detected in photo', source: 'photo_vision' })) || [],
+            source: 'photo_vision',
+          } as unknown as AnalyzeDishResponse
+        : analysis,
+      afterPhotoPending: false,
     });
   };
 
-  // Handle "Got it" from saved step
+  // Handle "Log Meal Now" with pending after photo
+  const handleLogWithPendingAfter = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Use food identification data for nutrition if available (real vision-based calories)
+    // Otherwise fall back to the recipe-based analysis
+    const useVisionNutrition = foodIdentification?.ok && foodIdentification?.nutrition;
+
+    onLogComplete({
+      dishName: foodIdentification?.dishName || dishName,
+      dishId,
+      restaurantName,
+      portionPercent: 100, // Full portion assumed until after photo is taken
+      portionMode: 'custom',
+      sharedWithCount: null,
+      leftoversSaved: false,
+      beforePhotoUri: beforePhotoUri || undefined,
+      beforePhotoUrl: beforePhotoUrl || undefined,
+      foodIdentification: foodIdentification || undefined,
+      usePhotoAnalysis: true,
+      analysis: useVisionNutrition
+        ? {
+            // Create analysis from vision data
+            ok: true,
+            dishName: foodIdentification?.dishName || dishName,
+            dishDescription: foodIdentification?.dishDescription || '',
+            nutrition_summary: {
+              energyKcal: foodIdentification?.nutrition?.calories || 0,
+              protein_g: foodIdentification?.nutrition?.protein_g || 0,
+              carbs_g: foodIdentification?.nutrition?.carbs_g || 0,
+              fat_g: foodIdentification?.nutrition?.fat_g || 0,
+              fiber_g: foodIdentification?.nutrition?.fiber_g || null,
+              sodium_mg: foodIdentification?.nutrition?.sodium_mg || null,
+              sugar_g: null, // Vision analysis doesn't provide sugar breakdown
+            },
+            allergen_flags: foodIdentification?.allergens?.map(a => ({ kind: a, present: 'yes' as const, message: 'Detected in photo', source: 'photo_vision' })) || [],
+            source: 'photo_vision',
+          } as unknown as AnalyzeDishResponse
+        : analysis,
+      afterPhotoPending: true,
+    });
+  };
+
+  // Handle "Got it" (legacy - now we use handleLogWithPendingAfter)
   const handleSavedContinue = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onClose();
-    // The meal is logged with pending_after_photo status
-    // User will tap the meal card later to complete
+    // Log with pending after photo
+    handleLogWithPendingAfter();
   };
 
   // Render wizard steps indicator
@@ -516,57 +625,161 @@ export function MealLogModal({
   );
 
   // Render saved step (after before photo)
-  const renderSavedStep = () => (
-    <>
-      {/* Header */}
-      <View style={styles.photoHeader}>
-        <View style={styles.spacer} />
-        <Text style={styles.photoTitle}>Photo Analysis</Text>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Ionicons name="close" size={24} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-      </View>
+  const renderSavedStep = () => {
+    // Use food identification data if available, otherwise fall back to recipe data
+    const displayDishName = foodIdentification?.dishName || dishName;
+    const displayCalories = foodIdentification?.nutrition?.calories || analysis?.nutrition_summary?.energyKcal || 0;
+    const displayProtein = foodIdentification?.nutrition?.protein_g || analysis?.nutrition_summary?.protein_g || 0;
+    const displayCarbs = foodIdentification?.nutrition?.carbs_g || analysis?.nutrition_summary?.carbs_g || 0;
+    const displayFat = foodIdentification?.nutrition?.fat_g || analysis?.nutrition_summary?.fat_g || 0;
+    const hasVisionData = foodIdentification?.ok && foodIdentification?.nutrition;
+    const portionSize = foodIdentification?.portionSize || 'Standard serving';
+    const visibleIngredients = foodIdentification?.ingredients?.filter(i => i.visible) || [];
+    const allergens = foodIdentification?.allergens || analysis?.allergen_flags?.map(a => a.kind || '').filter(Boolean) || [];
 
-      {renderWizardSteps()}
-
-      <View style={styles.photoContentCentered}>
-        {/* Success Icon */}
-        <View style={styles.successIcon}>
-          <Ionicons name="checkmark" size={40} color={COLORS.brandTeal} />
+    return (
+      <>
+        {/* Header */}
+        <View style={styles.photoHeader}>
+          <View style={styles.spacer} />
+          <Text style={styles.photoTitle}>Photo Analysis</Text>
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.successTitle}>Before photo saved</Text>
-        <Text style={styles.successDesc}>
-          Enjoy your meal! When you're done eating, tap this meal in{' '}
-          <Text style={styles.successDescBold}>Today's Meals</Text> to take the
-          after photo.
-        </Text>
+        {renderWizardSteps()}
 
-        {/* Meal Preview Card */}
-        <View style={styles.mealPreviewCard}>
-          {beforePhotoUri ? (
-            <Image source={{ uri: beforePhotoUri }} style={styles.previewThumb} />
-          ) : (
-            <View style={styles.previewThumbPlaceholder}>
-              <Ionicons name="image-outline" size={20} color={COLORS.textMuted} />
+        <View style={styles.photoContentCentered}>
+          {/* Success Icon */}
+          <View style={styles.successIcon}>
+            <Ionicons name="checkmark" size={40} color={COLORS.brandTeal} />
+          </View>
+
+          <Text style={styles.successTitle}>
+            {hasVisionData ? 'Food Identified' : 'Before photo saved'}
+          </Text>
+
+          {/* Show identified dish info if available */}
+          {hasVisionData && (
+            <View style={styles.identifiedDishCard}>
+              <View style={styles.identifiedDishHeader}>
+                <Text style={styles.identifiedDishName}>{displayDishName}</Text>
+                {foodIdentification?.confidence && foodIdentification.confidence >= 0.8 && (
+                  <View style={styles.confidenceBadge}>
+                    <Ionicons name="checkmark-circle" size={12} color={COLORS.successGreen} />
+                    <Text style={styles.confidenceText}>High confidence</Text>
+                  </View>
+                )}
+              </View>
+
+              <Text style={styles.portionSizeText}>{portionSize}</Text>
+
+              {/* Nutrition from vision */}
+              <View style={styles.visionNutritionRow}>
+                <View style={styles.visionNutritionItem}>
+                  <Text style={styles.visionNutritionValue}>{displayCalories}</Text>
+                  <Text style={styles.visionNutritionLabel}>cal</Text>
+                </View>
+                <View style={styles.visionNutritionDivider} />
+                <View style={styles.visionNutritionItem}>
+                  <Text style={styles.visionNutritionValue}>{displayProtein}g</Text>
+                  <Text style={styles.visionNutritionLabel}>protein</Text>
+                </View>
+                <View style={styles.visionNutritionDivider} />
+                <View style={styles.visionNutritionItem}>
+                  <Text style={styles.visionNutritionValue}>{displayCarbs}g</Text>
+                  <Text style={styles.visionNutritionLabel}>carbs</Text>
+                </View>
+                <View style={styles.visionNutritionDivider} />
+                <View style={styles.visionNutritionItem}>
+                  <Text style={styles.visionNutritionValue}>{displayFat}g</Text>
+                  <Text style={styles.visionNutritionLabel}>fat</Text>
+                </View>
+              </View>
+
+              {/* Visible ingredients */}
+              {visibleIngredients.length > 0 && (
+                <View style={styles.ingredientsList}>
+                  <Text style={styles.ingredientsLabel}>Detected ingredients:</Text>
+                  <Text style={styles.ingredientsText}>
+                    {visibleIngredients.slice(0, 5).map(i => i.name).join(', ')}
+                    {visibleIngredients.length > 5 && ` +${visibleIngredients.length - 5} more`}
+                  </Text>
+                </View>
+              )}
+
+              {/* Allergens warning */}
+              {allergens.length > 0 && (
+                <View style={styles.allergensWarning}>
+                  <Ionicons name="warning" size={14} color={COLORS.warningOrange} />
+                  <Text style={styles.allergensText}>
+                    Contains: {allergens.slice(0, 4).join(', ')}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={styles.visionSourceNote}>
+                Nutrition based on visible portion in photo
+              </Text>
             </View>
           )}
-          <View style={styles.previewInfo}>
-            <Text style={styles.previewName}>{dishName}</Text>
-            <Text style={styles.previewStatus}>Tap when finished eating</Text>
-          </View>
-        </View>
 
-        <TouchableOpacity
-          style={styles.doneButton}
-          onPress={handleSavedContinue}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.doneButtonText}>Got it</Text>
-        </TouchableOpacity>
-      </View>
-    </>
-  );
+          {/* Meal Preview Card (shown when no vision data) */}
+          {!hasVisionData && (
+            <>
+              <Text style={styles.successDesc}>
+                Enjoy your meal! When you're done eating, tap this meal in{' '}
+                <Text style={styles.successDescBold}>Today's Meals</Text> to take the
+                after photo.
+              </Text>
+
+              <View style={styles.mealPreviewCard}>
+                {beforePhotoUri ? (
+                  <Image source={{ uri: beforePhotoUri }} style={styles.previewThumb} />
+                ) : (
+                  <View style={styles.previewThumbPlaceholder}>
+                    <Ionicons name="image-outline" size={20} color={COLORS.textMuted} />
+                  </View>
+                )}
+                <View style={styles.previewInfo}>
+                  <Text style={styles.previewName}>{dishName}</Text>
+                  <Text style={styles.previewStatus}>Tap when finished eating</Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* Action Buttons */}
+          <View style={styles.savedActionButtons}>
+            {/* Primary: Log now with pending after photo */}
+            <TouchableOpacity
+              style={styles.doneButton}
+              onPress={handleLogWithPendingAfter}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.doneButtonText}>Log Meal Now</Text>
+            </TouchableOpacity>
+
+            {/* Secondary: Skip to after photo now */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => setStep('after')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryButtonText}>Take After Photo Now</Text>
+            </TouchableOpacity>
+          </View>
+
+          {hasVisionData && (
+            <Text style={styles.savedHintText}>
+              You can take the after photo later from Today's Meals
+            </Text>
+          )}
+        </View>
+      </>
+    );
+  };
 
   // Render after photo step
   const renderAfterStep = () => (
@@ -1244,6 +1457,138 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: COLORS.background,
+  },
+
+  // Identified dish card styles
+  identifiedDishCard: {
+    width: '100%',
+    backgroundColor: COLORS.background,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderActive,
+    padding: 16,
+    marginBottom: 16,
+  },
+  identifiedDishHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+  },
+  identifiedDishName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    flex: 1,
+    marginRight: 8,
+  },
+  confidenceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: COLORS.successGreen,
+  },
+  portionSizeText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 14,
+  },
+  visionNutritionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.cardSurface,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  visionNutritionItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  visionNutritionValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  visionNutritionLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  visionNutritionDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: COLORS.border,
+  },
+  ingredientsList: {
+    marginBottom: 10,
+  },
+  ingredientsLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginBottom: 4,
+  },
+  ingredientsText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  allergensWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(251, 146, 60, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  allergensText: {
+    fontSize: 12,
+    color: COLORS.warningOrange,
+    flex: 1,
+  },
+  visionSourceNote: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
+  // Saved step action buttons
+  savedActionButtons: {
+    width: '100%',
+    gap: 10,
+    marginTop: 8,
+  },
+  secondaryButton: {
+    width: '100%',
+    backgroundColor: 'transparent',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.brandTeal,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.brandTeal,
+  },
+  savedHintText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 12,
   },
 
   // After photo step

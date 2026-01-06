@@ -190,7 +190,9 @@ export default function DishScreen() {
 
   useEffect(() => {
     loadDishAnalysis();
-  }, [dishName]);
+    // Note: imageUrl is included because photo analysis uses the same placeholder dishName
+    // ("Photo Analysis") for all photos, so we need to re-trigger when the image changes
+  }, [dishName, imageUrl]);
 
   // Helper function to redirect to likely-recipe screen with all data
   const redirectToLikelyRecipe = useCallback((analysisData: AnalyzeDishResponse, finalImageUrl: string) => {
@@ -244,6 +246,8 @@ export default function DishScreen() {
       setIsLoading(true);
       setError(null);
       setFetchedImageUrl(null);
+      setAnalysis(null); // Reset analysis to prevent showing stale data from previous photo
+      setMealLogged(false); // Reset meal logged state for new analysis
 
       if (!fromPhoto) {
         const cached = await getCachedDish(dishName, placeId);
@@ -447,21 +451,39 @@ export default function DishScreen() {
         riskFlags.push('high_sodium');
       }
 
+      // Use data from photo analysis if available, otherwise fall back to recipe data
+      const usePhotoAnalysisData = logData.usePhotoAnalysis && logData.analysis;
+      const effectiveAnalysis = usePhotoAnalysisData ? logData.analysis! : analysis;
+
       // Get baseline (full serving) values from analysis
-      const baselineCalories = analysis.nutrition_summary?.energyKcal || 0;
-      const baselineProtein = analysis.nutrition_summary?.protein_g || 0;
-      const baselineCarbs = analysis.nutrition_summary?.carbs_g || 0;
-      const baselineFat = analysis.nutrition_summary?.fat_g || 0;
-      const baselineFiber = analysis.nutrition_summary?.fiber_g || 0;
-      const baselineSugar = analysis.nutrition_summary?.sugar_g || 0;
-      const baselineSodium = analysis.nutrition_summary?.sodium_mg || 0;
+      // Note: NutritionSummary uses snake_case (protein_g), but photo analysis creates camelCase (proteinG)
+      const ns = effectiveAnalysis.nutrition_summary as any;
+      const baselineCalories = ns?.energyKcal || 0;
+      const baselineProtein = ns?.protein_g ?? ns?.proteinG ?? 0;
+      const baselineCarbs = ns?.carbs_g ?? ns?.carbsG ?? 0;
+      const baselineFat = ns?.fat_g ?? ns?.fatG ?? 0;
+      const baselineFiber = ns?.fiber_g ?? ns?.fiberG ?? 0;
+      const baselineSugar = ns?.sugar_g ?? ns?.sugarG ?? 0;
+      const baselineSodium = ns?.sodium_mg ?? ns?.sodiumMg ?? 0;
 
       // Calculate portion multiplier from percent
       const portionMultiplier = logData.portionPercent / 100;
 
+      // Determine photo status
+      let photoStatus: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null = null;
+      if (logData.usePhotoAnalysis) {
+        if (logData.afterPhotoPending) {
+          photoStatus = 'pending_after_photo';
+        } else if (logData.photoAnalysis) {
+          photoStatus = 'completed';
+        }
+      } else {
+        photoStatus = 'manual';
+      }
+
       // Call logMeal API
       await logMeal(userId, {
-        dish_name: analysis.dishName || dishName,
+        dish_name: effectiveAnalysis.dishName || dishName,
         dish_id: `${dishName}-${Date.now()}`,
         restaurant_name: restaurantName,
         portion_factor: portionMultiplier,
@@ -487,7 +509,11 @@ export default function DishScreen() {
         sodium_mg: Math.round(baselineSodium * portionMultiplier),
         risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
         organ_impacts: Object.keys(baselineOrganImpacts).length > 0 ? baselineOrganImpacts : undefined,
-        full_analysis: analysis,
+        full_analysis: effectiveAnalysis,
+        // Photo analysis fields
+        photo_status: photoStatus,
+        before_photo_url: logData.beforePhotoUrl,
+        after_photo_url: logData.afterPhotoUrl,
       });
 
       setMealLogged(true);

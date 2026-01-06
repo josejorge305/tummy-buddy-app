@@ -1263,10 +1263,14 @@ export async function getBatchStatus(
   });
 
   const url = `${GATEWAY_BASE_URL}/api/analyze/batch/status?${params.toString()}`;
-  console.log('TB getBatchStatus calling:', url);
 
   try {
-    const res = await fetch(url, { method: 'GET' });
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timeoutId);
     const text = await res.text();
 
     if (!res.ok) {
@@ -1291,7 +1295,10 @@ export async function getBatchStatus(
     const data = JSON.parse(text);
     return data as BatchStatusResponse;
   } catch (err: any) {
-    console.error('TB getBatchStatus error:', err?.message || err);
+    // Network errors during polling are expected - downgrade to warning
+    const isAbort = err?.name === 'AbortError';
+    const msg = isAbort ? 'request timeout' : (err?.message || err);
+    console.warn('TB getBatchStatus network issue:', msg);
     return {
       ok: false,
       batch: {
@@ -2386,6 +2393,10 @@ export async function logMeal(
     organ_impacts?: Record<string, number>;
     risk_flags?: string[];
     full_analysis?: any;
+    // Photo analysis fields
+    photo_status?: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null;
+    before_photo_url?: string;
+    after_photo_url?: string;
   }
 ): Promise<LogMealResponse> {
   const url = `${API_BASE_URL}/api/meals/log`;
@@ -2522,6 +2533,47 @@ export async function updateMealPortion(
     return data as UpdateMealPortionResponse;
   } catch (e: any) {
     console.error('updateMealPortion error:', e?.message || e);
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Update a meal's fields (photo_status, portion_percent, calories, etc.)
+ * This is a general update function for meal modifications
+ */
+export async function updateMeal(
+  userId: string,
+  mealId: number,
+  updates: {
+    photo_status?: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null;
+    portion_percent?: number;
+    calories?: number;
+    after_photo_url?: string;
+  }
+): Promise<{ ok: boolean; meal?: LoggedMeal; error?: string }> {
+  const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${userId}`;
+  console.log('updateMeal calling:', url, updates);
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error('updateMeal HTTP error:', res.status);
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, meal: data.meal };
+  } catch (e: any) {
+    console.error('updateMeal error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3234,6 +3286,7 @@ export async function analyzePhotoConsumption(
 /**
  * Update a logged meal with after photo and analysis results.
  * Call this after user takes the after photo.
+ * Uses PUT /api/meals/{id} endpoint with user_id in query params.
  */
 export async function updateMealWithPhotoAnalysis(
   userId: string,
@@ -3241,7 +3294,8 @@ export async function updateMealWithPhotoAnalysis(
   afterPhotoUrl: string,
   analysis: PhotoAnalysisResult
 ): Promise<{ ok: boolean; meal?: LoggedMeal; error?: string }> {
-  const url = `${GATEWAY_BASE_URL}/api/tracker/meals/${mealId}/photo-analysis`;
+  // Use the correct endpoint: PUT /api/meals/{id}?user_id={userId}
+  const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${userId}`;
   console.log('TB updateMealWithPhotoAnalysis calling:', url);
 
   try {
@@ -3249,13 +3303,14 @@ export async function updateMealWithPhotoAnalysis(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId,
-        afterPhotoUrl,
-        analysis,
-        photoStatus: 'completed',
+        // Update photo status and URL
+        photo_status: 'completed',
+        after_photo_url: afterPhotoUrl,
         // Update portion based on analysis
-        portionPercent: analysis.percentConsumed,
+        portion_percent: analysis.percentConsumed,
         calories: analysis.caloriesEaten,
+        // Store the analysis result
+        photo_analysis_result: analysis,
       }),
     });
 
@@ -3281,7 +3336,7 @@ export async function getPendingPhotoMeals(
   userId: string,
   date?: string
 ): Promise<LoggedMeal[]> {
-  const targetDate = date || getTodayISO();
+  const targetDate = date || getTodayDate();
   const allMeals = await getMealsForDate(userId, targetDate);
   return allMeals.filter((meal) => meal.photo_status === 'pending_after_photo');
 }

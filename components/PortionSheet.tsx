@@ -316,7 +316,7 @@ export const PortionSheet: React.FC<PortionSheetProps> = ({
               <Text style={[styles.toggleLabel, sharedEnabled && styles.toggleLabelActive]}>
                 Shared
               </Text>
-              {sharedEnabled && sharedWithCount && (
+              {sharedEnabled && sharedWithCount != null && sharedWithCount > 0 && (
                 <Text style={styles.toggleBadge}>with {sharedWithCount}</Text>
               )}
             </TouchableOpacity>
