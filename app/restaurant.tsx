@@ -2440,6 +2440,27 @@ export default function RestaurantScreen() {
           <View style={styles.stickyCategoryNav}>
             {Platform.OS === 'ios' ? (
               <BlurView intensity={80} tint="dark" style={styles.stickyCategoryBlur}>
+                {/* Sticky Search Bar */}
+                <View style={styles.stickySearchContainer}>
+                  <Ionicons name="search" size={18} color="#666" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.menuSearchInput}
+                    placeholder="Search menu items..."
+                    placeholderTextColor="#666"
+                    value={menuSearch}
+                    onChangeText={setMenuSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {menuSearch ? (
+                    <TouchableOpacity
+                      onPress={() => setMenuSearch('')}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#666" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -2468,6 +2489,27 @@ export default function RestaurantScreen() {
               </BlurView>
             ) : (
               <View style={styles.stickyCategoryAndroid}>
+                {/* Sticky Search Bar */}
+                <View style={styles.stickySearchContainer}>
+                  <Ionicons name="search" size={18} color="#666" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.menuSearchInput}
+                    placeholder="Search menu items..."
+                    placeholderTextColor="#666"
+                    value={menuSearch}
+                    onChangeText={setMenuSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {menuSearch ? (
+                    <TouchableOpacity
+                      onPress={() => setMenuSearch('')}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#666" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -3680,5 +3722,15 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 4,
     backgroundColor: 'rgba(2, 6, 23, 0.95)',
+  },
+  stickySearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1f2937',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
 });
