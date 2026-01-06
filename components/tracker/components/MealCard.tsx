@@ -3,8 +3,8 @@
  * Individual meal item card with dish image, name, time, and health score
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated, Easing } from 'react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../utils/colors';
 import { getScoreColor, formatTime } from '../utils/scoreHelpers';
@@ -103,9 +103,154 @@ export function MealCard({
   const isPendingPhoto = photoStatus === 'pending_after_photo';
   const isAnalyzing = photoStatus === 'analyzing';
 
+  // Pulsing glow animation for pending photo
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isPendingPhoto) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 1500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+  }, [isPendingPhoto, glowAnim]);
+
+  // Interpolate glow values
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 0.8],
+  });
+
+  const glowScale = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.02],
+  });
+
+  // For pending photo meals, wrap in animated view with glow
+  if (isPendingPhoto) {
+    return (
+      <Animated.View
+        style={[
+          styles.glowWrapper,
+          {
+            opacity: 1,
+            transform: [{ scale: glowScale }],
+          },
+        ]}
+      >
+        {/* Glow effect layer */}
+        <Animated.View
+          style={[
+            styles.glowEffect,
+            {
+              opacity: glowOpacity,
+            },
+          ]}
+        />
+        <TouchableOpacity
+          style={[styles.container, styles.containerPending]}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          activeOpacity={0.7}
+        >
+          {/* Dish Image or Fallback Icon */}
+          <View style={styles.imageContainer}>
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.dishImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.fallbackIconContainer}>
+                {isRestaurant ? (
+                  <RestaurantIcon size={24} color={COLORS.textSecondary} />
+                ) : (
+                  <ChefHatIcon size={24} color={COLORS.textSecondary} />
+                )}
+              </View>
+            )}
+            {/* Pulsing camera indicator */}
+            <View style={styles.pendingIndicator}>
+              <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                  stroke="#0a0f1a"
+                  strokeWidth={2}
+                  fill="#2dd4bf"
+                />
+                <SvgCircle cx="12" cy="13" r="4" stroke="#0a0f1a" strokeWidth={1.5} fill="none" />
+              </Svg>
+            </View>
+          </View>
+
+          {/* Meal Info */}
+          <View style={styles.infoContainer}>
+            <View style={styles.nameRow}>
+              <Text style={styles.name} numberOfLines={1}>
+                {name}
+              </Text>
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>Finish logging</Text>
+              </View>
+            </View>
+            <View style={styles.metaRow}>
+              <Text style={styles.time}>{formatTime(time)}</Text>
+              <Text style={styles.metaSeparator}>·</Text>
+              <Text style={[styles.calories, styles.caloriesPending]}>
+                ~{Math.round(calories)} cal
+              </Text>
+              {restaurantName && (
+                <>
+                  <Text style={styles.metaSeparator}>·</Text>
+                  <Text style={styles.restaurant} numberOfLines={1}>{restaurantName}</Text>
+                </>
+              )}
+            </View>
+            {/* Action prompt for pending meals */}
+            <View style={styles.pendingActionRow}>
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                  stroke="#2dd4bf"
+                  strokeWidth={2}
+                  fill="none"
+                />
+                <SvgCircle cx="12" cy="13" r="4" stroke="#2dd4bf" strokeWidth={1.5} fill="none" />
+              </Svg>
+              <Text style={styles.pendingActionText}>Tap to take after photo</Text>
+            </View>
+          </View>
+
+          {/* Chevron indicator */}
+          <View style={styles.chevronContainer}>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path d="M9 18l6-6-6-6" stroke="#2dd4bf" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+
+  // Regular meal card (not pending)
   return (
     <TouchableOpacity
-      style={[styles.container, isPendingPhoto && styles.containerPending]}
+      style={styles.container}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={0.7}
@@ -127,12 +272,6 @@ export function MealCard({
             )}
           </View>
         )}
-        {/* Pending indicator dot */}
-        {isPendingPhoto && (
-          <View style={styles.pendingIndicator}>
-            <View style={styles.pendingDot} />
-          </View>
-        )}
         {/* Complete indicator checkmark */}
         {photoStatus === 'completed' && (
           <View style={styles.completeIndicator}>
@@ -149,12 +288,7 @@ export function MealCard({
           <Text style={styles.name} numberOfLines={1}>
             {name}
           </Text>
-          {isPendingPhoto && (
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>After photo needed</Text>
-            </View>
-          )}
-          {!isPendingPhoto && portionLabel && (
+          {portionLabel && (
             <View style={styles.portionPill}>
               <Text style={styles.portionText}>{portionLabel}</Text>
             </View>
@@ -163,8 +297,8 @@ export function MealCard({
         <View style={styles.metaRow}>
           <Text style={styles.time}>{formatTime(time)}</Text>
           <Text style={styles.metaSeparator}>·</Text>
-          <Text style={[styles.calories, isPendingPhoto && styles.caloriesPending]}>
-            {isPendingPhoto ? `~${Math.round(calories)} cal` : `${Math.round(calories)} cal`}
+          <Text style={styles.calories}>
+            {Math.round(calories)} cal
           </Text>
           {restaurantName && (
             <>
@@ -173,15 +307,6 @@ export function MealCard({
             </>
           )}
         </View>
-        {/* Progress bar for pending meals */}
-        {isPendingPhoto && (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
-            </View>
-            <Text style={styles.progressLabel}>Tap when done eating</Text>
-          </View>
-        )}
       </View>
 
       {/* Health Score Badge */}
@@ -289,26 +414,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   // Pending photo styles
+  glowWrapper: {
+    position: 'relative',
+  },
+  glowEffect: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: RADIUS.lg + 2,
+    backgroundColor: 'rgba(45, 212, 191, 0.25)',
+    shadowColor: '#2dd4bf',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   containerPending: {
-    borderColor: 'rgba(45, 212, 191, 0.4)',
-    backgroundColor: 'rgba(13, 26, 31, 0.5)',
+    borderColor: '#2dd4bf',
+    borderWidth: 2,
+    backgroundColor: 'rgba(13, 26, 31, 0.8)',
   },
   pendingIndicator: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 14,
-    height: 14,
-    backgroundColor: '#0a0f1a',
-    borderRadius: 7,
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    backgroundColor: '#2dd4bf',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#0a0f1a',
   },
-  pendingDot: {
-    width: 10,
-    height: 10,
-    backgroundColor: '#2dd4bf',
-    borderRadius: 5,
+  pendingActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(45, 212, 191, 0.2)',
+  },
+  pendingActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2dd4bf',
+  },
+  chevronContainer: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   completeIndicator: {
     position: 'absolute',
@@ -333,29 +492,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   caloriesPending: {
-    color: '#2dd4bf',
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#1e293b',
-    borderRadius: 100,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    width: '50%',
-    height: '100%',
-    backgroundColor: '#2dd4bf',
-    borderRadius: 100,
-  },
-  progressLabel: {
-    fontSize: 11,
     color: '#2dd4bf',
   },
 });

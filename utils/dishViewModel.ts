@@ -210,6 +210,57 @@ function buildUserAllergenMatcher(userAllergens: string[]) {
   };
 }
 
+/**
+ * Validates and sanitizes allergen summary to prevent cross-contamination
+ * from batch processing. If the summary mentions foods that are inconsistent
+ * with the dish's detected allergens, it returns null to fall back to
+ * generated summary from allergen flags.
+ */
+function validateAllergenSummary(
+  summary: string | null | undefined,
+  dishName: string,
+  allergenFlags: AllergenFlag[],
+  description?: string | null
+): string | null {
+  if (!summary) return null;
+
+  // Common foods that might appear in cross-contaminated summaries
+  const crossContaminationFoods = [
+    'pasta', 'spaghetti', 'fettuccine', 'linguine', 'penne', 'macaroni', 'noodle',
+    'pizza', 'bread', 'croissant', 'bagel', 'muffin', 'cake', 'cookie',
+    'sushi', 'sashimi', 'tempura', 'ramen',
+    'taco', 'burrito', 'quesadilla', 'enchilada',
+    'curry', 'pad thai', 'fried rice',
+    'salad', 'soup', 'stew',
+    'steak', 'chicken', 'fish', 'shrimp', 'lobster', 'crab',
+    'hamburger', 'burger', 'sandwich', 'wrap',
+    'ice cream', 'gelato', 'smoothie', 'milkshake'
+  ];
+
+  const dishNameLower = dishName.toLowerCase();
+  const descLower = (description || '').toLowerCase();
+  const summaryLower = summary.toLowerCase();
+
+  // Check each potentially cross-contaminating food
+  for (const food of crossContaminationFoods) {
+    // If the summary mentions this food but it's not in dish name or description
+    if (summaryLower.includes(food)) {
+      const isInDish = dishNameLower.includes(food) || descLower.includes(food);
+      if (!isInDish) {
+        // This is likely cross-contamination
+        if (__DEV__) {
+          console.warn(
+            `[validateAllergenSummary] Detected cross-contamination: "${food}" in summary but not in dish "${dishName}"`
+          );
+        }
+        return null; // Fall back to generated summary from flags
+      }
+    }
+  }
+
+  return summary;
+}
+
 function severityFromLevel(levelRaw?: string | null): OrganSeverity {
   const l = (levelRaw || '').toLowerCase();
   if (!l || l === 'neutral') return 'neutral';
@@ -354,7 +405,8 @@ function buildAllergenPillsFromFlags(
 
 export function buildDishViewModel(
   analysis: AnalyzeDishResponse,
-  userAllergens: string[]
+  userAllergens: string[],
+  dishInfo?: { name?: string; description?: string | null }
 ): DishViewModel {
   const summary: DishSummary | null | undefined = analysis.summary ?? null;
   const organsBlock = analysis.organs;
@@ -555,8 +607,17 @@ export function buildDishViewModel(
   let allergenSentence: string | null = null;
 
   // First priority: use the smart summary from the API (includes lactose levels, per-component details)
-  if (analysis.allergen_summary) {
-    allergenSentence = analysis.allergen_summary;
+  // But validate it first to prevent cross-contamination from batch processing
+  const dishName = dishInfo?.name || (analysis as any).dishName || 'Unknown Dish';
+  const dishDescription = dishInfo?.description || (analysis as any).desc || '';
+  const validatedSummary = validateAllergenSummary(
+    analysis.allergen_summary,
+    dishName,
+    allergenFlags,
+    dishDescription
+  );
+  if (validatedSummary) {
+    allergenSentence = validatedSummary;
   }
   // Fallback: build from allergen flags if no summary provided
   else if (allergenFlags.length > 0) {

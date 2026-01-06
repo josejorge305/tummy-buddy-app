@@ -1,6 +1,6 @@
 import { Stack, usePathname } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Text, TextInput } from 'react-native';
 import * as Sentry from '@sentry/react-native';
 import { AuthProvider } from '../context/AuthContext';
 import { UserPrefsProvider } from '../context/UserPrefsContext';
@@ -13,6 +13,15 @@ import { initSentry, addNavigationBreadcrumb } from '../utils/sentry';
 
 // Initialize Sentry on app start
 initSentry();
+
+// Lock font sizes to prevent iOS Dynamic Type from scaling text
+// Using maxFontSizeMultiplier of 1.0 ensures fonts stay at designed sizes
+// This prevents layout issues when users have large accessibility font settings
+(Text as any).defaultProps = (Text as any).defaultProps || {};
+(Text as any).defaultProps.maxFontSizeMultiplier = 1.0;
+
+(TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
+(TextInput as any).defaultProps.maxFontSizeMultiplier = 1.0;
 
 // Navigation tracking component
 function NavigationTracker({ children }: { children: React.ReactNode }) {

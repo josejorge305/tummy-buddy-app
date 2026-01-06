@@ -1152,7 +1152,7 @@ export default function RestaurantScreen() {
 
         // Get baseline nutrition from analysis or use zeros
         const ns = analysis?.nutrition_summary;
-        const baselineCalories = ns?.calories || 0;
+        const baselineCalories = ns?.energyKcal || 0;
         const baselineProtein = ns?.protein_g || 0;
         const baselineCarbs = ns?.carbs_g || 0;
         const baselineFat = ns?.fat_g || 0;
@@ -1181,9 +1181,40 @@ export default function RestaurantScreen() {
           });
         }
 
+        // Use photo-based nutrition if available (from vision analysis)
+        let finalBaselineCalories = baselineCalories;
+        let finalBaselineProtein = baselineProtein;
+        let finalBaselineCarbs = baselineCarbs;
+        let finalBaselineFat = baselineFat;
+        let finalBaselineFiber = baselineFiber;
+        let finalBaselineSodium = baselineSodium;
+
+        // If using photo analysis with food identification, use vision-based nutrition
+        if (logData.usePhotoAnalysis && logData.foodIdentification?.nutrition) {
+          const visionNutrition = logData.foodIdentification.nutrition;
+          finalBaselineCalories = visionNutrition.calories || baselineCalories;
+          finalBaselineProtein = visionNutrition.protein_g || baselineProtein;
+          finalBaselineCarbs = visionNutrition.carbs_g || baselineCarbs;
+          finalBaselineFat = visionNutrition.fat_g || baselineFat;
+          finalBaselineFiber = visionNutrition.fiber_g || baselineFiber;
+          finalBaselineSodium = visionNutrition.sodium_mg || baselineSodium;
+        }
+
+        // Determine photo status
+        let photoStatus: 'pending_after_photo' | 'analyzing' | 'completed' | 'manual' | null = null;
+        if (logData.usePhotoAnalysis) {
+          if (logData.afterPhotoPending) {
+            photoStatus = 'pending_after_photo';
+          } else if (logData.photoAnalysis) {
+            photoStatus = 'completed';
+          }
+        } else {
+          photoStatus = 'manual';
+        }
+
         // Call logMeal API with photo status if using photo analysis
         await logMeal(userId, {
-          dish_name: name,
+          dish_name: logData.foodIdentification?.dishName || name,
           dish_id: mealLogDish.itemId,
           restaurant_name: restName,
           portion_factor: portionMultiplier,
@@ -1192,23 +1223,27 @@ export default function RestaurantScreen() {
           shared_with_count: logData.sharedWithCount,
           leftovers_saved: logData.leftoversSaved,
           portion_mode: logData.portionMode,
-          baseline_calories: baselineCalories,
-          baseline_protein_g: baselineProtein,
-          baseline_carbs_g: baselineCarbs,
-          baseline_fat_g: baselineFat,
-          baseline_fiber_g: baselineFiber,
+          baseline_calories: finalBaselineCalories,
+          baseline_protein_g: finalBaselineProtein,
+          baseline_carbs_g: finalBaselineCarbs,
+          baseline_fat_g: finalBaselineFat,
+          baseline_fiber_g: finalBaselineFiber,
           baseline_sugar_g: baselineSugar,
-          baseline_sodium_mg: baselineSodium,
+          baseline_sodium_mg: finalBaselineSodium,
           baseline_organ_impacts: baselineOrgans,
-          calories: Math.round(baselineCalories * portionMultiplier),
-          protein_g: Math.round(baselineProtein * portionMultiplier),
-          carbs_g: Math.round(baselineCarbs * portionMultiplier),
-          fat_g: Math.round(baselineFat * portionMultiplier),
-          fiber_g: Math.round(baselineFiber * portionMultiplier),
+          calories: Math.round(finalBaselineCalories * portionMultiplier),
+          protein_g: Math.round(finalBaselineProtein * portionMultiplier),
+          carbs_g: Math.round(finalBaselineCarbs * portionMultiplier),
+          fat_g: Math.round(finalBaselineFat * portionMultiplier),
+          fiber_g: Math.round(finalBaselineFiber * portionMultiplier),
           sugar_g: Math.round(baselineSugar * portionMultiplier),
-          sodium_mg: Math.round(baselineSodium * portionMultiplier),
+          sodium_mg: Math.round(finalBaselineSodium * portionMultiplier),
           risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
           full_analysis: analysis,
+          // Photo analysis fields
+          photo_status: photoStatus,
+          before_photo_url: logData.beforePhotoUrl,
+          after_photo_url: logData.afterPhotoUrl,
         });
 
         // Refresh today's meals
@@ -1724,7 +1759,7 @@ export default function RestaurantScreen() {
       pathname: '/likely-recipe',
       params: {
         dishName: item?.name || 'Unknown Dish',
-        imageUrl: recipeImageUrl,
+        imageUrl: recipeImageUrl ? encodeURIComponent(recipeImageUrl) : '',
         likelyRecipe: analysis?.likely_recipe ? JSON.stringify(analysis.likely_recipe) : '',
         fullRecipe: analysis?.full_recipe ? JSON.stringify(analysis.full_recipe) : '',
         nutrition: analysis?.nutrition_summary ? JSON.stringify(analysis.nutrition_summary) : '',
@@ -2125,7 +2160,7 @@ export default function RestaurantScreen() {
                 const analysis = analysisByItemId[itemId];
                 const isAnalysisLoading = !!analysisLoadingByItemId[itemId];
                 const viewModel =
-                  analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
+                  analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens, { name: item?.name, description: item?.description }) : null;
                 const organLines = viewModel?.organLines || [];
 
                 const organOverallLevel: 'high' | 'medium' | 'low' | null = organLines.length
@@ -2564,7 +2599,7 @@ export default function RestaurantScreen() {
         dishName={portionSheetDish?.name}
         initialPortionPercent={
           portionSheetDish
-            ? getLoggedMealForDish(portionSheetDish.name)?.portion_percent
+            ? getLoggedMealForDish(portionSheetDish.name)?.portion_percent ?? undefined
             : undefined
         }
       />

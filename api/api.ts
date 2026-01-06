@@ -3309,6 +3309,16 @@ export async function updateMealWithPhotoAnalysis(
   const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${userId}`;
   if (__DEV__) console.log('TB updateMealWithPhotoAnalysis calling:', url);
 
+  // Validate photo analysis data
+  if (analysis.percentConsumed == null || analysis.percentConsumed < 0 || analysis.percentConsumed > 100) {
+    if (__DEV__) console.error('updateMealWithPhotoAnalysis: Invalid percentConsumed:', analysis.percentConsumed);
+    return { ok: false, error: 'Invalid consumption percentage from photo analysis' };
+  }
+  if (analysis.caloriesEaten == null || analysis.caloriesEaten < 0) {
+    if (__DEV__) console.error('updateMealWithPhotoAnalysis: Invalid caloriesEaten:', analysis.caloriesEaten);
+    return { ok: false, error: 'Invalid calories from photo analysis' };
+  }
+
   try {
     const res = await fetch(url, {
       method: 'PUT',

@@ -342,7 +342,7 @@ export default function DailyTracker() {
 
     // Fat impact (liver, heart)
     if (lowerName === 'liver' || lowerName === 'heart') {
-      const fatPercent = fatConsumed / fatTarget;
+      const fatPercent = fatTarget > 0 ? fatConsumed / fatTarget : 0;
       if (fatPercent >= 0.4 && fatPercent <= 0.8) {
         factors.push({ name: 'Moderate fat', positive: true });
       } else if (fatPercent > 1.2) {

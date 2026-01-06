@@ -258,27 +258,40 @@ export function AIAssistantPanel() {
       <Animated.View style={[styles.panel, panelAnimatedStyle]}>
         {/* Minimized Bar */}
         {isMinimized ? (
-          <TouchableOpacity
-            style={styles.minimizedBar}
-            onPress={openPanel}
-            activeOpacity={0.9}
-          >
+          <View style={styles.minimizedBar}>
             <LinearGradient
               colors={[COLORS.primary, COLORS.secondary]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.minimizedBarGradient}
             >
-              <View style={styles.minimizedContent}>
-                <ChefHatIcon size={20} color="#FFFFFF" />
-                <Text style={styles.minimizedText}>AI Assistant</Text>
-                {messages.length > 1 && (
-                  <Text style={styles.minimizedCount}>({messages.length - 1})</Text>
-                )}
-              </View>
-              <Text style={styles.minimizedHint}>Tap to expand</Text>
+              {/* Expand area - takes up most of the bar */}
+              <TouchableOpacity
+                style={styles.minimizedExpandArea}
+                onPress={openPanel}
+                activeOpacity={0.9}
+                hitSlop={{ top: 10, bottom: 10, left: 10 }}
+              >
+                <View style={styles.minimizedContent}>
+                  <ChefHatIcon size={20} color="#FFFFFF" />
+                  <Text style={styles.minimizedText}>AI Assistant</Text>
+                  {messages.length > 1 && (
+                    <Text style={styles.minimizedCount}>({messages.length - 1})</Text>
+                  )}
+                </View>
+                <Text style={styles.minimizedHint}>Tap to expand</Text>
+              </TouchableOpacity>
+              {/* Close button - separate touch target */}
+              <TouchableOpacity
+                style={styles.minimizedCloseButton}
+                onPress={closePanel}
+                activeOpacity={0.7}
+                hitSlop={{ top: 15, bottom: 15, left: 10, right: 15 }}
+              >
+                <Ionicons name="close" size={20} color="rgba(255,255,255,0.9)" />
+              </TouchableOpacity>
             </LinearGradient>
-          </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.panelContent}>
             {/* Handle bar */}
@@ -472,7 +485,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING.sm,
+  },
+  minimizedExpandArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: '100%',
+    paddingRight: SPACING.md,
+  },
+  minimizedCloseButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.15)',
   },
   minimizedContent: {
     flexDirection: 'row',

@@ -198,13 +198,13 @@ export default function DishScreen() {
 
   // Helper function to redirect to likely-recipe screen with all data
   const redirectToLikelyRecipe = useCallback((analysisData: AnalyzeDishResponse, finalImageUrl: string) => {
-    const vm = buildDishViewModel(analysisData, selectedAllergens);
+    const vm = buildDishViewModel(analysisData, selectedAllergens, { name: dishName });
 
     router.replace({
       pathname: '/likely-recipe',
       params: {
         dishName: analysisData.dishName || dishName || 'Unknown Dish',
-        imageUrl: finalImageUrl,
+        imageUrl: finalImageUrl ? encodeURIComponent(finalImageUrl) : '',
         likelyRecipe: analysisData.likely_recipe ? JSON.stringify(analysisData.likely_recipe) : '',
         fullRecipe: analysisData.full_recipe ? JSON.stringify(analysisData.full_recipe) : '',
         nutrition: analysisData.nutrition_summary ? JSON.stringify(analysisData.nutrition_summary) : '',
@@ -409,7 +409,7 @@ export default function DishScreen() {
     }
   };
 
-  const viewModel = analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens) : null;
+  const viewModel = analysis && analysis.ok ? buildDishViewModel(analysis, selectedAllergens, { name: dishName }) : null;
 
   // Open meal log modal instead of logging directly
   const handleLogMeal = () => {
