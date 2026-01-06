@@ -607,7 +607,20 @@ export async function fetchMenuFast(
 
     if (!res.ok) {
       console.error('fetchMenuFast HTTP error:', res.status, 'URL:', url, 'Response:', raw.slice(0, 300));
-      return { ok: false, error: `HTTP ${res.status}` };
+      // Try to parse error response for better error message
+      try {
+        const errorData = JSON.parse(raw);
+        const errorMsg = errorData.error || errorData.hint || `HTTP ${res.status}`;
+        const isTimeout = res.status === 504 || errorMsg.toLowerCase().includes('timeout');
+        return {
+          ok: false,
+          error: isTimeout ? 'Menu loading timed out. Please try again.' : errorMsg,
+          hint: errorData.hint,
+          isTimeout,
+        };
+      } catch {
+        return { ok: false, error: `HTTP ${res.status}` };
+      }
     }
 
     const data = JSON.parse(raw);
