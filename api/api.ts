@@ -601,7 +601,13 @@ export async function fetchMenuFast(
   console.log('TB fetchMenuFast calling:', url);
 
   try {
-    const res = await fetch(url);
+    // Menu scraping can take a while - use 90 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const raw = await res.text();
     console.log('fetchMenuFast raw snippet:', raw.slice(0, 200));
 
@@ -657,6 +663,11 @@ export async function fetchMenuFast(
 
     return { ok: false, error: data.error || 'No items found' };
   } catch (e: any) {
+    // Handle abort/timeout separately
+    if (e?.name === 'AbortError') {
+      console.error('fetchMenuFast timeout after 90s');
+      return { ok: false, error: 'Menu loading timed out. Please try again.', isTimeout: true };
+    }
     console.error('fetchMenuFast error:', e?.message || e);
     return { ok: false, error: e?.message || 'Failed to fetch menu' };
   }
