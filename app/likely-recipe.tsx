@@ -30,6 +30,7 @@ import { useSetAIContext } from '../context/AIAssistantContext';
 import { MealLogModal, MealLogData } from '../components/MealLogModal';
 import { logDebug, logWarn, logError } from '../utils/logger';
 import { AnalyzeDishResponse } from '../api/api';
+import { BackButton } from '../components/navigation/BackButton';
 
 const BG = '#0a1628'; // Upgraded blue background
 const CARD_BG = '#0f172a';
@@ -508,14 +509,10 @@ export default function LikelyRecipeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {/* Back Button */}
-        <Pressable
-          style={({ pressed }) => [styles.backRow, pressed && { opacity: 0.6 }]}
-          onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="chevron-back" size={20} color={TEAL} />
+        <View style={styles.backRow}>
+          <BackButton color={TEAL} size={20} />
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </View>
 
         {/* Hero Image */}
         {imageUrl && imageUrl.length > 0 ? (

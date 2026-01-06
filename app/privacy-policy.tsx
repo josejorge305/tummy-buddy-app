@@ -4,28 +4,22 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BackButton } from '../components/navigation/BackButton';
 
 const BG_DARK = '#0a0f14';
 const CARD_BG = 'rgba(30, 41, 59, 0.6)';
 const TEAL = '#2DD4BF';
 
 export default function PrivacyPolicyScreen() {
-  const router = useRouter();
-
   return (
     <LinearGradient colors={['#0f172a', '#020617']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
+          <BackButton color="#fff" />
           <Text style={styles.headerTitle}>Privacy Policy</Text>
           <View style={styles.headerSpacer} />
         </View>
