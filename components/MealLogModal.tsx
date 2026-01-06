@@ -222,7 +222,7 @@ export function MealLogModal({
 
         // Run photo analysis if we have both URLs
         if (beforePhotoUrl) {
-          const baselineCalories = analysis?.nutrition_summary?.calories || 500;
+          const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
           const analysisResult = await analyzePhotoConsumption(
             beforePhotoUrl,
             uploadResult.url,
@@ -238,12 +238,12 @@ export function MealLogModal({
           }
         } else {
           // No before photo URL, use mock analysis
-          const baselineCalories = analysis?.nutrition_summary?.calories || 500;
+          const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
           setPhotoAnalysis(createMockAnalysis(baselineCalories));
         }
       } else {
         // Fallback analysis even if upload fails
-        const baselineCalories = analysis?.nutrition_summary?.calories || 500;
+        const baselineCalories = analysis?.nutrition_summary?.energyKcal || 500;
         setPhotoAnalysis(createMockAnalysis(baselineCalories));
       }
 

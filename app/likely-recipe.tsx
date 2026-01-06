@@ -27,7 +27,8 @@ import {
 } from '../api/api';
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useSetAIContext } from '../context/AIAssistantContext';
-import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
+import { MealLogModal, MealLogData } from '../components/MealLogModal';
+import { AnalyzeDishResponse } from '../api/api';
 
 const BG = '#0a1628'; // Upgraded blue background
 const CARD_BG = '#0f172a';
@@ -224,7 +225,7 @@ export default function LikelyRecipeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { userId } = useUserPrefs();
+  const { userId, loadDailyTracker } = useUserPrefs();
 
   // Collapsible state - All sections collapsed by default
   const [ingredientsExpanded, setIngredientsExpanded] = useState(false);
@@ -242,7 +243,7 @@ export default function LikelyRecipeScreen() {
   const [showFullDescription, setShowFullDescription] = useState(false);
 
   // Meal logging state
-  const [showPortionSheet, setShowPortionSheet] = useState(false);
+  const [showMealLogModal, setShowMealLogModal] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
   const [loggedToast, setLoggedToast] = useState(false);
 
@@ -426,38 +427,18 @@ export default function LikelyRecipeScreen() {
     ? fullRecipe?.instructions?.length || 0
     : likelyRecipe?.instructions?.length || 0;
 
-  // Detect course type for smart portion defaults
-  const detectCourseType = useCallback((): CourseType => {
-    const name = (dishName || '').toLowerCase();
-    const section = (params.menuSection as string || '').toLowerCase();
-
-    if (section.includes('appetizer') || section.includes('starter') || name.includes('appetizer')) {
-      return 'appetizer';
-    }
-    if (section.includes('dessert') || name.includes('dessert') || name.includes('cake') || name.includes('ice cream')) {
-      return 'dessert';
-    }
-    if (section.includes('drink') || section.includes('beverage') || name.includes('smoothie') || name.includes('shake')) {
-      return 'drink';
-    }
-    if (section.includes('side') || name.includes('side')) {
-      return 'side';
-    }
-    return 'entree';
-  }, [dishName, params.menuSection]);
-
-  // Handle meal logging with portion data
-  const handleLogMeal = useCallback(async (portionData: PortionData) => {
+  // Handle meal logging from MealLogModal
+  const handleMealLogComplete = useCallback(async (logData: MealLogData) => {
     if (!userId || !dishName) {
       console.warn('Cannot log meal: missing userId or dishName');
-      setShowPortionSheet(false);
+      setShowMealLogModal(false);
       return;
     }
 
     setIsLogging(true);
 
     try {
-      // Get baseline nutrition values (full serving) - use correct field names from NutritionSummary
+      // Get baseline nutrition values (full serving)
       const baselineCalories = nutrition?.energyKcal || 0;
       const baselineProtein = nutrition?.protein_g || 0;
       const baselineCarbs = nutrition?.carbs_g || 0;
@@ -476,20 +457,19 @@ export default function LikelyRecipeScreen() {
         });
       }
 
-      // Scale by portion multiplier
-      const multiplier = portionData.portionMultiplier;
+      // Calculate portion multiplier from percent
+      const portionMultiplier = logData.portionPercent / 100;
 
       await logMeal(userId, {
         dish_name: dishName,
         restaurant_name: restaurantName || undefined,
-        meal_type: 'lunch', // Could be smarter based on time of day
-        // Portion data
-        portion_percent: portionData.portionPercent,
-        portion_multiplier: multiplier,
-        shared_with_count: portionData.sharedWithCount,
-        leftovers_saved: portionData.leftoversSaved,
-        portion_mode: portionData.portionMode,
-        // Baseline values
+        meal_type: 'lunch',
+        portion_factor: portionMultiplier,
+        portion_percent: logData.portionPercent,
+        portion_multiplier: portionMultiplier,
+        shared_with_count: logData.sharedWithCount,
+        leftovers_saved: logData.leftoversSaved,
+        portion_mode: logData.portionMode,
         baseline_calories: baselineCalories,
         baseline_protein_g: baselineProtein,
         baseline_carbs_g: baselineCarbs,
@@ -498,31 +478,30 @@ export default function LikelyRecipeScreen() {
         baseline_sugar_g: baselineSugar,
         baseline_sodium_mg: baselineSodium,
         baseline_organ_impacts: baselineOrganImpacts,
-        // Consumed values (scaled)
-        calories: Math.round(baselineCalories * multiplier),
-        protein_g: Math.round(baselineProtein * multiplier * 10) / 10,
-        carbs_g: Math.round(baselineCarbs * multiplier * 10) / 10,
-        fat_g: Math.round(baselineFat * multiplier * 10) / 10,
-        fiber_g: Math.round(baselineFiber * multiplier * 10) / 10,
-        sugar_g: Math.round(baselineSugar * multiplier * 10) / 10,
-        sodium_mg: Math.round(baselineSodium * multiplier),
-        // Include nutrition_summary for backend fallback
-        nutrition_summary: nutrition || undefined,
-        // Include organ_levels for backend fallback
-        organ_levels: baselineOrganImpacts,
+        calories: Math.round(baselineCalories * portionMultiplier),
+        protein_g: Math.round(baselineProtein * portionMultiplier),
+        carbs_g: Math.round(baselineCarbs * portionMultiplier),
+        fat_g: Math.round(baselineFat * portionMultiplier),
+        fiber_g: Math.round(baselineFiber * portionMultiplier),
+        sugar_g: Math.round(baselineSugar * portionMultiplier),
+        sodium_mg: Math.round(baselineSodium * portionMultiplier),
+        organ_impacts: Object.keys(baselineOrganImpacts).length > 0 ? baselineOrganImpacts : undefined,
       } as any);
 
-      setShowPortionSheet(false);
+      setShowMealLogModal(false);
       setLoggedToast(true);
 
       // Hide toast after 2 seconds
       setTimeout(() => setLoggedToast(false), 2000);
+
+      // Reload tracker
+      loadDailyTracker();
     } catch (err) {
       console.error('Error logging meal:', err);
     } finally {
       setIsLogging(false);
     }
-  }, [userId, dishName, restaurantName, nutrition, organs]);
+  }, [userId, dishName, restaurantName, nutrition, organs, loadDailyTracker]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1068,7 +1047,7 @@ export default function LikelyRecipeScreen() {
           <View style={styles.footerContent}>
             <TouchableOpacity
               style={styles.logMealButton}
-              onPress={() => setShowPortionSheet(true)}
+              onPress={() => setShowMealLogModal(true)}
               disabled={isLogging}
             >
               <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
@@ -1088,13 +1067,21 @@ export default function LikelyRecipeScreen() {
         </View>
       )}
 
-      {/* Portion Sheet */}
-      <PortionSheet
-        visible={showPortionSheet}
-        onClose={() => setShowPortionSheet(false)}
-        onConfirm={handleLogMeal}
-        courseType={detectCourseType()}
-        dishName={dishName}
+      {/* MealLogModal for meal logging with photo analysis option */}
+      <MealLogModal
+        visible={showMealLogModal}
+        onClose={() => setShowMealLogModal(false)}
+        onLogComplete={handleMealLogComplete}
+        dishName={dishName || ''}
+        dishId={`${dishName}-${Date.now()}`}
+        restaurantName={restaurantName}
+        analysis={{
+          ok: true,
+          dishName: dishName,
+          nutrition_summary: nutrition || undefined,
+          organs: organs || undefined,
+        } as AnalyzeDishResponse}
+        userId={userId || ''}
       />
     </SafeAreaView>
   );
