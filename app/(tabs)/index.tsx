@@ -39,6 +39,7 @@ import {
   RecentDishSearch,
 } from '../../utils/dishCache';
 import { logDebug, logWarn, logError } from '../../utils/logger';
+import { showErrorAlert } from '../../utils/errorMessages';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -575,7 +576,7 @@ export default function HomeScreen() {
 
       const asset = result.assets[0];
       if (!asset.base64) {
-        Alert.alert('Error', 'Failed to process image. Please try again.');
+        showErrorAlert('photo', 'default');
         return;
       }
 
@@ -584,7 +585,7 @@ export default function HomeScreen() {
 
     } catch (err: any) {
       logError('pickImage error:', err);
-      Alert.alert('Error', err?.message || 'Failed to pick image');
+      showErrorAlert('photo', 'capture_failed');
     }
   };
 

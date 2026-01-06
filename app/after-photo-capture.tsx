@@ -26,6 +26,7 @@ import {
   updateMeal,
 } from '../api/api';
 import { useUserPrefs } from '../context/UserPrefsContext';
+import { showErrorAlert } from '../utils/errorMessages';
 
 const COLORS = {
   background: '#0a0f1a',
@@ -99,7 +100,7 @@ export default function AfterPhotoCaptureScreen() {
 
         // Upload the photo
         if (!userId) {
-          Alert.alert('Error', 'User not logged in');
+          showErrorAlert('auth', 'not_logged_in');
           setIsLoading(false);
           return;
         }
@@ -107,7 +108,7 @@ export default function AfterPhotoCaptureScreen() {
         const uploadResult = await uploadMealPhoto(userId, uri, 'after');
 
         if (!uploadResult.ok || !uploadResult.url) {
-          Alert.alert('Upload Error', 'Could not upload photo. Please try again.');
+          showErrorAlert('photo', 'upload_failed');
           setIsLoading(false);
           return;
         }
@@ -141,7 +142,7 @@ export default function AfterPhotoCaptureScreen() {
       }
     } catch (error) {
       if (__DEV__) console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo. Please try again.');
+      showErrorAlert('photo', 'capture_failed');
       setIsLoading(false);
     }
   };
@@ -149,7 +150,7 @@ export default function AfterPhotoCaptureScreen() {
   // Save the analysis result and update the meal
   const handleSave = async () => {
     if (!mealId || !analysisResult || !userId) {
-      Alert.alert('Error', 'Missing data to save');
+      showErrorAlert('meal', 'missing_data');
       return;
     }
 
@@ -169,7 +170,7 @@ export default function AfterPhotoCaptureScreen() {
       });
 
       if (!result.ok) {
-        Alert.alert('Error', result.error || 'Could not update meal');
+        showErrorAlert('meal', 'update_failed');
         setIsLoading(false);
         return;
       }
@@ -188,7 +189,7 @@ export default function AfterPhotoCaptureScreen() {
         ]
       );
     } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Something went wrong');
+      showErrorAlert('generic', 'default');
     }
 
     setIsLoading(false);
@@ -215,7 +216,7 @@ export default function AfterPhotoCaptureScreen() {
               await loadDailyTracker();
               router.back();
             } catch (error: any) {
-              Alert.alert('Error', error?.message || 'Something went wrong');
+              showErrorAlert('generic', 'default');
             }
             setIsLoading(false);
           },

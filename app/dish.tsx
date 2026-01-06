@@ -27,6 +27,7 @@ import { MealLogModal, MealLogData } from '../components/MealLogModal';
 import { PortionMode } from '../components/PortionSheet';
 import { logMeal, getMealsForDate } from '../api/api';
 import { logDebug, logWarn, logError } from '../utils/logger';
+import { showErrorAlert } from '../utils/errorMessages';
 
 // Import components
 import {
@@ -539,7 +540,7 @@ export default function DishScreen() {
         ]
       );
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Something went wrong.');
+      showErrorAlert('meal', 'default');
     }
 
     setIsLoggingMeal(false);

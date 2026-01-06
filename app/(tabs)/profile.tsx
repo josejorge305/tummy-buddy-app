@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useDisclaimer } from '../../context/DisclaimerContext';
 import { COLORS, SPACING, RADIUS, FONT_SIZES } from '../../components/tracker/utils/colors';
+import { showErrorAlert } from '../../utils/errorMessages';
 
 // Design System
 const TEAL = '#2DD4BF';
@@ -272,12 +273,12 @@ export default function ProfileScreen() {
       if (success) {
         Alert.alert('Saved', 'Your profile has been updated!');
       } else {
-        Alert.alert('Error', 'Failed to save profile. Please try again.');
+        showErrorAlert('profile', 'save_failed');
       }
     } catch (e) {
       // Error logged only in development
       if (__DEV__) console.error('Save error:', e);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      showErrorAlert('profile', 'default');
     } finally {
       setIsSaving(false);
     }

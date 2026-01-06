@@ -33,6 +33,7 @@ import { useSetAIContext, useAIAssistant } from '../../context/AIAssistantContex
 import { useRouter } from 'expo-router';
 import { LoggedMeal, getTodayDate } from '../../api/api';
 import { logDebug } from '../../utils/logger';
+import { showErrorAlert } from '../../utils/errorMessages';
 import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../components/PortionSheet';
 
 // Tracker components
@@ -209,7 +210,7 @@ export default function DailyTracker() {
           onPress: async () => {
             const success = await deleteMealAction(mealId);
             if (!success) {
-              Alert.alert('Error', 'Failed to remove meal. Please try again.');
+              showErrorAlert('meal', 'delete_failed');
             }
           },
         },
@@ -238,7 +239,7 @@ export default function DailyTracker() {
     });
 
     if (!result.success) {
-      Alert.alert('Error', result.error || 'Failed to update portion.');
+      showErrorAlert('meal', 'update_failed');
     }
 
     setEditingMeal(null);
