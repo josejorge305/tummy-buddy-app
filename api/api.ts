@@ -2907,17 +2907,11 @@ export interface AIContextResponse {
 
 /**
  * Menu context for AI assistant (when user is viewing a restaurant)
+ * Backend fetches full menu using placeId instead of sending all items
  */
 export interface AIMenuContext {
   restaurantName: string;
-  restaurantId?: string | null;
-  menuItems: Array<{
-    name: string;
-    description?: string;
-    section?: string;
-    price?: string;
-    calories?: number | null;
-  }>;
+  placeId: string;
 }
 
 /**

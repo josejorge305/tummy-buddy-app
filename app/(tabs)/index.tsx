@@ -95,7 +95,7 @@ export default function HomeScreen() {
   // Set AI context for home screen
   useSetAIContext({
     screen: 'home',
-    restaurantId: null,
+    placeId: null,
     restaurantName: null,
     dishId: null,
     dishName: null,

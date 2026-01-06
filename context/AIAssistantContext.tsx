@@ -10,22 +10,12 @@ interface Message {
   isLoading?: boolean;
 }
 
-export interface MenuItem {
-  name: string;
-  description?: string;
-  section?: string;
-  price?: string;
-  calories?: number | null;
-}
-
 interface PageContext {
   screen: string;
-  restaurantId: string | null;
+  placeId: string | null;
   restaurantName: string | null;
   dishId: string | null;
   dishName: string | null;
-  // Menu items available at current restaurant (when on restaurant screen)
-  menuItems: MenuItem[] | null;
 }
 
 interface AIAssistantContextType {
@@ -67,11 +57,10 @@ export function AIAssistantProvider({ children }: { children: ReactNode }) {
   // Current page context
   const [pageContext, setPageContextState] = useState<PageContext>({
     screen: 'home',
-    restaurantId: null,
+    placeId: null,
     restaurantName: null,
     dishId: null,
     dishName: null,
-    menuItems: null,
   });
 
   // Track if we've shown the welcome message
@@ -155,13 +144,13 @@ export function AIAssistantProvider({ children }: { children: ReactNode }) {
         contextualMessage = `[User is viewing their daily tracker] ${contextualMessage}`;
       }
 
-      // Build menu context if on restaurant screen with menu items
+      // Build menu context if on restaurant screen with placeId
+      // Backend will fetch the full menu using placeId
       let menuContext: AIMenuContext | null = null;
-      if (pageContext.screen === 'restaurant' && pageContext.restaurantName && pageContext.menuItems?.length) {
+      if (pageContext.screen === 'restaurant' && pageContext.restaurantName && pageContext.placeId) {
         menuContext = {
           restaurantName: pageContext.restaurantName,
-          restaurantId: pageContext.restaurantId,
-          menuItems: pageContext.menuItems.slice(0, 50), // Limit to first 50 items to avoid huge payloads
+          placeId: pageContext.placeId,
         };
       }
 
@@ -283,30 +272,27 @@ export function useAIAssistant() {
 // Hook for pages to update context
 export function useSetAIContext(context: {
   screen: string;
-  restaurantId?: string | null;
+  placeId?: string | null;
   restaurantName?: string | null;
   dishId?: string | null;
   dishName?: string | null;
-  menuItems?: MenuItem[] | null;
 }) {
   const { setPageContext } = useAIAssistant();
 
   React.useEffect(() => {
     setPageContext({
       screen: context.screen,
-      restaurantId: context.restaurantId ?? null,
+      placeId: context.placeId ?? null,
       restaurantName: context.restaurantName ?? null,
       dishId: context.dishId ?? null,
       dishName: context.dishName ?? null,
-      menuItems: context.menuItems ?? null,
     });
   }, [
     context.screen,
-    context.restaurantId,
+    context.placeId,
     context.restaurantName,
     context.dishId,
     context.dishName,
-    context.menuItems,
     setPageContext,
   ]);
 }
