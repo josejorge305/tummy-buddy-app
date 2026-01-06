@@ -1308,30 +1308,58 @@ export async function priorityAnalysis(
   const url = `${GATEWAY_BASE_URL}/api/analyze/batch/priority`;
   console.log('TB priorityAnalysis calling:', url, 'for job:', jobId);
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, dish }),
-    });
+  // Retry logic for network errors
+  const maxRetries = 2;
+  let lastError: any = null;
 
-    const text = await res.text();
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Add timeout using AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-    if (!res.ok) {
-      console.error('TB priorityAnalysis HTTP error:', res.status, text.slice(0, 200));
-      // Fallback to direct analysis
-      return {
-        ok: false,
-        status: 'fallback',
-      };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, dish }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        console.error('TB priorityAnalysis HTTP error:', res.status, text.slice(0, 200));
+        // Fallback to direct analysis
+        return {
+          ok: false,
+          status: 'fallback',
+        };
+      }
+
+      const data = JSON.parse(text);
+      return data;
+    } catch (err: any) {
+      lastError = err;
+      const isNetworkError = err?.message?.includes('Network request failed') ||
+                             err?.name === 'AbortError' ||
+                             err?.message?.includes('aborted');
+
+      if (isNetworkError && attempt < maxRetries) {
+        console.log(`TB priorityAnalysis retry ${attempt + 1}/${maxRetries} after error:`, err?.message);
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
+
+      console.error('TB priorityAnalysis error:', err?.message || err);
+      return { ok: false, status: 'error' };
     }
-
-    const data = JSON.parse(text);
-    return data;
-  } catch (err: any) {
-    console.error('TB priorityAnalysis error:', err?.message || err);
-    return { ok: false, status: 'error' };
   }
+
+  console.error('TB priorityAnalysis all retries failed:', lastError?.message || lastError);
+  return { ok: false, status: 'error' };
 }
 
 /**
