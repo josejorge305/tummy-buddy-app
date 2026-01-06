@@ -26,7 +26,7 @@ export function EdamamBadge({ style, showDisclaimer = true }: EdamamBadgeProps) 
     try {
       await Linking.openURL(EDAMAM_URL);
     } catch (e) {
-      console.error('[EdamamBadge] Failed to open URL:', e);
+      if (__DEV__) console.error('[EdamamBadge] Failed to open URL:', e);
     }
   };
 
@@ -67,7 +67,7 @@ export function EdamamBadgeInline({ style }: EdamamBadgeInlineProps) {
     try {
       await Linking.openURL(EDAMAM_URL);
     } catch (e) {
-      console.error('[EdamamBadge] Failed to open URL:', e);
+      if (__DEV__) console.error('[EdamamBadge] Failed to open URL:', e);
     }
   };
 

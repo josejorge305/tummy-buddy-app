@@ -88,9 +88,9 @@ export async function cacheDishAnalysis(
 
   try {
     await AsyncStorage.setItem(key, JSON.stringify(cached));
-    console.log('Dish cached:', dishName, key);
+    if (__DEV__) console.log('Dish cached:', dishName, key);
   } catch (e) {
-    console.error('Failed to cache dish:', e);
+    if (__DEV__) console.error('Failed to cache dish:', e);
   }
 }
 
@@ -118,7 +118,7 @@ export async function getCachedDish(
 
     return cached;
   } catch (e) {
-    console.error('Failed to get cached dish:', e);
+    if (__DEV__) console.error('Failed to get cached dish:', e);
     return null;
   }
 }
@@ -161,7 +161,7 @@ export async function searchCachedDishes(query: string): Promise<CachedDish[]> {
     // Sort by most recent first
     return matches.sort((a, b) => b.cachedAt - a.cachedAt);
   } catch (e) {
-    console.error('Failed to search cached dishes:', e);
+    if (__DEV__) console.error('Failed to search cached dishes:', e);
     return [];
   }
 }
@@ -209,7 +209,7 @@ export async function addToRecentDishSearches(
 
     await AsyncStorage.setItem(RECENT_DISHES_KEY, JSON.stringify(recent));
   } catch (e) {
-    console.error('Failed to add to recent dish searches:', e);
+    if (__DEV__) console.error('Failed to add to recent dish searches:', e);
   }
 }
 
@@ -233,7 +233,7 @@ export async function getRecentDishSearches(): Promise<RecentDishSearch[]> {
 
     return updated;
   } catch (e) {
-    console.error('Failed to get recent dish searches:', e);
+    if (__DEV__) console.error('Failed to get recent dish searches:', e);
     return [];
   }
 }
@@ -247,8 +247,8 @@ export async function clearDishCache(): Promise<void> {
     const dishKeys = allKeys.filter((k) => k.startsWith(DISH_CACHE_PREFIX));
     await AsyncStorage.multiRemove(dishKeys);
     await AsyncStorage.removeItem(RECENT_DISHES_KEY);
-    console.log('Dish cache cleared');
+    if (__DEV__) console.log('Dish cache cleared');
   } catch (e) {
-    console.error('Failed to clear dish cache:', e);
+    if (__DEV__) console.error('Failed to clear dish cache:', e);
   }
 }

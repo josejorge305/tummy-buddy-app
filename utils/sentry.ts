@@ -5,7 +5,7 @@ const SENTRY_DSN = Constants.expoConfig?.extra?.SENTRY_DSN || process.env.EXPO_P
 
 export function initSentry() {
   if (!SENTRY_DSN) {
-    console.log('[Sentry] DSN not configured, skipping initialization');
+    if (__DEV__) console.log('[Sentry] DSN not configured, skipping initialization');
     return;
   }
 
@@ -35,7 +35,7 @@ export function initSentry() {
     beforeSend(event, hint) {
       // Don't send events in development unless explicitly enabled
       if (__DEV__ && !process.env.EXPO_PUBLIC_SENTRY_DEBUG) {
-        console.log('[Sentry] Event captured (dev mode):', event.message || event.exception);
+        if (__DEV__) console.log('[Sentry] Event captured (dev mode):', event.message || event.exception);
         return null;
       }
 
@@ -61,7 +61,7 @@ export function initSentry() {
     },
   });
 
-  console.log('[Sentry] Initialized successfully');
+  if (__DEV__) console.log('[Sentry] Initialized successfully');
 }
 
 // Helper to capture exceptions with context

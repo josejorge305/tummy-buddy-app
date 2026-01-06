@@ -6,7 +6,7 @@ const DISH_API_BASE = "https://api.rrginvestment.com";
 
 async function doPost(base: string, path: string, body: any) {
   const url = `${base}${path}`;
-  console.log("Calling API:", url, "with body:", body);
+  if (__DEV__) console.log("Calling API:", url, "with body:", body);
 
   try {
     const res = await fetch(url, {
@@ -23,7 +23,7 @@ async function doPost(base: string, path: string, body: any) {
 
     return await res.json();
   } catch (error) {
-    console.error("API error:", error);
+    if (__DEV__) console.error("API error:", error);
     throw error;
   }
 }

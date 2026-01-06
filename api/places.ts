@@ -19,18 +19,18 @@ export async function fetchPlaceSuggestions(
 
   const url = `${API_BASE_URL}/api/places/autocomplete?input=${encodeURIComponent(query)}`;
 
-  console.log('Calling Places Proxy:', url);
+  if (__DEV__) console.log('Calling Places Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    console.error('Places API error:', res.status, text.slice(0, 200));
+    if (__DEV__) console.error('Places API error:', res.status, text.slice(0, 200));
     throw new Error(`Places API error ${res.status}`);
   }
 
   const json = await res.json();
   if (!json.ok) {
-    console.warn('Places proxy error:', json.error);
+    if (__DEV__) console.warn('Places proxy error:', json.error);
     return [];
   }
 
@@ -41,12 +41,12 @@ export async function fetchPlaceSuggestions(
 export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> {
   const url = `${API_BASE_URL}/api/places/details?place_id=${encodeURIComponent(placeId)}`;
 
-  console.log('Calling Place Details Proxy:', url);
+  if (__DEV__) console.log('Calling Place Details Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    console.error(
+    if (__DEV__) console.error(
       'Place Details API error:',
       res.status,
       text.slice(0, 200)
@@ -56,7 +56,7 @@ export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> 
 
   const json = await res.json();
   if (!json.ok) {
-    console.warn('Place Details proxy error:', json.error);
+    if (__DEV__) console.warn('Place Details proxy error:', json.error);
     throw new Error(json.error || 'Failed to get place details');
   }
 
@@ -80,18 +80,18 @@ export async function fetchNearbyPlaces(
 ): Promise<NearbyPlace[]> {
   const url = `${API_BASE_URL}/api/places/nearby?lat=${lat}&lng=${lng}`;
 
-  console.log('Calling Nearby Search Proxy:', url);
+  if (__DEV__) console.log('Calling Nearby Search Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    console.error('Nearby Search error:', res.status, text.slice(0, 200));
+    if (__DEV__) console.error('Nearby Search error:', res.status, text.slice(0, 200));
     throw new Error(`Nearby Search error ${res.status}`);
   }
 
   const json = await res.json();
   if (!json.ok) {
-    console.warn('Nearby Search proxy error:', json.error);
+    if (__DEV__) console.warn('Nearby Search proxy error:', json.error);
     return [];
   }
 
@@ -104,18 +104,18 @@ export async function searchPlaces(query: string): Promise<any[]> {
 
   const url = `${API_BASE_URL}/api/places/search?query=${encodeURIComponent(query)}`;
 
-  console.log('Calling Text Search Proxy:', url);
+  if (__DEV__) console.log('Calling Text Search Proxy:', url);
 
   const res = await fetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    console.error('Text Search API error:', res.status, text.slice(0, 200));
+    if (__DEV__) console.error('Text Search API error:', res.status, text.slice(0, 200));
     throw new Error(`Text Search API error ${res.status}`);
   }
 
   const json = await res.json();
   if (!json.ok) {
-    console.warn('Text Search proxy error:', json.error);
+    if (__DEV__) console.warn('Text Search proxy error:', json.error);
     return [];
   }
 

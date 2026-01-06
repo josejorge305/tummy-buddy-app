@@ -189,7 +189,7 @@ export function MealLogModal({
         return result.assets[0].uri;
       }
     } catch (error) {
-      console.error('Error taking photo:', error);
+      if (__DEV__) console.error('Error taking photo:', error);
       Alert.alert('Error', 'Failed to take photo. Please try again.');
     }
     return null;
@@ -211,15 +211,15 @@ export function MealLogModal({
 
         // Identify the food in the photo using Claude Vision
         // This gives us REAL calorie estimates based on the visible portion
-        console.log('[MealLogModal] Identifying food in before photo...');
+        if (__DEV__) console.log('[MealLogModal] Identifying food in before photo...');
         const context = dishName ? `User is logging: ${dishName}${restaurantName ? ` from ${restaurantName}` : ''}` : undefined;
         const foodResult = await identifyFoodInPhoto(uploadResult.url, context);
 
         if (foodResult.ok) {
-          console.log('[MealLogModal] Food identified:', foodResult.dishName, 'Calories:', foodResult.nutrition?.calories);
+          if (__DEV__) console.log('[MealLogModal] Food identified:', foodResult.dishName, 'Calories:', foodResult.nutrition?.calories);
           setFoodIdentification(foodResult);
         } else {
-          console.warn('[MealLogModal] Food identification failed:', foodResult.error);
+          if (__DEV__) console.warn('[MealLogModal] Food identification failed:', foodResult.error);
           // Continue without food identification - will fall back to recipe data
         }
 
@@ -227,7 +227,7 @@ export function MealLogModal({
         setStep('saved');
       } else {
         // Still proceed even if upload fails - we have the local URI
-        console.warn('Before photo upload failed, using local URI');
+        if (__DEV__) console.warn('Before photo upload failed, using local URI');
         setIsLoading(false);
         setStep('saved');
       }
@@ -250,7 +250,7 @@ export function MealLogModal({
 
         // Run photo analysis if we have before photo URL
         if (beforePhotoUrl) {
-          console.log('[MealLogModal] Analyzing consumption with before/after photos...');
+          if (__DEV__) console.log('[MealLogModal] Analyzing consumption with before/after photos...');
 
           // Pass the food identification from before photo if available
           // The backend will use this for more accurate analysis
@@ -262,10 +262,10 @@ export function MealLogModal({
           );
 
           if (analysisResult.ok && analysisResult.analysis) {
-            console.log('[MealLogModal] Photo analysis complete:', analysisResult.analysis);
+            if (__DEV__) console.log('[MealLogModal] Photo analysis complete:', analysisResult.analysis);
             setPhotoAnalysis(analysisResult.analysis);
           } else {
-            console.warn('[MealLogModal] Photo analysis failed:', analysisResult.error);
+            if (__DEV__) console.warn('[MealLogModal] Photo analysis failed:', analysisResult.error);
             Alert.alert(
               'Analysis Error',
               'Could not analyze the photos. You can still log the meal manually.',
@@ -273,7 +273,7 @@ export function MealLogModal({
             );
           }
         } else {
-          console.warn('[MealLogModal] No before photo URL available');
+          if (__DEV__) console.warn('[MealLogModal] No before photo URL available');
           Alert.alert(
             'Missing Before Photo',
             'The before photo was not uploaded. Please try again.',
@@ -281,7 +281,7 @@ export function MealLogModal({
           );
         }
       } else {
-        console.error('[MealLogModal] After photo upload failed');
+        if (__DEV__) console.error('[MealLogModal] After photo upload failed');
         Alert.alert(
           'Upload Error',
           'Could not upload the after photo. Please try again.',

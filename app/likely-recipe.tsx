@@ -28,6 +28,7 @@ import {
 import { useUserPrefs } from '../context/UserPrefsContext';
 import { useSetAIContext } from '../context/AIAssistantContext';
 import { MealLogModal, MealLogData } from '../components/MealLogModal';
+import { logDebug, logWarn, logError } from '../utils/logger';
 import { AnalyzeDishResponse } from '../api/api';
 
 const BG = '#0a1628'; // Upgraded blue background
@@ -301,7 +302,7 @@ export default function LikelyRecipeScreen() {
       }
       // Debug: log what we parsed
       if (__DEV__) {
-        console.log('[LikelyRecipe] Parsed fullRecipe:', {
+        logDebug('[LikelyRecipe] Parsed fullRecipe:', {
           hasInstructions: !!initialFullRecipe?.instructions?.length,
           hasWinePairing: !!initialFullRecipe?.wine_pairing,
           hasStorage: !!initialFullRecipe?.storage,
@@ -315,7 +316,7 @@ export default function LikelyRecipeScreen() {
     if (fodmapJson) fodmap = JSON.parse(fodmapJson);
     if (organsJson) organs = JSON.parse(organsJson);
   } catch (e) {
-    console.error('Error parsing likely recipe params:', e);
+    logError('Error parsing likely recipe params:', e);
   }
 
   // Full recipe data (loaded synchronously with initial analysis)
@@ -430,7 +431,7 @@ export default function LikelyRecipeScreen() {
   // Handle meal logging from MealLogModal
   const handleMealLogComplete = useCallback(async (logData: MealLogData) => {
     if (!userId || !dishName) {
-      console.warn('Cannot log meal: missing userId or dishName');
+      logWarn('Cannot log meal: missing userId or dishName');
       setShowMealLogModal(false);
       return;
     }
@@ -497,7 +498,7 @@ export default function LikelyRecipeScreen() {
       // Reload tracker
       loadDailyTracker();
     } catch (err) {
-      console.error('Error logging meal:', err);
+      logError('Error logging meal:', err);
     } finally {
       setIsLogging(false);
     }

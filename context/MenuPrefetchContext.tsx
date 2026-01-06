@@ -48,7 +48,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
     if (currentPrefetchRef.current === placeId) {
       const existing = cacheRef.current[placeId];
       if (existing && (existing.status === 'running' || existing.status === 'completed')) {
-        console.log(`[MenuPrefetch] Already prefetching/prefetched ${restaurantName}`);
+        if (__DEV__) console.log(`[MenuPrefetch] Already prefetching/prefetched ${restaurantName}`);
         return existing;
       }
     }
@@ -58,7 +58,7 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
       const prevId = currentPrefetchRef.current;
       const prevController = abortControllersRef.current[prevId];
       if (prevController) {
-        console.log(`[MenuPrefetch] Cancelling previous prefetch`);
+        if (__DEV__) console.log(`[MenuPrefetch] Cancelling previous prefetch`);
         prevController.abort();
         delete abortControllersRef.current[prevId];
       }
@@ -69,11 +69,11 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
     // Check if we already have completed data
     const cached = cacheRef.current[placeId];
     if (cached?.status === 'completed' && cached.data?.sections?.length) {
-      console.log(`[MenuPrefetch] Using cached data for ${restaurantName}`);
+      if (__DEV__) console.log(`[MenuPrefetch] Using cached data for ${restaurantName}`);
       return cached;
     }
 
-    console.log(`[MenuPrefetch] Starting prefetch for ${restaurantName} at ${address}`);
+    if (__DEV__) console.log(`[MenuPrefetch] Starting prefetch for ${restaurantName} at ${address}`);
 
     const state: PrefetchState = {
       restaurantName,
@@ -94,14 +94,14 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
 
       // Check if this prefetch was cancelled
       if (abortController.signal.aborted) {
-        console.log(`[MenuPrefetch] Prefetch was cancelled for ${restaurantName}`);
+        if (__DEV__) console.log(`[MenuPrefetch] Prefetch was cancelled for ${restaurantName}`);
         return state;
       }
 
       if (result.ok && result.sections && result.sections.length > 0) {
-        console.log(`[MenuPrefetch] Prefetch completed with ${result.sections.length} sections`);
+        if (__DEV__) console.log(`[MenuPrefetch] Prefetch completed with ${result.sections.length} sections`);
         if (result.validation) {
-          console.log(`[MenuPrefetch] Confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
+          if (__DEV__) console.log(`[MenuPrefetch] Confidence: ${(result.validation.confidence * 100).toFixed(0)}%`);
         }
 
         state.status = 'completed';
@@ -118,15 +118,15 @@ export function MenuPrefetchProvider({ children }: { children: ReactNode }) {
         };
         state.validation = result.validation;
       } else {
-        console.warn(`[MenuPrefetch] Prefetch failed: ${result.error}`);
+        if (__DEV__) console.warn(`[MenuPrefetch] Prefetch failed: ${result.error}`);
         state.status = 'failed';
         state.error = result.error || 'No menu data found';
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        console.log(`[MenuPrefetch] Prefetch aborted for ${restaurantName}`);
+        if (__DEV__) console.log(`[MenuPrefetch] Prefetch aborted for ${restaurantName}`);
       } else {
-        console.error(`[MenuPrefetch] Error:`, e?.message || e);
+        if (__DEV__) console.error(`[MenuPrefetch] Error:`, e?.message || e);
         state.status = 'failed';
         state.error = e?.message || 'Failed to prefetch menu';
       }

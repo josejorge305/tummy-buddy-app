@@ -275,7 +275,8 @@ export default function ProfileScreen() {
         Alert.alert('Error', 'Failed to save profile. Please try again.');
       }
     } catch (e) {
-      console.error('Save error:', e);
+      // Error logged only in development
+      if (__DEV__) console.error('Save error:', e);
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setIsSaving(false);

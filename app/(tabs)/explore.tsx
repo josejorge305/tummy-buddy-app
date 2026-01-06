@@ -32,6 +32,7 @@ import { useUserPrefs } from '../../context/UserPrefsContext';
 import { useSetAIContext, useAIAssistant } from '../../context/AIAssistantContext';
 import { useRouter } from 'expo-router';
 import { LoggedMeal, getTodayDate } from '../../api/api';
+import { logDebug } from '../../utils/logger';
 import PortionSheet, { PortionData, getPortionDisplayLabel } from '../../components/PortionSheet';
 
 // Tracker components
@@ -117,21 +118,21 @@ export default function DailyTracker() {
   // This handles the case where user leaves app open overnight
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log('[DailyTracker] AppState change:', appStateRef.current, '->', nextAppState);
+      logDebug('[DailyTracker] AppState change:', appStateRef.current, '->', nextAppState);
 
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         // App has come to foreground - check if date changed
         const currentDate = getTodayDate();
-        console.log('[DailyTracker] App foregrounded. Last loaded:', lastLoadedDateRef.current, 'Current:', currentDate);
+        logDebug('[DailyTracker] App foregrounded. Last loaded:', lastLoadedDateRef.current, 'Current:', currentDate);
 
         if (currentDate !== lastLoadedDateRef.current) {
-          console.log('[DailyTracker] Date changed! Reloading fresh data for new day.');
+          logDebug('[DailyTracker] Date changed! Reloading fresh data for new day.');
           lastLoadedDateRef.current = currentDate;
           loadDailyTracker();
           loadWeeklyTracker();
         } else {
           // Same day but still refresh to catch any external changes
-          console.log('[DailyTracker] Same day, refreshing tracker data.');
+          logDebug('[DailyTracker] Same day, refreshing tracker data.');
           loadDailyTracker();
         }
       }
@@ -149,7 +150,7 @@ export default function DailyTracker() {
     const checkDateChange = () => {
       const currentDate = getTodayDate();
       if (currentDate !== lastLoadedDateRef.current) {
-        console.log('[DailyTracker] Midnight detected! Date changed from', lastLoadedDateRef.current, 'to', currentDate);
+        logDebug('[DailyTracker] Midnight detected! Date changed from', lastLoadedDateRef.current, 'to', currentDate);
         lastLoadedDateRef.current = currentDate;
         // Reload tracker for the new day
         loadDailyTracker();
@@ -168,7 +169,7 @@ export default function DailyTracker() {
 
   // Load tracker data on mount and when userId becomes available
   useEffect(() => {
-    console.log('[DailyTracker] Loading tracker data on mount/userId change');
+    logDebug('[DailyTracker] Loading tracker data on mount/userId change');
     lastLoadedDateRef.current = getTodayDate();
     loadDailyTracker();
     loadWeeklyTracker();
@@ -176,7 +177,7 @@ export default function DailyTracker() {
 
   // Debug: Log tracker data when it changes
   useEffect(() => {
-    console.log('[DailyTracker] todayTracker:', todayTracker ? {
+    logDebug('[DailyTracker] todayTracker:', todayTracker ? {
       meals: todayTracker.meals?.length || 0,
       water: todayTracker.water,
       summary: todayTracker.summary
@@ -184,7 +185,7 @@ export default function DailyTracker() {
   }, [todayTracker]);
 
   useEffect(() => {
-    console.log('[DailyTracker] weeklyData:', weeklyData ? {
+    logDebug('[DailyTracker] weeklyData:', weeklyData ? {
       summaries: weeklyData.summaries?.length || 0,
       weeklyAverages: weeklyData.weeklyAverages
     } : 'null');

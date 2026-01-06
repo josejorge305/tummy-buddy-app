@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         expiresAt: null,
       });
     } catch (e) {
-      console.error('loadStoredAuth error:', e);
+      if (__DEV__) console.error('loadStoredAuth error:', e);
       setState(prev => ({ ...prev, isLoading: false }));
     }
   };
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       return data.ok === true;
     } catch (e) {
-      console.error('verifyToken error:', e);
+      if (__DEV__) console.error('verifyToken error:', e);
       return false;
     }
   };
@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { ok: true };
     } catch (e: any) {
-      console.error('register error:', e);
+      if (__DEV__) console.error('register error:', e);
       return { ok: false, error: e?.message || 'Network error' };
     }
   }, []);
@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { ok: true };
     } catch (e: any) {
-      console.error('login error:', e);
+      if (__DEV__) console.error('login error:', e);
       return { ok: false, error: e?.message || 'Network error' };
     }
   }, []);
@@ -301,7 +301,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return true;
     } catch (e) {
-      console.error('refreshToken error:', e);
+      if (__DEV__) console.error('refreshToken error:', e);
       return false;
     }
   }, [state.token, state.email, logout]);

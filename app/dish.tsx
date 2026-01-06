@@ -26,6 +26,7 @@ import * as Haptics from 'expo-haptics';
 import { MealLogModal, MealLogData } from '../components/MealLogModal';
 import { PortionMode } from '../components/PortionSheet';
 import { logMeal, getMealsForDate } from '../api/api';
+import { logDebug, logWarn, logError } from '../utils/logger';
 
 // Import components
 import {
@@ -230,7 +231,7 @@ export default function DishScreen() {
         return imageResult.image;
       }
     } catch (e) {
-      console.log('Failed to fetch dish image:', e);
+      logDebug('Failed to fetch dish image:', e);
     }
     return null;
   };
@@ -312,12 +313,12 @@ export default function DishScreen() {
                     source: restaurantName ? 'restaurant' : 'standalone',
                   });
                 } catch (cacheError) {
-                  console.error('Failed to cache organs update:', cacheError);
+                  logError('Failed to cache organs update:', cacheError);
                 }
               }
             })
             .catch((e) => {
-              console.error('Organs polling error:', e);
+              logError('Organs polling error:', e);
             })
             .finally(() => {
               setOrgansLoading(false);
@@ -361,12 +362,12 @@ export default function DishScreen() {
                     source: restaurantName ? 'restaurant' : 'standalone',
                   });
                 } catch (cacheError) {
-                  console.error('Failed to cache allergens update:', cacheError);
+                  logError('Failed to cache allergens update:', cacheError);
                 }
               }
             })
             .catch((e) => {
-              console.error('Allergens polling error:', e);
+              logError('Allergens polling error:', e);
             })
             .finally(() => {
               setAllergensLoading(false);
@@ -401,7 +402,7 @@ export default function DishScreen() {
         setIsLoading(false);
       }
     } catch (e: any) {
-      console.error('Dish analysis error:', e);
+      logError('Dish analysis error:', e);
       setError(e?.message || 'Failed to analyze dish');
       setIsLoading(false);
     }

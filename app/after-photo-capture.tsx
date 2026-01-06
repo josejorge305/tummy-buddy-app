@@ -140,7 +140,7 @@ export default function AfterPhotoCaptureScreen() {
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Error taking photo:', error);
+      if (__DEV__) console.error('Error taking photo:', error);
       Alert.alert('Error', 'Failed to take photo. Please try again.');
       setIsLoading(false);
     }

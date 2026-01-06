@@ -361,7 +361,7 @@ export interface DishImageResponse {
  */
 export async function fetchDishImage(dishName: string): Promise<DishImageResponse> {
   const url = `${API_BASE_URL}/api/dish-image?dish=${encodeURIComponent(dishName)}`;
-  console.log('TB fetchDishImage calling:', url);
+  if (__DEV__) console.log('TB fetchDishImage calling:', url);
 
   try {
     const res = await fetch(url);
@@ -374,7 +374,7 @@ export async function fetchDishImage(dishName: string): Promise<DishImageRespons
       return { ok: false, error: 'Invalid response' };
     }
   } catch (e: any) {
-    console.error('fetchDishImage error:', e?.message || e);
+    if (__DEV__) console.error('fetchDishImage error:', e?.message || e);
     return { ok: false, error: e?.message || 'Failed to fetch image' };
   }
 }
@@ -387,14 +387,14 @@ export interface AnalyzeDishCardResponse {
 }
 
 async function apiGet(fullUrl: string) {
-  console.log('Calling API GET:', fullUrl);
+  if (__DEV__) console.log('Calling API GET:', fullUrl);
 
   const res = await fetch(fullUrl, {
     method: 'GET',
   });
 
   const raw = await res.text();
-  console.log('apiGet raw snippet:', raw.slice(0, 200));
+  if (__DEV__) console.log('apiGet raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
     throw new Error(`API GET error ${res.status}: ${raw.slice(0, 200)}`);
@@ -403,7 +403,7 @@ async function apiGet(fullUrl: string) {
   try {
     return JSON.parse(raw);
   } catch (error) {
-    console.error('apiGet JSON.parse failed:', error);
+    if (__DEV__) console.error('apiGet JSON.parse failed:', error);
     throw new Error(
       `API GET returned non-JSON or unexpected shape. Status: ${
         res.status
@@ -414,7 +414,7 @@ async function apiGet(fullUrl: string) {
 
 async function apiPostDish(path: string, body: any) {
   const url = `${DISH_API_BASE}${path}`;
-  console.log('Calling Dish API POST:', url, 'with body:', body);
+  if (__DEV__) console.log('Calling Dish API POST:', url, 'with body:', body);
 
   try {
     const res = await fetch(url, {
@@ -437,7 +437,7 @@ async function apiPostDish(path: string, body: any) {
       throw new Error(`Dish API returned invalid JSON: ${text.slice(0, 200)}`);
     }
   } catch (error) {
-    console.error('Dish API error:', error);
+    if (__DEV__) console.error('Dish API error:', error);
     throw error;
   }
 }
@@ -450,12 +450,12 @@ export function getMenuExtract(placeId: string) {
 
 export async function fetchMenu(placeId: string) {
   const url = `${RESTAURANT_API_BASE}/menu/extract?placeId=${placeId}`;
-  console.log('TB fetchMenu calling:', url);
+  if (__DEV__) console.log('TB fetchMenu calling:', url);
 
   const res = await fetch(url);
 
   const raw = await res.text();
-  console.log('fetchMenu raw snippet:', raw.slice(0, 200));
+  if (__DEV__) console.log('fetchMenu raw snippet:', raw.slice(0, 200));
 
   // For 202 responses (processing), parse and return the JSON body
   if (res.status === 202) {
@@ -472,13 +472,13 @@ export async function fetchMenu(placeId: string) {
 
   try {
     const data = JSON.parse(raw);
-    console.log(
+    if (__DEV__) console.log(
       'fetchMenu JSON top-level keys:',
       data && typeof data === 'object' ? Object.keys(data) : typeof data
     );
     return data;
   } catch (e) {
-    console.error('fetchMenu JSON.parse failed:', e);
+    if (__DEV__) console.error('fetchMenu JSON.parse failed:', e);
     throw new Error(`fetchMenu got non-JSON body starting with: ${raw.slice(0, 40)}`);
   }
 }
@@ -598,7 +598,7 @@ export async function fetchMenuFast(
   });
 
   const url = `${RESTAURANT_API_BASE}/menu/uber-test?${params.toString()}`;
-  console.log('TB fetchMenuFast calling:', url);
+  if (__DEV__) console.log('TB fetchMenuFast calling:', url);
 
   try {
     // Menu scraping can take a while - use 90 second timeout
@@ -609,10 +609,10 @@ export async function fetchMenuFast(
     clearTimeout(timeoutId);
 
     const raw = await res.text();
-    console.log('fetchMenuFast raw snippet:', raw.slice(0, 200));
+    if (__DEV__) console.log('fetchMenuFast raw snippet:', raw.slice(0, 200));
 
     if (!res.ok) {
-      console.error('fetchMenuFast HTTP error:', res.status, 'URL:', url, 'Response:', raw.slice(0, 300));
+      if (__DEV__) console.error('fetchMenuFast HTTP error:', res.status, 'URL:', url, 'Response:', raw.slice(0, 300));
       // Try to parse error response for better error message
       try {
         const errorData = JSON.parse(raw);
@@ -653,8 +653,8 @@ export async function fetchMenuFast(
 
     // Handle validation failure
     if (!data.ok && data.debug?.rejected) {
-      console.warn('Menu validation failed:', data.error);
-      console.warn('Rejected restaurants:', data.debug.rejected);
+      if (__DEV__) console.warn('Menu validation failed:', data.error);
+      if (__DEV__) console.warn('Rejected restaurants:', data.debug.rejected);
       return {
         ok: false,
         error: data.error || 'No matching restaurant found',
@@ -665,10 +665,10 @@ export async function fetchMenuFast(
   } catch (e: any) {
     // Handle abort/timeout separately
     if (e?.name === 'AbortError') {
-      console.error('fetchMenuFast timeout after 90s');
+      if (__DEV__) console.error('fetchMenuFast timeout after 90s');
       return { ok: false, error: 'Menu loading timed out. Please try again.', isTimeout: true };
     }
-    console.error('fetchMenuFast error:', e?.message || e);
+    if (__DEV__) console.error('fetchMenuFast error:', e?.message || e);
     return { ok: false, error: e?.message || 'Failed to fetch menu' };
   }
 }
@@ -690,7 +690,7 @@ export async function fetchMenuWithRetry(
 
       // Job is processing - wait and retry
       if (response.status === 'processing') {
-        console.log(
+        if (__DEV__) console.log(
           `TB fetchMenuWithRetry: processing, attempt ${attempt + 1}/${maxRetries}, retrying in ${
             response.retryIn || 5
           }s`
@@ -702,7 +702,7 @@ export async function fetchMenuWithRetry(
 
       // Job failed recently - wait longer before retry
       if (response.status === 'failed') {
-        console.log(
+        if (__DEV__) console.log(
           `TB fetchMenuWithRetry: failed, attempt ${attempt + 1}/${maxRetries}, retrying in ${
             response.retryIn || 30
           }s`
@@ -720,7 +720,7 @@ export async function fetchMenuWithRetry(
         throw err;
       }
       // Network error - wait and retry
-      console.log(
+      if (__DEV__) console.log(
         `TB fetchMenuWithRetry: network error, attempt ${attempt + 1}/${maxRetries}, retrying...`
       );
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -768,7 +768,7 @@ export interface AnalyzeDishPayload {
 
 export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeDishResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish`;
-  console.log('TB analyzeDish calling:', url, 'with', payload);
+  if (__DEV__) console.log('TB analyzeDish calling:', url, 'with', payload);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -779,10 +779,10 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
   });
 
   const raw = await res.text();
-  console.log('TB analyzeDish raw snippet:', raw.slice(0, 200));
+  if (__DEV__) console.log('TB analyzeDish raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
-    console.error('analyzeDish HTTP error:', res.status, raw.slice(0, 80));
+    if (__DEV__) console.error('analyzeDish HTTP error:', res.status, raw.slice(0, 80));
     return {
       ok: false,
       error: `HTTP ${res.status}`,
@@ -799,13 +799,13 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
 
   try {
     const data = JSON.parse(raw);
-    console.log(
+    if (__DEV__) console.log(
       'TB analyzeDish JSON keys:',
       data && typeof data === 'object' ? Object.keys(data) : typeof data
     );
     return data as AnalyzeDishResponse;
   } catch (e: any) {
-    console.error('TB analyzeDish JSON.parse failed:', e?.message || String(e));
+    if (__DEV__) console.error('TB analyzeDish JSON.parse failed:', e?.message || String(e));
     return {
       ok: false,
       error: 'parse_error',
@@ -823,7 +823,7 @@ export async function analyzeDish(payload: AnalyzeDishPayload): Promise<AnalyzeD
 
 export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/analyze-dish/card`;
-  console.log('TB analyzeDishCard calling:', url, 'with', payload);
+  if (__DEV__) console.log('TB analyzeDishCard calling:', url, 'with', payload);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -834,7 +834,7 @@ export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResp
   });
 
   const raw = await res.text();
-  console.log('TB analyzeDishCard raw snippet:', raw.slice(0, 200));
+  if (__DEV__) console.log('TB analyzeDishCard raw snippet:', raw.slice(0, 200));
 
   if (!res.ok) {
     throw new Error(`analyzeDishCard HTTP error: ${res.status} ${raw.slice(0, 120)}`);
@@ -844,7 +844,7 @@ export async function analyzeDishCard(payload: any): Promise<AnalyzeDishCardResp
     const data = JSON.parse(raw);
     return data as AnalyzeDishCardResponse;
   } catch (e: any) {
-    console.error('TB analyzeDishCard JSON.parse failed:', e?.message || String(e));
+    if (__DEV__) console.error('TB analyzeDishCard JSON.parse failed:', e?.message || String(e));
     throw e;
   }
 }
@@ -868,7 +868,7 @@ export interface OrgansStatusResponse {
  */
 export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/organs-status?key=${encodeURIComponent(pollKey)}`;
-  console.log('TB getOrgansStatus calling:', url);
+  if (__DEV__) console.log('TB getOrgansStatus calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -879,7 +879,7 @@ export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResp
     const text = await res.text();
 
     if (!res.ok) {
-      console.error('TB getOrgansStatus HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB getOrgansStatus HTTP error:', res.status, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -891,7 +891,7 @@ export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResp
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error('TB getOrgansStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      if (__DEV__) console.error('TB getOrgansStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -899,10 +899,10 @@ export async function getOrgansStatus(pollKey: string): Promise<OrgansStatusResp
       };
     }
 
-    console.log('TB getOrgansStatus response:', JSON.stringify(data).slice(0, 200));
+    if (__DEV__) console.log('TB getOrgansStatus response:', JSON.stringify(data).slice(0, 200));
     return data as OrgansStatusResponse;
   } catch (e: any) {
-    console.error('TB getOrgansStatus error:', e?.message || String(e));
+    if (__DEV__) console.error('TB getOrgansStatus error:', e?.message || String(e));
     return {
       ok: false,
       ready: false,
@@ -970,7 +970,7 @@ export interface AllergensStatusResponse {
  */
 export async function getAllergensStatus(pollKey: string): Promise<AllergensStatusResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/allergens-status?key=${encodeURIComponent(pollKey)}`;
-  console.log('TB getAllergensStatus calling:', url);
+  if (__DEV__) console.log('TB getAllergensStatus calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -981,7 +981,7 @@ export async function getAllergensStatus(pollKey: string): Promise<AllergensStat
     const text = await res.text();
 
     if (!res.ok) {
-      console.error('TB getAllergensStatus HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB getAllergensStatus HTTP error:', res.status, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -993,7 +993,7 @@ export async function getAllergensStatus(pollKey: string): Promise<AllergensStat
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error('TB getAllergensStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      if (__DEV__) console.error('TB getAllergensStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -1001,10 +1001,10 @@ export async function getAllergensStatus(pollKey: string): Promise<AllergensStat
       };
     }
 
-    console.log('TB getAllergensStatus response:', JSON.stringify(data).slice(0, 200));
+    if (__DEV__) console.log('TB getAllergensStatus response:', JSON.stringify(data).slice(0, 200));
     return data as AllergensStatusResponse;
   } catch (e: any) {
-    console.error('TB getAllergensStatus error:', e?.message || String(e));
+    if (__DEV__) console.error('TB getAllergensStatus error:', e?.message || String(e));
     return {
       ok: false,
       ready: false,
@@ -1067,7 +1067,7 @@ export interface FullRecipeStatusResponse {
  */
 export async function getFullRecipeStatus(pollKey: string): Promise<FullRecipeStatusResponse> {
   const url = `${GATEWAY_BASE_URL}/pipeline/full-recipe-status?key=${encodeURIComponent(pollKey)}`;
-  console.log('TB getFullRecipeStatus calling:', url);
+  if (__DEV__) console.log('TB getFullRecipeStatus calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -1078,7 +1078,7 @@ export async function getFullRecipeStatus(pollKey: string): Promise<FullRecipeSt
     const text = await res.text();
 
     if (!res.ok) {
-      console.error('TB getFullRecipeStatus HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB getFullRecipeStatus HTTP error:', res.status, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -1090,7 +1090,7 @@ export async function getFullRecipeStatus(pollKey: string): Promise<FullRecipeSt
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error('TB getFullRecipeStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
+      if (__DEV__) console.error('TB getFullRecipeStatus JSON parse error:', parseErr?.message, text.slice(0, 200));
       return {
         ok: false,
         ready: false,
@@ -1098,10 +1098,10 @@ export async function getFullRecipeStatus(pollKey: string): Promise<FullRecipeSt
       };
     }
 
-    console.log('TB getFullRecipeStatus response:', JSON.stringify(data).slice(0, 200));
+    if (__DEV__) console.log('TB getFullRecipeStatus response:', JSON.stringify(data).slice(0, 200));
     return data as FullRecipeStatusResponse;
   } catch (e: any) {
-    console.error('TB getFullRecipeStatus error:', e?.message || String(e));
+    if (__DEV__) console.error('TB getFullRecipeStatus error:', e?.message || String(e));
     return {
       ok: false,
       ready: false,
@@ -1202,7 +1202,7 @@ export async function startBatchAnalysis(
   concurrency: number = 5
 ): Promise<BatchAnalysisResponse> {
   const url = `${GATEWAY_BASE_URL}/api/analyze/batch`;
-  console.log('TB startBatchAnalysis calling:', url, 'with', dishes.length, 'dishes');
+  if (__DEV__) console.log('TB startBatchAnalysis calling:', url, 'with', dishes.length, 'dishes');
 
   try {
     const res = await fetch(url, {
@@ -1218,7 +1218,7 @@ export async function startBatchAnalysis(
     const text = await res.text();
 
     if (!res.ok) {
-      console.error('TB startBatchAnalysis HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB startBatchAnalysis HTTP error:', res.status, text.slice(0, 200));
       // Return a fallback response so frontend can still work with individual analysis
       return {
         ok: false,
@@ -1239,7 +1239,7 @@ export async function startBatchAnalysis(
     const data = JSON.parse(text);
     return data as BatchAnalysisResponse;
   } catch (err: any) {
-    console.error('TB startBatchAnalysis error:', err?.message || err);
+    if (__DEV__) console.error('TB startBatchAnalysis error:', err?.message || err);
     return {
       ok: false,
       batchId: '',
@@ -1285,7 +1285,7 @@ export async function getBatchStatus(
     const text = await res.text();
 
     if (!res.ok) {
-      console.error('TB getBatchStatus HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB getBatchStatus HTTP error:', res.status, text.slice(0, 200));
       // Return special status for rate limiting so polling can back off
       const isRateLimited = res.status === 429;
       return {
@@ -1309,7 +1309,7 @@ export async function getBatchStatus(
     // Network errors during polling are expected - downgrade to warning
     const isAbort = err?.name === 'AbortError';
     const msg = isAbort ? 'request timeout' : (err?.message || err);
-    console.warn('TB getBatchStatus network issue:', msg);
+    if (__DEV__) console.warn('TB getBatchStatus network issue:', msg);
     return {
       ok: false,
       batch: {
@@ -1337,7 +1337,7 @@ export async function priorityAnalysis(
   dish: BatchDishInput & { restaurantName: string }
 ): Promise<{ ok: boolean; status: string; result?: AnalyzeDishResponse }> {
   const url = `${GATEWAY_BASE_URL}/api/analyze/batch/priority`;
-  console.log('TB priorityAnalysis calling:', url, 'for job:', jobId);
+  if (__DEV__) console.log('TB priorityAnalysis calling:', url, 'for job:', jobId);
 
   // Retry logic for network errors
   const maxRetries = 2;
@@ -1361,7 +1361,7 @@ export async function priorityAnalysis(
       const text = await res.text();
 
       if (!res.ok) {
-        console.error('TB priorityAnalysis HTTP error:', res.status, text.slice(0, 200));
+        if (__DEV__) console.error('TB priorityAnalysis HTTP error:', res.status, text.slice(0, 200));
         // Fallback to direct analysis
         return {
           ok: false,
@@ -1378,18 +1378,18 @@ export async function priorityAnalysis(
                              err?.message?.includes('aborted');
 
       if (isNetworkError && attempt < maxRetries) {
-        console.log(`TB priorityAnalysis retry ${attempt + 1}/${maxRetries} after error:`, err?.message);
+        if (__DEV__) console.log(`TB priorityAnalysis retry ${attempt + 1}/${maxRetries} after error:`, err?.message);
         // Wait before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
         continue;
       }
 
-      console.error('TB priorityAnalysis error:', err?.message || err);
+      if (__DEV__) console.error('TB priorityAnalysis error:', err?.message || err);
       return { ok: false, status: 'error' };
     }
   }
 
-  console.error('TB priorityAnalysis all retries failed:', lastError?.message || lastError);
+  if (__DEV__) console.error('TB priorityAnalysis all retries failed:', lastError?.message || lastError);
   return { ok: false, status: 'error' };
 }
 
@@ -1419,11 +1419,11 @@ export async function pollBatchUntilComplete(
       if (statusRes.rateLimited) {
         rateLimitBackoffs++;
         const backoffMs = Math.min(pollIntervalMs * Math.pow(2, rateLimitBackoffs), 30000);
-        console.log(`TB pollBatchUntilComplete: rate limited, backing off ${backoffMs}ms (attempt ${attempt})`);
+        if (__DEV__) console.log(`TB pollBatchUntilComplete: rate limited, backing off ${backoffMs}ms (attempt ${attempt})`);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
         continue;
       }
-      console.log('TB pollBatchUntilComplete: batch status error, attempt', attempt);
+      if (__DEV__) console.log('TB pollBatchUntilComplete: batch status error, attempt', attempt);
       await new Promise((resolve) => setTimeout(resolve, currentInterval));
       continue;
     }
@@ -1451,7 +1451,7 @@ export async function pollBatchUntilComplete(
       batch.status === 'completed' ||
       batch.completedCount + batch.failedCount >= batch.totalCount
     ) {
-      console.log('TB pollBatchUntilComplete: batch completed after', attempt, 'attempts');
+      if (__DEV__) console.log('TB pollBatchUntilComplete: batch completed after', attempt, 'attempts');
       return batch;
     }
 
@@ -1459,7 +1459,7 @@ export async function pollBatchUntilComplete(
     await new Promise((resolve) => setTimeout(resolve, currentInterval));
   }
 
-  console.log('TB pollBatchUntilComplete: timeout after', maxAttempts, 'attempts');
+  if (__DEV__) console.log('TB pollBatchUntilComplete: timeout after', maxAttempts, 'attempts');
   return null;
 }
 
@@ -1599,8 +1599,8 @@ export async function startApifyScrape(
   });
 
   const url = `${API_BASE_URL}/api/apify-start?${params.toString()}`;
-  console.log('TB startApifyScrape calling:', url);
-  console.log('TB startApifyScrape params:', { query: cleanName, address: cleanAddress, maxRows });
+  if (__DEV__) console.log('TB startApifyScrape calling:', url);
+  if (__DEV__) console.log('TB startApifyScrape params:', { query: cleanName, address: cleanAddress, maxRows });
 
   try {
     const res = await fetch(url);
@@ -1608,7 +1608,7 @@ export async function startApifyScrape(
 
     // Guard against non-JSON responses (HTML error pages, etc.)
     if (!res.ok) {
-      console.error('TB startApifyScrape HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB startApifyScrape HTTP error:', res.status, text.slice(0, 200));
       return {
         ok: false,
         jobId: '',
@@ -1621,7 +1621,7 @@ export async function startApifyScrape(
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error('TB startApifyScrape JSON parse error:', parseErr?.message, text.slice(0, 200));
+      if (__DEV__) console.error('TB startApifyScrape JSON parse error:', parseErr?.message, text.slice(0, 200));
       return {
         ok: false,
         jobId: '',
@@ -1630,10 +1630,10 @@ export async function startApifyScrape(
       };
     }
 
-    console.log('TB startApifyScrape response:', data);
+    if (__DEV__) console.log('TB startApifyScrape response:', data);
     return data as ApifyJobStartResponse;
   } catch (e: any) {
-    console.error('TB startApifyScrape error:', e?.message || String(e));
+    if (__DEV__) console.error('TB startApifyScrape error:', e?.message || String(e));
     return {
       ok: false,
       jobId: '',
@@ -1651,7 +1651,7 @@ export async function startApifyScrape(
  */
 export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusResponse> {
   const url = `${API_BASE_URL}/api/apify-job/${encodeURIComponent(jobId)}`;
-  console.log('TB getApifyJobStatus calling:', url);
+  if (__DEV__) console.log('TB getApifyJobStatus calling:', url);
 
   try {
     const res = await fetch(url);
@@ -1659,7 +1659,7 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
 
     // Guard against non-JSON responses (HTML error pages, etc.)
     if (!res.ok) {
-      console.error('TB getApifyJobStatus HTTP error:', res.status, text.slice(0, 200));
+      if (__DEV__) console.error('TB getApifyJobStatus HTTP error:', res.status, text.slice(0, 200));
       return {
         ok: false,
         status: 'failed',
@@ -1671,7 +1671,7 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
     try {
       data = JSON.parse(text);
     } catch (parseErr: any) {
-      console.error(
+      if (__DEV__) console.error(
         'TB getApifyJobStatus JSON parse error:',
         parseErr?.message,
         text.slice(0, 200)
@@ -1683,13 +1683,13 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
       };
     }
 
-    console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 300));
+    if (__DEV__) console.log('TB getApifyJobStatus response:', JSON.stringify(data).slice(0, 300));
 
     // Handle validation failure from backend
     if (data.status === 'completed' && !data.ok) {
-      console.warn('TB Menu validation failed:', data.error);
+      if (__DEV__) console.warn('TB Menu validation failed:', data.error);
       if (data.debug?.rejected) {
-        console.warn('TB Rejected restaurants:', data.debug.rejected);
+        if (__DEV__) console.warn('TB Rejected restaurants:', data.debug.rejected);
       }
       return {
         ok: false,
@@ -1701,7 +1701,7 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
 
     // Log validation info if present
     if (data.validation) {
-      console.log('TB Menu validation:', {
+      if (__DEV__) console.log('TB Menu validation:', {
         confidence: `${(data.validation.confidence * 100).toFixed(0)}%`,
         matched: data.validation.matchedName,
         requested: data.validation.requestedName,
@@ -1710,7 +1710,7 @@ export async function getApifyJobStatus(jobId: string): Promise<ApifyJobStatusRe
 
     return data as ApifyJobStatusResponse;
   } catch (e: any) {
-    console.error('TB getApifyJobStatus error:', e?.message || String(e));
+    if (__DEV__) console.error('TB getApifyJobStatus error:', e?.message || String(e));
     return {
       ok: false,
       status: 'failed',
@@ -1794,7 +1794,7 @@ export async function uploadDishImage(
   mimeType: string = 'image/jpeg'
 ): Promise<UploadImageResponse> {
   const url = `${API_BASE_URL}/api/upload-image`;
-  console.log('uploadDishImage calling:', url);
+  if (__DEV__) console.log('uploadDishImage calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -1809,7 +1809,7 @@ export async function uploadDishImage(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('uploadDishImage HTTP error:', res.status);
+      if (__DEV__) console.error('uploadDishImage HTTP error:', res.status);
       return {
         ok: false,
         error: data?.error || `HTTP ${res.status}`,
@@ -1818,7 +1818,7 @@ export async function uploadDishImage(
 
     return data as UploadImageResponse;
   } catch (e: any) {
-    console.error('uploadDishImage error:', e?.message || e);
+    if (__DEV__) console.error('uploadDishImage error:', e?.message || e);
     return {
       ok: false,
       error: e?.message || 'Network error',
@@ -1870,7 +1870,7 @@ export async function getDishSuggestions(
   if (options?.cuisine) params.set('cuisine', options.cuisine);
 
   const url = `${API_BASE_URL}/api/dish-suggest?${params.toString()}`;
-  console.log('getDishSuggestions calling:', url);
+  if (__DEV__) console.log('getDishSuggestions calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -1881,7 +1881,7 @@ export async function getDishSuggestions(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getDishSuggestions HTTP error:', res.status);
+      if (__DEV__) console.error('getDishSuggestions HTTP error:', res.status);
       return {
         ok: false,
         query,
@@ -1893,7 +1893,7 @@ export async function getDishSuggestions(
 
     return data as DishSuggestResponse;
   } catch (e: any) {
-    console.error('getDishSuggestions error:', e?.message || e);
+    if (__DEV__) console.error('getDishSuggestions error:', e?.message || e);
     return {
       ok: false,
       query,
@@ -1923,7 +1923,7 @@ export function getTodayDate(): string {
   const utcDay = String(now.getUTCDate()).padStart(2, '0');
   const utcDate = `${utcYear}-${utcMonth}-${utcDay}`;
 
-  console.log('[getTodayDate] Local:', localDate, 'UTC:', utcDate, 'TZ offset:', now.getTimezoneOffset(), 'minutes');
+  if (__DEV__) console.log('[getTodayDate] Local:', localDate, 'UTC:', utcDate, 'TZ offset:', now.getTimezoneOffset(), 'minutes');
 
   // Use UTC date to match server time (Cloudflare Workers use UTC)
   return utcDate;
@@ -2193,7 +2193,7 @@ function mapTargetsResponse(targets: any): UserDailyTargets | null {
  */
 export async function getUserProfile(userId: string): Promise<UserProfileResponse> {
   const url = `${API_BASE_URL}/api/profile?user_id=${encodeURIComponent(userId)}`;
-  console.log('getUserProfile calling:', url);
+  if (__DEV__) console.log('getUserProfile calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2204,7 +2204,7 @@ export async function getUserProfile(userId: string): Promise<UserProfileRespons
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getUserProfile HTTP error:', res.status);
+      if (__DEV__) console.error('getUserProfile HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
@@ -2218,7 +2218,7 @@ export async function getUserProfile(userId: string): Promise<UserProfileRespons
       error: data.error,
     };
   } catch (e: any) {
-    console.error('getUserProfile error:', e?.message || e);
+    if (__DEV__) console.error('getUserProfile error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2231,7 +2231,7 @@ export async function updateUserProfile(
   profileData: Partial<UserProfile>
 ): Promise<UpdateProfileResponse> {
   const url = `${API_BASE_URL}/api/profile`;
-  console.log('updateUserProfile calling:', url, profileData);
+  if (__DEV__) console.log('updateUserProfile calling:', url, profileData);
 
   try {
     const res = await fetch(url, {
@@ -2244,10 +2244,10 @@ export async function updateUserProfile(
     });
 
     const data = await res.json();
-    console.log('updateUserProfile response:', JSON.stringify(data, null, 2));
+    if (__DEV__) console.log('updateUserProfile response:', JSON.stringify(data, null, 2));
 
     if (!res.ok) {
-      console.error('updateUserProfile HTTP error:', res.status);
+      if (__DEV__) console.error('updateUserProfile HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
@@ -2259,7 +2259,7 @@ export async function updateUserProfile(
       error: data.error,
     };
   } catch (e: any) {
-    console.error('updateUserProfile error:', e?.message || e);
+    if (__DEV__) console.error('updateUserProfile error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2272,7 +2272,7 @@ export async function setUserAllergens(
   allergens: Array<{ allergen_code: string; severity: 'avoid' | 'limit' | 'monitor' }>
 ): Promise<AllergensResponse> {
   const url = `${API_BASE_URL}/api/profile/allergens`;
-  console.log('setUserAllergens calling:', url, allergens);
+  if (__DEV__) console.log('setUserAllergens calling:', url, allergens);
 
   try {
     const res = await fetch(url, {
@@ -2287,13 +2287,13 @@ export async function setUserAllergens(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('setUserAllergens HTTP error:', res.status);
+      if (__DEV__) console.error('setUserAllergens HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AllergensResponse;
   } catch (e: any) {
-    console.error('setUserAllergens error:', e?.message || e);
+    if (__DEV__) console.error('setUserAllergens error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2306,7 +2306,7 @@ export async function setUserOrganPriorities(
   organs: Array<{ organ_code: string; priority_rank?: number; is_starred?: boolean }>
 ): Promise<OrganPrioritiesResponse> {
   const url = `${API_BASE_URL}/api/profile/organs`;
-  console.log('setUserOrganPriorities calling:', url, organs);
+  if (__DEV__) console.log('setUserOrganPriorities calling:', url, organs);
 
   try {
     const res = await fetch(url, {
@@ -2321,13 +2321,13 @@ export async function setUserOrganPriorities(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('setUserOrganPriorities HTTP error:', res.status);
+      if (__DEV__) console.error('setUserOrganPriorities HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as OrganPrioritiesResponse;
   } catch (e: any) {
-    console.error('setUserOrganPriorities error:', e?.message || e);
+    if (__DEV__) console.error('setUserOrganPriorities error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2337,7 +2337,7 @@ export async function setUserOrganPriorities(
  */
 export async function addWeightEntry(userId: string, weightKg: number): Promise<WeightResponse> {
   const url = `${API_BASE_URL}/api/profile/weight`;
-  console.log('addWeightEntry calling:', url, { weight_kg: weightKg });
+  if (__DEV__) console.log('addWeightEntry calling:', url, { weight_kg: weightKg });
 
   try {
     const res = await fetch(url, {
@@ -2352,13 +2352,13 @@ export async function addWeightEntry(userId: string, weightKg: number): Promise<
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('addWeightEntry HTTP error:', res.status);
+      if (__DEV__) console.error('addWeightEntry HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as WeightResponse;
   } catch (e: any) {
-    console.error('addWeightEntry error:', e?.message || e);
+    if (__DEV__) console.error('addWeightEntry error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2411,7 +2411,7 @@ export async function logMeal(
   }
 ): Promise<LogMealResponse> {
   const url = `${API_BASE_URL}/api/meals/log`;
-  console.log('logMeal calling:', url, mealData);
+  if (__DEV__) console.log('logMeal calling:', url, mealData);
 
   try {
     const res = await fetch(url, {
@@ -2426,13 +2426,13 @@ export async function logMeal(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('logMeal HTTP error:', res.status);
+      if (__DEV__) console.error('logMeal HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as LogMealResponse;
   } catch (e: any) {
-    console.error('logMeal error:', e?.message || e);
+    if (__DEV__) console.error('logMeal error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2443,7 +2443,7 @@ export async function logMeal(
 export async function getMeals(userId: string, date?: string): Promise<MealsResponse> {
   const targetDate = date || getTodayDate();
   const url = `${API_BASE_URL}/api/meals?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
-  console.log('getMeals calling:', url);
+  if (__DEV__) console.log('getMeals calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2454,13 +2454,13 @@ export async function getMeals(userId: string, date?: string): Promise<MealsResp
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getMeals HTTP error:', res.status);
+      if (__DEV__) console.error('getMeals HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as MealsResponse;
   } catch (e: any) {
-    console.error('getMeals error:', e?.message || e);
+    if (__DEV__) console.error('getMeals error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2478,7 +2478,7 @@ export async function getMealsForDate(userId: string, date?: string): Promise<Lo
  */
 export async function deleteMeal(userId: string, mealId: number): Promise<DeleteMealResponse> {
   const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${encodeURIComponent(userId)}`;
-  console.log('deleteMeal calling:', url);
+  if (__DEV__) console.log('deleteMeal calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2489,13 +2489,13 @@ export async function deleteMeal(userId: string, mealId: number): Promise<Delete
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('deleteMeal HTTP error:', res.status);
+      if (__DEV__) console.error('deleteMeal HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as DeleteMealResponse;
   } catch (e: any) {
-    console.error('deleteMeal error:', e?.message || e);
+    if (__DEV__) console.error('deleteMeal error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2522,7 +2522,7 @@ export async function updateMealPortion(
   }
 ): Promise<UpdateMealPortionResponse> {
   const url = `${API_BASE_URL}/api/meals/${mealId}/portion`;
-  console.log('updateMealPortion calling:', url, portionData);
+  if (__DEV__) console.log('updateMealPortion calling:', url, portionData);
 
   try {
     const res = await fetch(url, {
@@ -2537,13 +2537,13 @@ export async function updateMealPortion(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('updateMealPortion HTTP error:', res.status);
+      if (__DEV__) console.error('updateMealPortion HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as UpdateMealPortionResponse;
   } catch (e: any) {
-    console.error('updateMealPortion error:', e?.message || e);
+    if (__DEV__) console.error('updateMealPortion error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2563,7 +2563,7 @@ export async function updateMeal(
   }
 ): Promise<{ ok: boolean; meal?: LoggedMeal; error?: string }> {
   const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${userId}`;
-  console.log('updateMeal calling:', url, updates);
+  if (__DEV__) console.log('updateMeal calling:', url, updates);
 
   try {
     const res = await fetch(url, {
@@ -2578,13 +2578,13 @@ export async function updateMeal(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('updateMeal HTTP error:', res.status);
+      if (__DEV__) console.error('updateMeal HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return { ok: true, meal: data.meal };
   } catch (e: any) {
-    console.error('updateMeal error:', e?.message || e);
+    if (__DEV__) console.error('updateMeal error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2604,7 +2604,7 @@ export async function getDailyTracker(
   const url = `${API_BASE_URL}/api/tracker/daily?user_id=${encodeURIComponent(
     userId
   )}&date=${targetDate}`;
-  console.log('getDailyTracker calling:', url);
+  if (__DEV__) console.log('getDailyTracker calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2615,13 +2615,13 @@ export async function getDailyTracker(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getDailyTracker HTTP error:', res.status);
+      if (__DEV__) console.error('getDailyTracker HTTP error:', res.status);
       return { ok: false, date: targetDate, error: data?.error || `HTTP ${res.status}` };
     }
 
     return { ...data, date: targetDate } as DailyTrackerResponse;
   } catch (e: any) {
-    console.error('getDailyTracker error:', e?.message || e);
+    if (__DEV__) console.error('getDailyTracker error:', e?.message || e);
     return { ok: false, date: targetDate, error: e?.message || 'Network error' };
   }
 }
@@ -2631,7 +2631,7 @@ export async function getDailyTracker(
  */
 export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerResponse> {
   const url = `${API_BASE_URL}/api/tracker/weekly?user_id=${encodeURIComponent(userId)}`;
-  console.log('getWeeklyTracker calling:', url);
+  if (__DEV__) console.log('getWeeklyTracker calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2640,10 +2640,10 @@ export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerRes
     });
 
     const data = await res.json();
-    console.log('getWeeklyTracker raw response:', JSON.stringify(data, null, 2));
+    if (__DEV__) console.log('getWeeklyTracker raw response:', JSON.stringify(data, null, 2));
 
     if (!res.ok) {
-      console.error('getWeeklyTracker HTTP error:', res.status);
+      if (__DEV__) console.error('getWeeklyTracker HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
@@ -2679,10 +2679,10 @@ export async function getWeeklyTracker(userId: string): Promise<WeeklyTrackerRes
       error: data.error,
     };
 
-    console.log('getWeeklyTracker mapped response:', JSON.stringify(mappedResponse, null, 2));
+    if (__DEV__) console.log('getWeeklyTracker mapped response:', JSON.stringify(mappedResponse, null, 2));
     return mappedResponse;
   } catch (e: any) {
-    console.error('getWeeklyTracker error:', e?.message || e);
+    if (__DEV__) console.error('getWeeklyTracker error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2708,7 +2708,7 @@ export interface WaterData {
 export async function getWater(userId: string, date?: string): Promise<WaterData> {
   const targetDate = date || getTodayDate();
   const url = `${API_BASE_URL}/api/water?user_id=${encodeURIComponent(userId)}&date=${targetDate}`;
-  console.log('getWater calling:', url);
+  if (__DEV__) console.log('getWater calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2719,7 +2719,7 @@ export async function getWater(userId: string, date?: string): Promise<WaterData
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getWater HTTP error:', res.status);
+      if (__DEV__) console.error('getWater HTTP error:', res.status);
       return {
         ok: false,
         total_glasses: 0,
@@ -2733,7 +2733,7 @@ export async function getWater(userId: string, date?: string): Promise<WaterData
 
     return data as WaterData;
   } catch (e: any) {
-    console.error('getWater error:', e?.message || e);
+    if (__DEV__) console.error('getWater error:', e?.message || e);
     return {
       ok: false,
       total_glasses: 0,
@@ -2755,7 +2755,7 @@ export async function logWater(
   source: string = 'manual'
 ): Promise<{ ok: boolean; glasses?: number; ml_amount?: number; error?: string }> {
   const url = `${API_BASE_URL}/api/water/log`;
-  console.log('logWater calling:', url, { user_id: userId, glasses, source });
+  if (__DEV__) console.log('logWater calling:', url, { user_id: userId, glasses, source });
 
   try {
     const res = await fetch(url, {
@@ -2770,13 +2770,13 @@ export async function logWater(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('logWater HTTP error:', res.status);
+      if (__DEV__) console.error('logWater HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data;
   } catch (e: any) {
-    console.error('logWater error:', e?.message || e);
+    if (__DEV__) console.error('logWater error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2789,7 +2789,7 @@ export async function setWater(
   totalGlasses: number
 ): Promise<{ ok: boolean; total_glasses?: number; error?: string }> {
   const url = `${API_BASE_URL}/api/water/set`;
-  console.log('setWater calling:', url, { user_id: userId, glasses: totalGlasses });
+  if (__DEV__) console.log('setWater calling:', url, { user_id: userId, glasses: totalGlasses });
 
   try {
     const res = await fetch(url, {
@@ -2804,13 +2804,13 @@ export async function setWater(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('setWater HTTP error:', res.status);
+      if (__DEV__) console.error('setWater HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data;
   } catch (e: any) {
-    console.error('setWater error:', e?.message || e);
+    if (__DEV__) console.error('setWater error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2824,7 +2824,7 @@ export async function setWater(
  */
 export async function getAllergenDefinitions(): Promise<AllergenDefinitionsResponse> {
   const url = `${API_BASE_URL}/api/allergens`;
-  console.log('getAllergenDefinitions calling:', url);
+  if (__DEV__) console.log('getAllergenDefinitions calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2835,13 +2835,13 @@ export async function getAllergenDefinitions(): Promise<AllergenDefinitionsRespo
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getAllergenDefinitions HTTP error:', res.status);
+      if (__DEV__) console.error('getAllergenDefinitions HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AllergenDefinitionsResponse;
   } catch (e: any) {
-    console.error('getAllergenDefinitions error:', e?.message || e);
+    if (__DEV__) console.error('getAllergenDefinitions error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2863,7 +2863,7 @@ export async function saveDish(
   }
 ): Promise<{ ok: boolean; dish?: SavedDish; error?: string }> {
   const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/saved-dishes`;
-  console.log('saveDish calling:', url, dishData);
+  if (__DEV__) console.log('saveDish calling:', url, dishData);
 
   try {
     const res = await fetch(url, {
@@ -2878,13 +2878,13 @@ export async function saveDish(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('saveDish HTTP error:', res.status);
+      if (__DEV__) console.error('saveDish HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data;
   } catch (e: any) {
-    console.error('saveDish error:', e?.message || e);
+    if (__DEV__) console.error('saveDish error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -2896,7 +2896,7 @@ export async function getSavedDishes(
   userId: string
 ): Promise<{ ok: boolean; dishes?: SavedDish[]; error?: string }> {
   const url = `${API_BASE_URL}/api/user/${encodeURIComponent(userId)}/saved-dishes`;
-  console.log('getSavedDishes calling:', url);
+  if (__DEV__) console.log('getSavedDishes calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -2907,13 +2907,13 @@ export async function getSavedDishes(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getSavedDishes HTTP error:', res.status);
+      if (__DEV__) console.error('getSavedDishes HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data;
   } catch (e: any) {
-    console.error('getSavedDishes error:', e?.message || e);
+    if (__DEV__) console.error('getSavedDishes error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3028,7 +3028,7 @@ export async function sendAssistantMessage(
   menuContext?: AIMenuContext | null
 ): Promise<AIChatResponse> {
   const url = `${API_BASE_URL}/api/assistant/chat`;
-  console.log('sendAssistantMessage calling:', url);
+  if (__DEV__) console.log('sendAssistantMessage calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3048,13 +3048,13 @@ export async function sendAssistantMessage(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('sendAssistantMessage HTTP error:', res.status);
+      if (__DEV__) console.error('sendAssistantMessage HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AIChatResponse;
   } catch (e: any) {
-    console.error('sendAssistantMessage error:', e?.message || e);
+    if (__DEV__) console.error('sendAssistantMessage error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3067,7 +3067,7 @@ export async function getAssistantConversations(
   limit: number = 10
 ): Promise<AIConversationsResponse> {
   const url = `${API_BASE_URL}/api/assistant/conversations?user_id=${encodeURIComponent(userId)}&limit=${limit}`;
-  console.log('getAssistantConversations calling:', url);
+  if (__DEV__) console.log('getAssistantConversations calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3078,13 +3078,13 @@ export async function getAssistantConversations(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getAssistantConversations HTTP error:', res.status);
+      if (__DEV__) console.error('getAssistantConversations HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AIConversationsResponse;
   } catch (e: any) {
-    console.error('getAssistantConversations error:', e?.message || e);
+    if (__DEV__) console.error('getAssistantConversations error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3097,7 +3097,7 @@ export async function getConversationMessages(
   limit: number = 50
 ): Promise<AIMessagesResponse> {
   const url = `${API_BASE_URL}/api/assistant/conversation/${conversationId}?limit=${limit}`;
-  console.log('getConversationMessages calling:', url);
+  if (__DEV__) console.log('getConversationMessages calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3108,13 +3108,13 @@ export async function getConversationMessages(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getConversationMessages HTTP error:', res.status);
+      if (__DEV__) console.error('getConversationMessages HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AIMessagesResponse;
   } catch (e: any) {
-    console.error('getConversationMessages error:', e?.message || e);
+    if (__DEV__) console.error('getConversationMessages error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3124,7 +3124,7 @@ export async function getConversationMessages(
  */
 export async function getAssistantContext(userId: string): Promise<AIContextResponse> {
   const url = `${API_BASE_URL}/api/assistant/context?user_id=${encodeURIComponent(userId)}`;
-  console.log('getAssistantContext calling:', url);
+  if (__DEV__) console.log('getAssistantContext calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3135,13 +3135,13 @@ export async function getAssistantContext(userId: string): Promise<AIContextResp
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('getAssistantContext HTTP error:', res.status);
+      if (__DEV__) console.error('getAssistantContext HTTP error:', res.status);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return data as AIContextResponse;
   } catch (e: any) {
-    console.error('getAssistantContext error:', e?.message || e);
+    if (__DEV__) console.error('getAssistantContext error:', e?.message || e);
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
@@ -3160,7 +3160,7 @@ export async function uploadMealPhoto(
   photoType: 'before' | 'after'
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   const url = `${GATEWAY_BASE_URL}/api/meal-photo/upload`;
-  console.log('TB uploadMealPhoto calling:', url, photoType);
+  if (__DEV__) console.log('TB uploadMealPhoto calling:', url, photoType);
 
   try {
     // Create form data for upload
@@ -3187,13 +3187,13 @@ export async function uploadMealPhoto(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('uploadMealPhoto HTTP error:', res.status, data);
+      if (__DEV__) console.error('uploadMealPhoto HTTP error:', res.status, data);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return { ok: true, url: data.url };
   } catch (e: any) {
-    console.error('uploadMealPhoto error:', e?.message || e);
+    if (__DEV__) console.error('uploadMealPhoto error:', e?.message || e);
     return { ok: false, error: e?.message || 'Upload failed' };
   }
 }
@@ -3232,7 +3232,7 @@ export async function identifyFoodInPhoto(
   context?: string
 ): Promise<FoodIdentificationResult> {
   const url = `${GATEWAY_BASE_URL}/api/meal-photo/identify`;
-  console.log('TB identifyFoodInPhoto calling:', url);
+  if (__DEV__) console.log('TB identifyFoodInPhoto calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3244,13 +3244,13 @@ export async function identifyFoodInPhoto(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('identifyFoodInPhoto HTTP error:', res.status, data);
+      if (__DEV__) console.error('identifyFoodInPhoto HTTP error:', res.status, data);
       return { ok: false, error: data?.error || data?.hint || `HTTP ${res.status}` };
     }
 
     return data;
   } catch (e: any) {
-    console.error('identifyFoodInPhoto error:', e?.message || e);
+    if (__DEV__) console.error('identifyFoodInPhoto error:', e?.message || e);
     return { ok: false, error: e?.message || 'Identification failed' };
   }
 }
@@ -3266,7 +3266,7 @@ export async function analyzePhotoConsumption(
   baselineCalories: number
 ): Promise<{ ok: boolean; analysis?: PhotoAnalysisResult; error?: string }> {
   const url = `${GATEWAY_BASE_URL}/api/meal-photo/analyze`;
-  console.log('TB analyzePhotoConsumption calling:', url);
+  if (__DEV__) console.log('TB analyzePhotoConsumption calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3283,13 +3283,13 @@ export async function analyzePhotoConsumption(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('analyzePhotoConsumption HTTP error:', res.status, data);
+      if (__DEV__) console.error('analyzePhotoConsumption HTTP error:', res.status, data);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return { ok: true, analysis: data.analysis };
   } catch (e: any) {
-    console.error('analyzePhotoConsumption error:', e?.message || e);
+    if (__DEV__) console.error('analyzePhotoConsumption error:', e?.message || e);
     return { ok: false, error: e?.message || 'Analysis failed' };
   }
 }
@@ -3307,7 +3307,7 @@ export async function updateMealWithPhotoAnalysis(
 ): Promise<{ ok: boolean; meal?: LoggedMeal; error?: string }> {
   // Use the correct endpoint: PUT /api/meals/{id}?user_id={userId}
   const url = `${API_BASE_URL}/api/meals/${mealId}?user_id=${userId}`;
-  console.log('TB updateMealWithPhotoAnalysis calling:', url);
+  if (__DEV__) console.log('TB updateMealWithPhotoAnalysis calling:', url);
 
   try {
     const res = await fetch(url, {
@@ -3328,13 +3328,13 @@ export async function updateMealWithPhotoAnalysis(
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('updateMealWithPhotoAnalysis HTTP error:', res.status, data);
+      if (__DEV__) console.error('updateMealWithPhotoAnalysis HTTP error:', res.status, data);
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
 
     return { ok: true, meal: data.meal };
   } catch (e: any) {
-    console.error('updateMealWithPhotoAnalysis error:', e?.message || e);
+    if (__DEV__) console.error('updateMealWithPhotoAnalysis error:', e?.message || e);
     return { ok: false, error: e?.message || 'Update failed' };
   }
 }

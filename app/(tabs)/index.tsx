@@ -38,6 +38,7 @@ import {
   CachedDish,
   RecentDishSearch,
 } from '../../utils/dishCache';
+import { logDebug, logWarn, logError } from '../../utils/logger';
 
 async function fetchEta(origin: any, destination: any, apiKey: string | undefined) {
   if (!origin || !destination) return null;
@@ -196,7 +197,7 @@ export default function HomeScreen() {
           setApiDishSuggestions([]);
         }
       } catch (e) {
-        console.error('Dish search error:', e);
+        logError('Dish search error:', e);
         setDishSearchResults([]);
         setApiDishSuggestions([]);
       } finally {
@@ -325,7 +326,7 @@ export default function HomeScreen() {
 
       // Do not modify nearbyRestaurants or selection here
     } catch (err) {
-      console.error('handleSearchSubmit error', err);
+      logError('handleSearchSubmit error', err);
       setError('Could not search restaurants right now.');
     } finally {
       setIsLoading(false);
@@ -425,10 +426,10 @@ export default function HomeScreen() {
           animated: true,
         });
       } catch (e) {
-        console.warn('scrollToIndex failed', e);
+        logWarn('scrollToIndex failed', e);
       }
     } catch (err) {
-      console.error('handleSearchResultSelect error', err);
+      logError('handleSearchResultSelect error', err);
       setError('Could not load restaurants near that location.');
     } finally {
       setIsLoading(false);
@@ -455,7 +456,7 @@ export default function HomeScreen() {
 
       await loadRestaurantsAround(placeLat, placeLng);
     } catch (e) {
-      console.error('Failed to load place details:', e);
+      logError('Failed to load place details:', e);
       setSelectedPlace({ description: place.description, placeId: place.placeId });
     }
   };
@@ -496,7 +497,7 @@ export default function HomeScreen() {
   };
 
   const openDish = () => {
-    console.log('Dish screen is deprecated; likely recipe view coming soon.');
+    logDebug('Dish screen is deprecated; likely recipe view coming soon.');
   };
 
   const setMode = (mode: SearchMode) => {
@@ -582,7 +583,7 @@ export default function HomeScreen() {
       await handlePhotoUpload(asset.base64!, asset.mimeType || 'image/jpeg', asset.uri);
 
     } catch (err: any) {
-      console.error('pickImage error:', err);
+      logError('pickImage error:', err);
       Alert.alert('Error', err?.message || 'Failed to pick image');
     }
   };
@@ -591,14 +592,14 @@ export default function HomeScreen() {
     setIsUploadingPhoto(true);
 
     try {
-      console.log('Uploading dish photo for auto-detection...');
+      logDebug('Uploading dish photo for auto-detection...');
       const uploadResult = await uploadDishImage(base64, mimeType);
 
       if (!uploadResult.ok || !uploadResult.url) {
         throw new Error(uploadResult.error || 'Upload failed');
       }
 
-      console.log('Photo uploaded:', uploadResult.url);
+      logDebug('Photo uploaded:', uploadResult.url);
 
       // Navigate to dish analysis screen with image URL
       // Backend will auto-detect the dish name using GPT-4o vision
@@ -613,7 +614,7 @@ export default function HomeScreen() {
       });
 
     } catch (err: any) {
-      console.error('handlePhotoUpload error:', err);
+      logError('handlePhotoUpload error:', err);
       Alert.alert('Upload Failed', err?.message || 'Could not upload photo. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
@@ -621,14 +622,14 @@ export default function HomeScreen() {
   };
 
   const loadRestaurantsAround = async (lat: number, lng: number) => {
-    console.log("LOAD AROUND START:", lat, lng);
+    logDebug("LOAD AROUND START:", lat, lng);
     try {
       const url = `${API_BASE_URL}/restaurants/find?query=restaurant&lat=${lat}&lng=${lng}&radius=1500`;
       const res = await fetch(url);
       const data = await res.json();
 
-      console.log("LOAD AROUND RAW RESPONSE:", JSON.stringify(data).slice(0,300));
-      console.log("LOAD AROUND ITEMS COUNT:", data?.items?.length);
+      logDebug("LOAD AROUND RAW RESPONSE:", JSON.stringify(data).slice(0,300));
+      logDebug("LOAD AROUND ITEMS COUNT:", data?.items?.length);
 
       const items = Array.isArray(data?.items) ? data.items : [];
       const sorted = [...items].sort((a, b) => {
@@ -673,7 +674,7 @@ export default function HomeScreen() {
         }
       }
     } catch (err) {
-      console.log('loadRestaurantsAround error:', err);
+      logDebug('loadRestaurantsAround error:', err);
       setNearbyRestaurants([]);
       setSelectedRestaurantIndex(0);
     }
@@ -714,7 +715,7 @@ export default function HomeScreen() {
 
       await loadRestaurantsAround(latitude, longitude);
     } catch (err) {
-      console.log('Location error:', err);
+      logDebug('Location error:', err);
     }
   };
 
@@ -749,7 +750,7 @@ export default function HomeScreen() {
   const previewRestaurantName =
     selectedPlace?.description || selectedRestaurant?.name || '';
 
-  console.log("nearbyRestaurants:", nearbyRestaurants.length);
+  logDebug("nearbyRestaurants:", nearbyRestaurants.length);
 
   useEffect(() => {
     if (!selectedRestaurant) return;

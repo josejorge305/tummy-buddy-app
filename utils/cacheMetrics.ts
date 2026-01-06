@@ -49,7 +49,7 @@ export function recordCacheHit(dishName: string, estimatedApiTimeMs: number = 20
     metrics.cacheOperations.pop();
   }
 
-  console.log(`📦 CACHE HIT: "${dishName}" - saved ~${estimatedApiTimeMs}ms`);
+  if (__DEV__) console.log(`📦 CACHE HIT: "${dishName}" - saved ~${estimatedApiTimeMs}ms`);
 }
 
 /**
@@ -69,7 +69,7 @@ export function recordCacheMiss(dishName: string): void {
     metrics.cacheOperations.pop();
   }
 
-  console.log(`❌ CACHE MISS: "${dishName}" - calling API`);
+  if (__DEV__) console.log(`❌ CACHE MISS: "${dishName}" - calling API`);
 }
 
 /**
@@ -87,7 +87,7 @@ export function recordCacheStore(dishName: string): void {
     metrics.cacheOperations.pop();
   }
 
-  console.log(`💾 CACHE STORE: "${dishName}"`);
+  if (__DEV__) console.log(`💾 CACHE STORE: "${dishName}"`);
 }
 
 /**
@@ -129,7 +129,7 @@ Est. time saved: ${timeSavedSec}s
  * Print metrics to console
  */
 export function logMetrics(): void {
-  console.log(getMetricsSummary());
+  if (__DEV__) console.log(getMetricsSummary());
 }
 
 /**
@@ -143,7 +143,7 @@ export function resetMetrics(): void {
     avgApiCallTimeMs: 2000,
     cacheOperations: [],
   };
-  console.log('📊 Cache metrics reset');
+  if (__DEV__) console.log('📊 Cache metrics reset');
 }
 
 /**

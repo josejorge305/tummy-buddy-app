@@ -160,7 +160,7 @@ export default function AIChatScreen() {
         });
       }
     } catch (error) {
-      console.error('Chat error:', error);
+      if (__DEV__) console.error('Chat error:', error);
       setMessages(prev => {
         const filtered = prev.filter(m => !m.isLoading);
         return [

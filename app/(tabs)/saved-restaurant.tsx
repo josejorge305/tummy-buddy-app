@@ -69,7 +69,7 @@ export default function RestaurantTab() {
         setHasNoCachedRestaurant(true);
       }
     } catch (error) {
-      console.error('Failed to load cached restaurant:', error);
+      if (__DEV__) console.error('Failed to load cached restaurant:', error);
       setHasNoCachedRestaurant(true);
     } finally {
       setIsLoading(false);

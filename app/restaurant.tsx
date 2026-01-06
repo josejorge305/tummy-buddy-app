@@ -48,6 +48,7 @@ import { AllergenBanner, RestaurantAllergenPopup } from '../components/legal';
 import { buildDishViewModel } from '../utils/dishViewModel';
 import PortionSheet, { PortionData, CourseType } from '../components/PortionSheet';
 import { MealLogModal, MealLogData } from '../components/MealLogModal';
+import { logDebug, logWarn, logError } from '../utils/logger';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1060,7 +1061,7 @@ export default function RestaurantScreen() {
         const meals = await getMealsForDate(userId, getTodayISO());
         setTodayLoggedMeals(meals);
       } catch (err) {
-        console.error('Error fetching today meals:', err);
+        logError('Error fetching today meals:', err);
       }
     }
     fetchTodayMeals();
@@ -1104,7 +1105,7 @@ export default function RestaurantScreen() {
 
       // If organs are pending, fetch them now before showing modal
       if (analysis && analysis.organs_pending && analysis.organs_poll_key) {
-        console.log('[handleQuickLog] Fetching pending organs for:', item?.name);
+        logDebug('[handleQuickLog] Fetching pending organs for:', item?.name);
         try {
           const organsResult = await pollOrgansStatus(analysis.organs_poll_key, undefined, 1500, 10);
           if (organsResult.ok && organsResult.ready && organsResult.organs) {
@@ -1116,10 +1117,10 @@ export default function RestaurantScreen() {
             };
             // Update the cache
             setAnalysisByItemId((prev) => ({ ...prev, [itemId]: analysis }));
-            console.log('[handleQuickLog] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
+            logDebug('[handleQuickLog] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
           }
         } catch (e) {
-          console.warn('[handleQuickLog] Failed to fetch organs:', e);
+          logWarn('[handleQuickLog] Failed to fetch organs:', e);
         }
       }
 
@@ -1221,7 +1222,7 @@ export default function RestaurantScreen() {
         // Reload tracker
         loadDailyTracker();
       } catch (err) {
-        console.error('[handleMealLogComplete] Error logging meal:', err);
+        logError('[handleMealLogComplete] Error logging meal:', err);
       }
 
       setIsLogging(false);
@@ -1238,7 +1239,7 @@ export default function RestaurantScreen() {
 
       // If organs are pending, fetch them now before showing portion sheet
       if (analysis && analysis.organs_pending && analysis.organs_poll_key) {
-        console.log('[handleOpenPortionSheet] Fetching pending organs for:', item?.name);
+        logDebug('[handleOpenPortionSheet] Fetching pending organs for:', item?.name);
         try {
           const organsResult = await pollOrgansStatus(analysis.organs_poll_key, undefined, 1500, 10);
           if (organsResult.ok && organsResult.ready && organsResult.organs) {
@@ -1250,10 +1251,10 @@ export default function RestaurantScreen() {
             };
             // Update the cache
             setAnalysisByItemId((prev) => ({ ...prev, [itemId]: analysis }));
-            console.log('[handleOpenPortionSheet] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
+            logDebug('[handleOpenPortionSheet] Organs fetched successfully:', organsResult.organs?.organs?.length, 'organs');
           }
         } catch (e) {
-          console.warn('[handleOpenPortionSheet] Failed to fetch organs:', e);
+          logWarn('[handleOpenPortionSheet] Failed to fetch organs:', e);
         }
       }
 
@@ -1294,7 +1295,7 @@ export default function RestaurantScreen() {
 
         // Get organ impacts as object
         const baselineOrganImpacts: Record<string, number> = {};
-        console.log('[handlePortionConfirm] analysis.organs:', JSON.stringify(analysis?.organs));
+        logDebug('[handlePortionConfirm] analysis.organs:', JSON.stringify(analysis?.organs));
         if (analysis?.organs?.organs) {
           analysis.organs.organs.forEach((o: any) => {
             if (o.organ && typeof o.score === 'number') {
@@ -1302,7 +1303,7 @@ export default function RestaurantScreen() {
             }
           });
         }
-        console.log('[handlePortionConfirm] baselineOrganImpacts:', JSON.stringify(baselineOrganImpacts));
+        logDebug('[handlePortionConfirm] baselineOrganImpacts:', JSON.stringify(baselineOrganImpacts));
 
         const multiplier = portionData.portionMultiplier;
 
@@ -1356,7 +1357,7 @@ export default function RestaurantScreen() {
         // Hide toast after 2 seconds
         setTimeout(() => setLoggedToast(false), 2000);
       } catch (err) {
-        console.error('Error logging meal:', err);
+        logError('Error logging meal:', err);
       } finally {
         setIsLogging(false);
       }
@@ -1374,7 +1375,7 @@ export default function RestaurantScreen() {
         // FAST PATH: Use fetchMenuFast first - it's the fastest (~10-30s)
         const searchAddress = addressValue || restaurantNameValue || '';
         if (restaurantNameValue && searchAddress) {
-          console.log(
+          logDebug(
             '[RestaurantScreen] Using fetchMenuFast (FAST PATH) with:',
             restaurantNameValue,
             searchAddress
@@ -1394,7 +1395,7 @@ export default function RestaurantScreen() {
             errorMsg.includes('unavailable') ||
             errorMsg.includes('http 404')
           ) {
-            console.log('[RestaurantScreen] Restaurant not available:', data.error);
+            logDebug('[RestaurantScreen] Restaurant not available:', data.error);
             setError(
               `We don't have access to "${restaurantNameValue || 'this restaurant'}" at this location. Try a different restaurant nearby.`
             );
@@ -1405,7 +1406,7 @@ export default function RestaurantScreen() {
 
         // Fall back to fetchMenuWithRetry only if fast method fails (but not for validation errors)
         if ((!data || !data.ok) && placeIdValue) {
-          console.log('[RestaurantScreen] fetchMenuFast failed, using fetchMenuWithRetry fallback');
+          logDebug('[RestaurantScreen] fetchMenuFast failed, using fetchMenuWithRetry fallback');
           data = await fetchMenuWithRetry(placeIdValue);
 
           // Check validation errors from fallback too
@@ -1419,7 +1420,7 @@ export default function RestaurantScreen() {
               errorMsg.includes('unavailable') ||
               errorMsg.includes('http 404')
             ) {
-              console.log('[RestaurantScreen] Restaurant not available (fallback):', data.error);
+              logDebug('[RestaurantScreen] Restaurant not available (fallback):', data.error);
               setError(
                 `We don't have access to "${restaurantNameValue || 'this restaurant'}" at this location. Try a different restaurant nearby.`
               );
@@ -1429,7 +1430,7 @@ export default function RestaurantScreen() {
           }
         }
 
-        console.log('MENU RAW DATA:', JSON.stringify(data, null, 2).slice(0, 500));
+        logDebug('MENU RAW DATA:', JSON.stringify(data, null, 2).slice(0, 500));
         const normalizedSections = Array.isArray((data as any)?.sections)
           ? (data as any).sections.map((section: any) => ({
               ...section,
@@ -1444,14 +1445,14 @@ export default function RestaurantScreen() {
             }))
           : [];
 
-        console.log('MENU NORMALIZED SECTIONS LENGTH:', normalizedSections.length);
+        logDebug('MENU NORMALIZED SECTIONS LENGTH:', normalizedSections.length);
         setMenu({
           ...(data as any),
           sections: normalizedSections,
         });
         setRestaurant((data as any)?.restaurant ?? null);
       } catch (e: any) {
-        console.log('MENU ERROR:', e);
+        logDebug('MENU ERROR:', e);
         setError("We couldn't load this menu right now. Please try again.");
       } finally {
         setLoading(false);
@@ -1487,17 +1488,17 @@ export default function RestaurantScreen() {
     async function fetchGooglePhoto() {
       if (!placeIdValue) return;
       try {
-        console.log('[RestaurantScreen] Fetching Google photo for placeId:', placeIdValue);
+        logDebug('[RestaurantScreen] Fetching Google photo for placeId:', placeIdValue);
         const details = await fetchPlaceDetails(placeIdValue);
         if (details.photoRef) {
-          console.log(
+          logDebug(
             '[RestaurantScreen] Got Google photo ref:',
             details.photoRef.slice(0, 50) + '...'
           );
           setGooglePhotoRef(details.photoRef);
         }
       } catch (e: any) {
-        console.log('[RestaurantScreen] Failed to fetch Google photo:', e?.message);
+        logDebug('[RestaurantScreen] Failed to fetch Google photo:', e?.message);
         // Non-critical - hero image will fall back to item image or no image
       }
     }
@@ -1520,9 +1521,9 @@ export default function RestaurantScreen() {
           visitedAt: Date.now(),
         };
         await AsyncStorage.setItem(LAST_RESTAURANT_KEY, JSON.stringify(cachedRestaurant));
-        console.log('[RestaurantScreen] Saved restaurant to cache:', restaurantNameValue);
+        logDebug('[RestaurantScreen] Saved restaurant to cache:', restaurantNameValue);
       } catch (e) {
-        console.log('[RestaurantScreen] Failed to save restaurant to cache:', e);
+        logDebug('[RestaurantScreen] Failed to save restaurant to cache:', e);
       }
     }
     saveToCache();
@@ -1568,7 +1569,7 @@ export default function RestaurantScreen() {
 
     if (dishes.length === 0) return;
 
-    console.log('[RestaurantScreen] Starting batch analysis for', dishes.length, 'dishes');
+    logDebug('[RestaurantScreen] Starting batch analysis for', dishes.length, 'dishes');
     batchPollingRef.current = true;
 
     // Start batch analysis
@@ -1586,7 +1587,7 @@ export default function RestaurantScreen() {
     )
       .then((batchRes) => {
         if (!batchRes.ok) {
-          console.log('[RestaurantScreen] Batch analysis failed, will use on-demand analysis');
+          logDebug('[RestaurantScreen] Batch analysis failed, will use on-demand analysis');
           return;
         }
 
@@ -1603,7 +1604,7 @@ export default function RestaurantScreen() {
             // If already completed or cached, store the result
             // Backend returns status "cached" for KV-cached dishes, "completed" for newly processed
             if ((job.status === 'completed' || job.status === 'cached') && job.result) {
-              console.log('[RestaurantScreen] Cached result for:', job.dishName,
+              logDebug('[RestaurantScreen] Cached result for:', job.dishName,
                 'hasOrgans:', !!job.result?.organs,
                 'organsPending:', job.result?.organs_pending);
               initialResults[dish.itemId] = job.result;
@@ -1616,7 +1617,7 @@ export default function RestaurantScreen() {
           setAnalysisByItemId((prev) => ({ ...prev, ...initialResults }));
         }
 
-        console.log(
+        logDebug(
           '[RestaurantScreen] Batch started, cached results:',
           Object.keys(initialResults).length
         );
@@ -1629,7 +1630,7 @@ export default function RestaurantScreen() {
               // Find the itemId for this job
               const itemId = Object.keys(jobMap).find((id) => jobMap[id] === jobId);
               if (itemId) {
-                console.log('[RestaurantScreen] Batch result received for:', dishName,
+                logDebug('[RestaurantScreen] Batch result received for:', dishName,
                   'hasOrgans:', !!result?.organs,
                   'organsPending:', result?.organs_pending);
                 setAnalysisByItemId((prev) => ({ ...prev, [itemId]: result }));
@@ -1639,12 +1640,12 @@ export default function RestaurantScreen() {
             1500, // poll interval
             80 // max attempts (2 min)
           ).then(() => {
-            console.log('[RestaurantScreen] Batch polling complete');
+            logDebug('[RestaurantScreen] Batch polling complete');
           });
         }
       })
       .catch((err) => {
-        console.error('[RestaurantScreen] Batch analysis error:', err);
+        logError('[RestaurantScreen] Batch analysis error:', err);
       });
 
     return () => {
@@ -1687,7 +1688,7 @@ export default function RestaurantScreen() {
       }));
       return result;
     } catch (err) {
-      console.error('Error calling analyzeDish', err);
+      logError('Error calling analyzeDish', err);
       const errorResult = {
         ok: false,
         error: 'Analysis failed',
@@ -1773,7 +1774,7 @@ export default function RestaurantScreen() {
     // Check if we have a batch job for this item - use priority fetch
     const jobId = jobIdByItemId[itemId];
     if (jobId && batchId) {
-      console.log('[RestaurantScreen] Using priority analysis for:', item?.name);
+      logDebug('[RestaurantScreen] Using priority analysis for:', item?.name);
       try {
         const priorityRes = await priorityAnalysis(jobId, {
           dishName: item?.name || '',
@@ -1794,7 +1795,7 @@ export default function RestaurantScreen() {
         }
         // If priority didn't return result, fall through to regular analysis
       } catch (err) {
-        console.log('[RestaurantScreen] Priority analysis failed, falling back:', err);
+        logDebug('[RestaurantScreen] Priority analysis failed, falling back:', err);
       }
     }
 
@@ -1949,7 +1950,7 @@ export default function RestaurantScreen() {
     const src = (menu as any)?.source || 'unknown';
     const backendError = (menu as any)?.error || (menu as any)?.uberDebug?.error || null;
 
-    console.log('MENU EMPTY SECTIONS DEBUG:', {
+    logDebug('MENU EMPTY SECTIONS DEBUG:', {
       source: src,
       backendError,
       ok: (menu as any)?.ok,
@@ -2192,12 +2193,12 @@ export default function RestaurantScreen() {
                   '';
 
                 if (item?.name && item.name.toLowerCase().includes('egg mcmuffin')) {
-                  console.log('DEBUG MENU ITEM – Egg McMuffin', item, Object.keys(item || {}));
+                  logDebug('DEBUG MENU ITEM – Egg McMuffin', item, Object.keys(item || {}));
                 }
 
                 // DEBUG: Log generated_description usage (check for falsy values including empty strings)
                 if (analysis?.generated_description && !item?.description?.trim() && !item?.menuDescription?.trim()) {
-                  console.log('[DESC DEBUG]', item?.name, 'using generated_description:', analysis.generated_description?.substring(0, 50));
+                  logDebug('[DESC DEBUG]', item?.name, 'using generated_description:', analysis.generated_description?.substring(0, 50));
                 }
 
                 // Check if this dish is logged today

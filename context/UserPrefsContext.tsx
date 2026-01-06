@@ -185,18 +185,18 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
   // Initialize user ID - prefer auth user ID, fall back to device ID
   useEffect(() => {
     if (authLoading) {
-      console.log('[UserPrefsContext] Auth still loading, waiting...');
+      if (__DEV__) console.log('[UserPrefsContext] Auth still loading, waiting...');
       return;
     }
 
     if (isAuthenticated && authUserId) {
-      console.log('[UserPrefsContext] Using auth userId:', authUserId);
+      if (__DEV__) console.log('[UserPrefsContext] Using auth userId:', authUserId);
       setUserId(authUserId);
     } else {
       // Get or create device user ID for anonymous usage
-      console.log('[UserPrefsContext] Getting device userId...');
+      if (__DEV__) console.log('[UserPrefsContext] Getting device userId...');
       getCurrentUserId().then(id => {
-        console.log('[UserPrefsContext] Got device userId:', id);
+        if (__DEV__) console.log('[UserPrefsContext] Got device userId:', id);
         setUserId(id);
       });
     }
@@ -205,7 +205,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
   // Load profile and tracker data when userId is set
   useEffect(() => {
     if (userId) {
-      console.log('[UserPrefsContext] userId set, loading profile and tracker data');
+      if (__DEV__) console.log('[UserPrefsContext] userId set, loading profile and tracker data');
       loadProfile();
       loadAllergenDefinitions();
       loadDailyTracker();
@@ -234,7 +234,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
         setOrganPriorities(result.organPriorities || []);
       }
     } catch (e) {
-      console.error('loadProfile error:', e);
+      if (__DEV__) console.error('loadProfile error:', e);
     } finally {
       setIsProfileLoading(false);
       setIsLoading(false);
@@ -255,7 +255,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (e) {
-      console.error('saveProfile error:', e);
+      if (__DEV__) console.error('saveProfile error:', e);
       return false;
     } finally {
       setIsProfileLoading(false);
@@ -277,7 +277,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (e) {
-      console.error('saveAllergens error:', e);
+      if (__DEV__) console.error('saveAllergens error:', e);
       return false;
     }
   }, [userId]);
@@ -296,7 +296,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (e) {
-      console.error('saveOrganPriorities error:', e);
+      if (__DEV__) console.error('saveOrganPriorities error:', e);
       return false;
     }
   }, [userId]);
@@ -313,24 +313,24 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (e) {
-      console.error('updateWeight error:', e);
+      if (__DEV__) console.error('updateWeight error:', e);
       return false;
     }
   }, [userId]);
 
   const loadDailyTracker = useCallback(async (date?: string) => {
     if (!userId) {
-      console.log('[loadDailyTracker] No userId, skipping');
+      if (__DEV__) console.log('[loadDailyTracker] No userId, skipping');
       return;
     }
 
-    console.log('[loadDailyTracker] Loading for userId:', userId);
+    if (__DEV__) console.log('[loadDailyTracker] Loading for userId:', userId);
     setIsTrackerLoading(true);
     try {
       const targetDate = date || getTodayDate();
-      console.log('[loadDailyTracker] Fetching for date:', targetDate);
+      if (__DEV__) console.log('[loadDailyTracker] Fetching for date:', targetDate);
       const result = await getDailyTracker(userId, targetDate);
-      console.log('[loadDailyTracker] API result ok:', result.ok, 'meals:', result.meals?.length);
+      if (__DEV__) console.log('[loadDailyTracker] API result ok:', result.ok, 'meals:', result.meals?.length);
 
       if (result.ok) {
         // Water data is now included in daily tracker response
@@ -338,7 +338,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
 
         // Organ impacts come as top-level array from backend
         const organImpactsArray = (result as any).organ_impacts || [];
-        console.log('[loadDailyTracker] organ_impacts from backend:', organImpactsArray);
+        if (__DEV__) console.log('[loadDailyTracker] organ_impacts from backend:', organImpactsArray);
 
         // Convert array to object for organ_scores
         const organScores: Record<string, number> = {};
@@ -349,7 +349,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
             }
           });
         }
-        console.log('[loadDailyTracker] organScores converted:', organScores);
+        if (__DEV__) console.log('[loadDailyTracker] organScores converted:', organScores);
 
         // Merge organ_scores into summary
         const summaryWithOrgans = result.summary ? {
@@ -371,7 +371,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (e) {
-      console.error('loadDailyTracker error:', e);
+      if (__DEV__) console.error('loadDailyTracker error:', e);
     } finally {
       setIsTrackerLoading(false);
     }
@@ -391,7 +391,7 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (e) {
-      console.error('loadWeeklyTracker error:', e);
+      if (__DEV__) console.error('loadWeeklyTracker error:', e);
     } finally {
       setIsTrackerLoading(false);
     }
@@ -431,25 +431,25 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     full_analysis?: any;
   }): Promise<{ success: boolean; duplicate?: boolean; error?: string }> => {
     if (!userId) {
-      console.error('logMealAction: No userId available');
+      if (__DEV__) console.error('logMealAction: No userId available');
       return { success: false, error: 'No user ID' };
     }
 
-    console.log('logMealAction: Logging meal for user', userId, mealData.dish_name);
+    if (__DEV__) console.log('logMealAction: Logging meal for user', userId, mealData.dish_name);
 
     try {
       const result = await logMeal(userId, mealData);
-      console.log('logMealAction: API result', result);
+      if (__DEV__) console.log('logMealAction: API result', result);
 
       if (result.ok) {
         // Refresh tracker data
         await loadDailyTracker();
         return { success: true, duplicate: result.duplicate };
       }
-      console.error('logMealAction: API returned not ok', result.error);
+      if (__DEV__) console.error('logMealAction: API returned not ok', result.error);
       return { success: false, error: result.error };
     } catch (e: any) {
-      console.error('logMealAction error:', e);
+      if (__DEV__) console.error('logMealAction error:', e);
       return { success: false, error: e?.message || 'Unknown error' };
     }
   }, [userId, loadDailyTracker]);
@@ -465,25 +465,25 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
     }
   ): Promise<{ success: boolean; error?: string }> => {
     if (!userId) {
-      console.error('updateMealPortionAction: No userId available');
+      if (__DEV__) console.error('updateMealPortionAction: No userId available');
       return { success: false, error: 'No user ID' };
     }
 
-    console.log('updateMealPortionAction: Updating portion for meal', mealId, portionData);
+    if (__DEV__) console.log('updateMealPortionAction: Updating portion for meal', mealId, portionData);
 
     try {
       const result = await updateMealPortion(userId, mealId, portionData);
-      console.log('updateMealPortionAction: API result', result);
+      if (__DEV__) console.log('updateMealPortionAction: API result', result);
 
       if (result.ok) {
         // Refresh tracker data to get updated totals
         await loadDailyTracker();
         return { success: true };
       }
-      console.error('updateMealPortionAction: API returned not ok', result.error);
+      if (__DEV__) console.error('updateMealPortionAction: API returned not ok', result.error);
       return { success: false, error: result.error };
     } catch (e: any) {
-      console.error('updateMealPortionAction error:', e);
+      if (__DEV__) console.error('updateMealPortionAction error:', e);
       return { success: false, error: e?.message || 'Unknown error' };
     }
   }, [userId, loadDailyTracker]);
@@ -501,22 +501,22 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (e) {
-      console.error('deleteMealAction error:', e);
+      if (__DEV__) console.error('deleteMealAction error:', e);
       return false;
     }
   }, [userId, loadDailyTracker]);
 
   const setWaterGlassesAction = useCallback(async (glasses: number): Promise<boolean> => {
     if (!userId) {
-      console.warn('setWaterGlassesAction: No userId available, cannot save water');
+      if (__DEV__) console.warn('setWaterGlassesAction: No userId available, cannot save water');
       return false;
     }
 
-    console.log('setWaterGlassesAction: Saving', glasses, 'glasses for user', userId);
+    if (__DEV__) console.log('setWaterGlassesAction: Saving', glasses, 'glasses for user', userId);
 
     try {
       const result = await setWater(userId, glasses);
-      console.log('setWaterGlassesAction: API result', result);
+      if (__DEV__) console.log('setWaterGlassesAction: API result', result);
 
       if (result.ok) {
         // Optimistically update local state
@@ -537,10 +537,10 @@ export function UserPrefsProvider({ children }: { children: ReactNode }) {
         loadDailyTracker();
         return true;
       }
-      console.warn('setWaterGlassesAction: API returned not ok', result);
+      if (__DEV__) console.warn('setWaterGlassesAction: API returned not ok', result);
       return false;
     } catch (e) {
-      console.error('setWaterGlassesAction error:', e);
+      if (__DEV__) console.error('setWaterGlassesAction error:', e);
       return false;
     }
   }, [userId, loadDailyTracker]);

@@ -112,7 +112,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
         healthCoachTimestamp: healthCoachTs ? parseInt(healthCoachTs, 10) : null,
       });
     } catch (e) {
-      console.error('[DisclaimerContext] Error loading state:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error loading state:', e);
       setState(prev => ({ ...prev, isLoading: false }));
     }
   };
@@ -132,9 +132,9 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
         onboardingVersion: DISCLAIMER_VERSION,
         onboardingTimestamp: timestamp,
       }));
-      console.log('[DisclaimerContext] Onboarding acknowledged');
+      if (__DEV__) console.log('[DisclaimerContext] Onboarding acknowledged');
     } catch (e) {
-      console.error('[DisclaimerContext] Error acknowledging onboarding:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error acknowledging onboarding:', e);
     }
   }, []);
 
@@ -153,9 +153,9 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.allergenBannerDismissed, 'true');
       setState(prev => ({ ...prev, isAllergenBannerDismissed: true }));
-      console.log('[DisclaimerContext] Allergen banner dismissed');
+      if (__DEV__) console.log('[DisclaimerContext] Allergen banner dismissed');
     } catch (e) {
-      console.error('[DisclaimerContext] Error dismissing banner:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error dismissing banner:', e);
     }
   }, []);
 
@@ -164,7 +164,7 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
       await AsyncStorage.removeItem(STORAGE_KEYS.allergenBannerDismissed);
       setState(prev => ({ ...prev, isAllergenBannerDismissed: false }));
     } catch (e) {
-      console.error('[DisclaimerContext] Error resetting banner:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error resetting banner:', e);
     }
   }, []);
 
@@ -180,9 +180,9 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.allergenBannerRestaurants, JSON.stringify(updated));
       setState(prev => ({ ...prev, restaurantsShownPopup: updated }));
-      console.log(`[DisclaimerContext] Marked restaurant popup shown: ${restaurantId}`);
+      if (__DEV__) console.log(`[DisclaimerContext] Marked restaurant popup shown: ${restaurantId}`);
     } catch (e) {
-      console.error('[DisclaimerContext] Error marking restaurant popup:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error marking restaurant popup:', e);
     }
   }, [state.restaurantsShownPopup]);
 
@@ -209,9 +209,9 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
         hasAcknowledgedHealthCoach: true,
         healthCoachTimestamp: timestamp,
       }));
-      console.log('[DisclaimerContext] Health Coach acknowledged');
+      if (__DEV__) console.log('[DisclaimerContext] Health Coach acknowledged');
     } catch (e) {
-      console.error('[DisclaimerContext] Error acknowledging Health Coach:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error acknowledging Health Coach:', e);
     }
   }, []);
 
@@ -242,9 +242,9 @@ export function DisclaimerProvider({ children }: { children: ReactNode }) {
         hasAcknowledgedHealthCoach: false,
         healthCoachTimestamp: null,
       });
-      console.log('[DisclaimerContext] All acknowledgments reset');
+      if (__DEV__) console.log('[DisclaimerContext] All acknowledgments reset');
     } catch (e) {
-      console.error('[DisclaimerContext] Error resetting acknowledgments:', e);
+      if (__DEV__) console.error('[DisclaimerContext] Error resetting acknowledgments:', e);
     }
   }, []);
 
