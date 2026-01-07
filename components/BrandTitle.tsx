@@ -1,5 +1,6 @@
 import React from "react";
-import { Text, StyleSheet, View, ViewStyle, Image } from "react-native";
+import { Text, StyleSheet, View, ViewStyle } from "react-native";
+import { Image } from "expo-image";
 
 type Props = {
   style?: ViewStyle;
@@ -28,7 +29,9 @@ export const BrandTitle: React.FC<Props> = ({
         <Image
           source={require("../assets/images/REstaurant AI Icon.png")}
           style={{ width: iconSize, height: iconSize }}
-          resizeMode="contain"
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          priority="high"
         />
       )}
       <View style={styles.textContainer}>

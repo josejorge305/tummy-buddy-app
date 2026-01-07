@@ -1242,7 +1242,7 @@ export default function HomeScreen() {
                         ) : (
                           /* Fallback: No photo - show name in dark header */
                           <View style={styles.noPhotoHeader}>
-                            <Text style={styles.restaurantTitle}>
+                            <Text style={styles.restaurantTitle} numberOfLines={2}>
                               {item.name}
                             </Text>
                             <View style={styles.photoPillsRow}>
@@ -1410,7 +1410,7 @@ export default function HomeScreen() {
                         ) : (
                           /* Fallback: No photo - show name in dark header */
                           <View style={styles.noPhotoHeader}>
-                            <Text style={styles.restaurantTitle}>
+                            <Text style={styles.restaurantTitle} numberOfLines={2}>
                               {item.dishName}
                             </Text>
                             <View style={styles.photoPillsRow}>
@@ -1673,6 +1673,7 @@ const styles = StyleSheet.create({
   },
   upgradeCard: {
     marginHorizontal: 16,
+    marginTop: 8,
     marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -1912,7 +1913,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   restaurantTitle: {
-    fontSize: 16,        // smaller
+    fontSize: 17,
     fontWeight: '700',
     color: '#f9fafb',
     marginBottom: 2,
@@ -2035,7 +2036,7 @@ const styles = StyleSheet.create({
     bottom: 12,
   },
   photoTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#ffffff',
     textShadowColor: 'rgba(0, 0, 0, 0.75)',

@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, FONT_SIZES } from './designSystem';
@@ -42,14 +42,23 @@ export const DishHeader: React.FC<Props> = ({
   isFavorite = false,
 }) => {
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const { truncated: truncatedDesc, isTruncated: descIsTruncated } = truncateText(description || '', 100);
+
+  const showImage = imageUrl && !imageError;
 
   return (
     <View style={styles.container}>
       {/* Hero Image */}
-      {imageUrl && (
+      {showImage && (
         <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUrl }} style={styles.heroImage} />
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.heroImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={() => setImageError(true)}
+          />
           <LinearGradient
             colors={['transparent', COLORS.background]}
             style={styles.imageGradient}
@@ -124,7 +133,6 @@ const styles = StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
   },
   imageGradient: {
     position: 'absolute',

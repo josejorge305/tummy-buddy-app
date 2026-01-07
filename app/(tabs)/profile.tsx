@@ -606,28 +606,28 @@ export default function ProfileScreen() {
                 <Text style={styles.cardTitle}>YOUR DAILY TARGETS</Text>
                 <View style={styles.macrosGrid}>
                   <View style={styles.macroItem}>
-                    <Text style={[styles.macroValue, { color: TEAL }]}>
+                    <Text style={[styles.macroValue, { color: TEAL }]} numberOfLines={1}>
                       {targets.calories || '--'}
                     </Text>
-                    <Text style={styles.macroLabel}>CALORIES</Text>
+                    <Text style={styles.macroLabel} numberOfLines={1}>CALORIES</Text>
                   </View>
                   <View style={styles.macroItem}>
-                    <Text style={[styles.macroValue, { color: '#F472B6' }]}>
+                    <Text style={[styles.macroValue, { color: '#F472B6' }]} numberOfLines={1}>
                       {targets.protein_g || '--'}g
                     </Text>
-                    <Text style={styles.macroLabel}>PROTEIN</Text>
+                    <Text style={styles.macroLabel} numberOfLines={1}>PROTEIN</Text>
                   </View>
                   <View style={styles.macroItem}>
-                    <Text style={[styles.macroValue, { color: '#FBBF24' }]}>
+                    <Text style={[styles.macroValue, { color: '#FBBF24' }]} numberOfLines={1}>
                       {targets.carbs_g || '--'}g
                     </Text>
-                    <Text style={styles.macroLabel}>CARBS</Text>
+                    <Text style={styles.macroLabel} numberOfLines={1}>CARBS</Text>
                   </View>
                   <View style={styles.macroItem}>
-                    <Text style={[styles.macroValue, { color: '#A78BFA' }]}>
+                    <Text style={[styles.macroValue, { color: '#A78BFA' }]} numberOfLines={1}>
                       {targets.fat_g || '--'}g
                     </Text>
-                    <Text style={styles.macroLabel}>FAT</Text>
+                    <Text style={styles.macroLabel} numberOfLines={1}>FAT</Text>
                   </View>
                 </View>
               </View>
@@ -1269,7 +1269,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   macroValue: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
     marginBottom: 4,
   },

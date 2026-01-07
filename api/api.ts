@@ -590,6 +590,8 @@ export async function fetchMenuFast(
   meta?: ValidatedMenuData['meta'];
   validation?: MenuValidation;
   error?: string;
+  hint?: string;
+  isTimeout?: boolean;
 }> {
   const params = new URLSearchParams({
     query: restaurantName.trim(),
