@@ -246,18 +246,15 @@ const analysisLoaderStyles = StyleSheet.create({
   },
 });
 
-// Sample menu items for discovery animation
-const DISCOVERY_MENU_ITEMS = [
-  { name: 'House Special Tacos', category: 'Tacos' },
-  { name: 'Grilled Chicken Burrito', category: 'Burritos' },
-  { name: 'Carne Asada Fajitas', category: 'Fajitas' },
-  { name: 'Vegetable Quesadilla', category: 'Appetizers' },
-  { name: 'Fresh Horchata', category: 'Drinks' },
-  { name: 'Churros con Chocolate', category: 'Desserts' },
-  { name: 'Guacamole Fresco', category: 'Sides' },
-  { name: 'Queso Fundido', category: 'Appetizers' },
-  { name: 'Fish Tacos', category: 'Tacos' },
-  { name: 'Veggie Burrito Bowl', category: 'Bowls' },
+// Menu item type for discovery animation
+type DiscoveryItem = {
+  name: string;
+  category: string;
+};
+
+// Generic placeholder items (used when no real menu data is available yet)
+const PLACEHOLDER_DISCOVERY_ITEMS: DiscoveryItem[] = [
+  { name: 'Loading menu items...', category: 'Please wait' },
 ];
 
 // Loading phases for the progress indicator
@@ -273,16 +270,25 @@ function MenuLoadingScreen({
   restaurantName,
   restaurantAddress,
   heroImageUrl,
+  menuItems,
 }: {
   restaurantName?: string;
   restaurantAddress?: string;
   heroImageUrl?: string;
+  menuItems?: DiscoveryItem[];
 }) {
   const [progress, setProgress] = useState(0);
   const [currentPhase, setCurrentPhase] = useState(0);
-  const [discoveredItems, setDiscoveredItems] = useState<typeof DISCOVERY_MENU_ITEMS>([]);
+  const [discoveredItems, setDiscoveredItems] = useState<DiscoveryItem[]>([]);
+  const [revealIndex, setRevealIndex] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const spinAnim = useRef(new Animated.Value(0)).current;
+
+  // Use real menu items if available, otherwise use placeholders
+  const itemsToDiscover = menuItems && menuItems.length > 0
+    ? menuItems
+    : PLACEHOLDER_DISCOVERY_ITEMS;
+  const hasRealItems = menuItems && menuItems.length > 0;
 
   // Pulsing animation for the live indicator dot
   useEffect(() => {
@@ -341,17 +347,35 @@ function MenuLoadingScreen({
     setCurrentPhase(newPhase);
   }, [progress]);
 
-  // Discover items progressively
+  // Discover items progressively - reveal real items as they become available
   useEffect(() => {
+    // Reset when items change (e.g., real menu data arrives)
+    setDiscoveredItems([]);
+    setRevealIndex(0);
+  }, [menuItems]);
+
+  useEffect(() => {
+    if (!hasRealItems) {
+      // No real items yet - show a single placeholder
+      setDiscoveredItems(PLACEHOLDER_DISCOVERY_ITEMS);
+      return;
+    }
+
+    // Progressively reveal real menu items
     const itemInterval = setInterval(() => {
-      setDiscoveredItems((prev) => {
-        if (prev.length >= DISCOVERY_MENU_ITEMS.length) return prev;
-        return [...prev, DISCOVERY_MENU_ITEMS[prev.length]];
+      setRevealIndex((prev) => {
+        const nextIndex = prev + 1;
+        if (nextIndex > itemsToDiscover.length) {
+          clearInterval(itemInterval);
+          return prev;
+        }
+        setDiscoveredItems(itemsToDiscover.slice(0, nextIndex));
+        return nextIndex;
       });
-    }, 1200);
+    }, 400); // Faster reveal for real items (400ms instead of 1200ms)
 
     return () => clearInterval(itemInterval);
-  }, []);
+  }, [hasRealItems, itemsToDiscover]);
 
   const spinInterpolate = spinAnim.interpolate({
     inputRange: [0, 1],
@@ -458,7 +482,7 @@ function MenuLoadingScreen({
               })}
 
               {/* Scanning indicator */}
-              {discoveredItems.length < DISCOVERY_MENU_ITEMS.length && (
+              {discoveredItems.length < itemsToDiscover.length && (
                 <View style={loadingStyles.scanningRow}>
                   <Animated.View
                     style={[
@@ -1944,11 +1968,45 @@ export default function RestaurantScreen() {
       buildPhotoUrl(restaurant?.imageRef) ||
       restaurant?.imageUrl ||
       undefined;
+
+    // Extract menu items from prefetch cache if available (for live discovery feed)
+    const prefetchedMenu = placeIdValue ? getPrefetchedMenu(placeIdValue) : null;
+    const discoveryItems: DiscoveryItem[] = [];
+
+    if (prefetchedMenu?.data?.sections) {
+      // Extract items from prefetched menu data
+      for (const section of prefetchedMenu.data.sections) {
+        const sectionName = section.name || 'Menu';
+        for (const item of section.items || []) {
+          if (item.name) {
+            discoveryItems.push({
+              name: item.name,
+              category: sectionName,
+            });
+          }
+        }
+      }
+    } else if (menu?.sections) {
+      // If menu data is partially loaded (edge case), use it
+      for (const section of menu.sections) {
+        const sectionName = section.name || 'Menu';
+        for (const item of section.items || []) {
+          if (item.name) {
+            discoveryItems.push({
+              name: item.name,
+              category: sectionName,
+            });
+          }
+        }
+      }
+    }
+
     return (
       <MenuLoadingScreen
         restaurantName={restaurantNameValue || undefined}
         restaurantAddress={addressValue || undefined}
         heroImageUrl={earlyHeroUrl}
+        menuItems={discoveryItems.length > 0 ? discoveryItems.slice(0, 20) : undefined}
       />
     );
   }
