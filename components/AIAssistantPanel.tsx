@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,10 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Dimensions,
-  Animated as RNAnimated,
-  PanResponder,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,6 +70,7 @@ export function AIAssistantPanel() {
   } = useAIAssistant();
 
   const [inputText, setInputText] = React.useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -79,10 +78,33 @@ export function AIAssistantPanel() {
   const buttonScale = useSharedValue(1);
   const panelTranslateY = useSharedValue(SCREEN_HEIGHT);
 
-  // Update panel position based on state
+  // Keyboard listeners
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
+  // Update panel position based on state and keyboard
   useEffect(() => {
     if (isOpen && !isMinimized) {
-      panelTranslateY.value = withSpring(SCREEN_HEIGHT - PANEL_HEIGHT, {
+      // When keyboard is open, move panel up by keyboard height
+      const keyboardOffset = keyboardHeight > 0 ? keyboardHeight : 0;
+      panelTranslateY.value = withSpring(SCREEN_HEIGHT - PANEL_HEIGHT - keyboardOffset, {
         damping: 20,
         stiffness: 150,
       });
@@ -94,7 +116,7 @@ export function AIAssistantPanel() {
     } else {
       panelTranslateY.value = withTiming(SCREEN_HEIGHT, { duration: 200 });
     }
-  }, [isOpen, isMinimized]);
+  }, [isOpen, isMinimized, keyboardHeight]);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -352,53 +374,48 @@ export function AIAssistantPanel() {
               keyboardShouldPersistTaps="handled"
             />
 
-            {/* Input */}
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              keyboardVerticalOffset={0}
-            >
-              <View style={styles.inputContainer}>
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    ref={inputRef}
-                    style={styles.textInput}
-                    placeholder="Ask about nutrition, dishes..."
-                    placeholderTextColor={COLORS.textMuted}
-                    value={inputText}
-                    onChangeText={setInputText}
-                    multiline
-                    maxLength={500}
-                    editable={!isLoading}
-                    onSubmitEditing={handleSend}
-                    blurOnSubmit={false}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.sendButton,
-                      (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
-                    ]}
-                    onPress={handleSend}
-                    disabled={!inputText.trim() || isLoading}
-                    activeOpacity={0.7}
+            {/* Input - panel moves up with keyboard, no KeyboardAvoidingView needed */}
+            <View style={styles.inputContainer}>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  ref={inputRef}
+                  style={styles.textInput}
+                  placeholder="Ask about nutrition, dishes..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline
+                  maxLength={500}
+                  editable={!isLoading}
+                  onSubmitEditing={handleSend}
+                  blurOnSubmit={false}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendButton,
+                    (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
+                  ]}
+                  onPress={handleSend}
+                  disabled={!inputText.trim() || isLoading}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient
+                    colors={
+                      inputText.trim() && !isLoading
+                        ? [COLORS.primary, COLORS.secondary]
+                        : ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.1)']
+                    }
+                    style={styles.sendButtonGradient}
                   >
-                    <LinearGradient
-                      colors={
-                        inputText.trim() && !isLoading
-                          ? [COLORS.primary, COLORS.secondary]
-                          : ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.1)']
-                      }
-                      style={styles.sendButtonGradient}
-                    >
-                      <Ionicons
-                        name="send"
-                        size={16}
-                        color={inputText.trim() && !isLoading ? '#FFFFFF' : COLORS.textMuted}
-                      />
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                    <Ionicons
+                      name="send"
+                      size={16}
+                      color={inputText.trim() && !isLoading ? '#FFFFFF' : COLORS.textMuted}
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
+            </View>
           </View>
         )}
       </Animated.View>

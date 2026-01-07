@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -1059,11 +1059,11 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.mapContainer}>
             <MapView
-              provider={PROVIDER_GOOGLE}
               style={styles.map}
               region={mapRegion}
               showsUserLocation={true}
               showsMyLocationButton={false}
+              mapType="standard"
             >
               {userCoords && (
                 <Marker
