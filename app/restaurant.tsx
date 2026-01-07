@@ -29,6 +29,7 @@ import {
   BatchDishInput,
   analyzeDish,
   fetchMenuFast,
+  fetchMenuStreaming,
   fetchMenuWithRetry,
   getBatchStatus,
   getMealsForDate,
@@ -247,18 +248,15 @@ const analysisLoaderStyles = StyleSheet.create({
   },
 });
 
-// Sample menu items for discovery animation
-const DISCOVERY_MENU_ITEMS = [
-  { name: 'House Special Tacos', category: 'Tacos' },
-  { name: 'Grilled Chicken Burrito', category: 'Burritos' },
-  { name: 'Carne Asada Fajitas', category: 'Fajitas' },
-  { name: 'Vegetable Quesadilla', category: 'Appetizers' },
-  { name: 'Fresh Horchata', category: 'Drinks' },
-  { name: 'Churros con Chocolate', category: 'Desserts' },
-  { name: 'Guacamole Fresco', category: 'Sides' },
-  { name: 'Queso Fundido', category: 'Appetizers' },
-  { name: 'Fish Tacos', category: 'Tacos' },
-  { name: 'Veggie Burrito Bowl', category: 'Bowls' },
+// Menu item type for discovery animation
+type DiscoveryItem = {
+  name: string;
+  category: string;
+};
+
+// Generic placeholder items (used when no real menu data is available yet)
+const PLACEHOLDER_DISCOVERY_ITEMS: DiscoveryItem[] = [
+  { name: 'Loading menu items...', category: 'Please wait' },
 ];
 
 // Loading phases for the progress indicator
@@ -274,16 +272,25 @@ function MenuLoadingScreen({
   restaurantName,
   restaurantAddress,
   heroImageUrl,
+  menuItems,
 }: {
   restaurantName?: string;
   restaurantAddress?: string;
   heroImageUrl?: string;
+  menuItems?: DiscoveryItem[];
 }) {
   const [progress, setProgress] = useState(0);
   const [currentPhase, setCurrentPhase] = useState(0);
-  const [discoveredItems, setDiscoveredItems] = useState<typeof DISCOVERY_MENU_ITEMS>([]);
+  const [discoveredItems, setDiscoveredItems] = useState<DiscoveryItem[]>([]);
+  const [revealIndex, setRevealIndex] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const spinAnim = useRef(new Animated.Value(0)).current;
+
+  // Use real menu items if available, otherwise use placeholders
+  const itemsToDiscover = menuItems && menuItems.length > 0
+    ? menuItems
+    : PLACEHOLDER_DISCOVERY_ITEMS;
+  const hasRealItems = menuItems && menuItems.length > 0;
 
   // Pulsing animation for the live indicator dot
   useEffect(() => {
@@ -342,17 +349,35 @@ function MenuLoadingScreen({
     setCurrentPhase(newPhase);
   }, [progress]);
 
-  // Discover items progressively
+  // Discover items progressively - reveal real items as they become available
   useEffect(() => {
+    // Reset when items change (e.g., real menu data arrives)
+    setDiscoveredItems([]);
+    setRevealIndex(0);
+  }, [menuItems]);
+
+  useEffect(() => {
+    if (!hasRealItems) {
+      // No real items yet - show a single placeholder
+      setDiscoveredItems(PLACEHOLDER_DISCOVERY_ITEMS);
+      return;
+    }
+
+    // Progressively reveal real menu items
     const itemInterval = setInterval(() => {
-      setDiscoveredItems((prev) => {
-        if (prev.length >= DISCOVERY_MENU_ITEMS.length) return prev;
-        return [...prev, DISCOVERY_MENU_ITEMS[prev.length]];
+      setRevealIndex((prev) => {
+        const nextIndex = prev + 1;
+        if (nextIndex > itemsToDiscover.length) {
+          clearInterval(itemInterval);
+          return prev;
+        }
+        setDiscoveredItems(itemsToDiscover.slice(0, nextIndex));
+        return nextIndex;
       });
-    }, 1200);
+    }, 400); // Faster reveal for real items (400ms instead of 1200ms)
 
     return () => clearInterval(itemInterval);
-  }, []);
+  }, [hasRealItems, itemsToDiscover]);
 
   const spinInterpolate = spinAnim.interpolate({
     inputRange: [0, 1],
@@ -459,7 +484,7 @@ function MenuLoadingScreen({
               })}
 
               {/* Scanning indicator */}
-              {discoveredItems.length < DISCOVERY_MENU_ITEMS.length && (
+              {discoveredItems.length < itemsToDiscover.length && (
                 <View style={loadingStyles.scanningRow}>
                   <Animated.View
                     style={[
@@ -1015,6 +1040,11 @@ export default function RestaurantScreen() {
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
 
+  // Streaming menu items state (for live discovery during loading)
+  const [streamingItems, setStreamingItems] = useState<DiscoveryItem[]>([]);
+  const [streamingPhase, setStreamingPhase] = useState<string>('');
+  const streamingCleanupRef = useRef<(() => void) | null>(null);
+
   // Batch analysis state
   const [batchId, setBatchId] = useState<string | null>(null);
   const [jobIdByItemId, setJobIdByItemId] = useState<Record<string, string>>({});
@@ -1509,6 +1539,52 @@ export default function RestaurantScreen() {
     getPrefetchStatus,
   ]);
 
+  // Start streaming menu items for live discovery feed during loading
+  useEffect(() => {
+    // Only start streaming if we're loading and have required params
+    if (!loading || !restaurantNameValue || !addressValue) {
+      return;
+    }
+
+    // Reset streaming state
+    setStreamingItems([]);
+    setStreamingPhase('connecting');
+
+    console.log('[RestaurantScreen] Starting menu streaming for:', restaurantNameValue);
+
+    const cleanup = fetchMenuStreaming(restaurantNameValue, addressValue, {
+      onStatus: (phase, message) => {
+        console.log('[RestaurantScreen] Streaming status:', phase, message);
+        setStreamingPhase(phase);
+      },
+      onItem: (item, index) => {
+        setStreamingItems((prev) => {
+          // Avoid duplicates and limit to 30 for display
+          if (prev.length >= 30) return prev;
+          if (prev.some((i) => i.name === item.name)) return prev;
+          return [...prev, { name: item.name, category: item.section }];
+        });
+      },
+      onComplete: (result) => {
+        console.log('[RestaurantScreen] Streaming complete:', result.totalItems, 'items');
+        setStreamingPhase('complete');
+      },
+      onError: (error) => {
+        console.error('[RestaurantScreen] Streaming error:', error);
+        setStreamingPhase('error');
+      },
+    });
+
+    streamingCleanupRef.current = cleanup;
+
+    return () => {
+      if (streamingCleanupRef.current) {
+        streamingCleanupRef.current();
+        streamingCleanupRef.current = null;
+      }
+    };
+  }, [loading, restaurantNameValue, addressValue]);
+
   // Show allergen popup on first visit to this restaurant
   useEffect(() => {
     if (!loading && menu && placeIdValue && shouldShowRestaurantPopup(placeIdValue)) {
@@ -1954,11 +2030,36 @@ export default function RestaurantScreen() {
       buildPhotoUrl(restaurant?.imageRef) ||
       restaurant?.imageUrl ||
       undefined;
+
+    // Use streaming items from SSE as primary source (real-time discovery)
+    // Fall back to prefetch cache if streaming hasn't started yet
+    let discoveryItems: DiscoveryItem[] = streamingItems;
+
+    if (discoveryItems.length === 0) {
+      // Fall back to prefetch cache if available
+      const prefetchedMenu = placeIdValue ? getPrefetchedMenu(placeIdValue) : null;
+
+      if (prefetchedMenu?.data?.sections) {
+        for (const section of prefetchedMenu.data.sections) {
+          const sectionName = section.name || 'Menu';
+          for (const item of section.items || []) {
+            if (item.name) {
+              discoveryItems.push({
+                name: item.name,
+                category: sectionName,
+              });
+            }
+          }
+        }
+      }
+    }
+
     return (
       <MenuLoadingScreen
         restaurantName={restaurantNameValue || undefined}
         restaurantAddress={addressValue || undefined}
         heroImageUrl={earlyHeroUrl}
+        menuItems={discoveryItems.length > 0 ? discoveryItems.slice(0, 20) : undefined}
       />
     );
   }
