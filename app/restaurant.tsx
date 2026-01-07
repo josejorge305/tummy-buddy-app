@@ -29,6 +29,7 @@ import {
   BatchDishInput,
   analyzeDish,
   fetchMenuFast,
+  fetchMenuStreaming,
   fetchMenuWithRetry,
   getBatchStatus,
   getMealsForDate,
@@ -1064,6 +1065,11 @@ export default function RestaurantScreen() {
   const [googlePhotoRef, setGooglePhotoRef] = useState<string | null>(null);
   const [menuSearch, setMenuSearch] = useState('');
 
+  // Streaming menu items state (for live discovery during loading)
+  const [streamingItems, setStreamingItems] = useState<DiscoveryItem[]>([]);
+  const [streamingPhase, setStreamingPhase] = useState<string>('');
+  const streamingCleanupRef = useRef<(() => void) | null>(null);
+
   // Batch analysis state
   const [batchId, setBatchId] = useState<string | null>(null);
   const [jobIdByItemId, setJobIdByItemId] = useState<Record<string, string>>({});
@@ -1523,6 +1529,52 @@ export default function RestaurantScreen() {
     getPrefetchStatus,
   ]);
 
+  // Start streaming menu items for live discovery feed during loading
+  useEffect(() => {
+    // Only start streaming if we're loading and have required params
+    if (!loading || !restaurantNameValue || !addressValue) {
+      return;
+    }
+
+    // Reset streaming state
+    setStreamingItems([]);
+    setStreamingPhase('connecting');
+
+    console.log('[RestaurantScreen] Starting menu streaming for:', restaurantNameValue);
+
+    const cleanup = fetchMenuStreaming(restaurantNameValue, addressValue, {
+      onStatus: (phase, message) => {
+        console.log('[RestaurantScreen] Streaming status:', phase, message);
+        setStreamingPhase(phase);
+      },
+      onItem: (item, index) => {
+        setStreamingItems((prev) => {
+          // Avoid duplicates and limit to 30 for display
+          if (prev.length >= 30) return prev;
+          if (prev.some((i) => i.name === item.name)) return prev;
+          return [...prev, { name: item.name, category: item.section }];
+        });
+      },
+      onComplete: (result) => {
+        console.log('[RestaurantScreen] Streaming complete:', result.totalItems, 'items');
+        setStreamingPhase('complete');
+      },
+      onError: (error) => {
+        console.error('[RestaurantScreen] Streaming error:', error);
+        setStreamingPhase('error');
+      },
+    });
+
+    streamingCleanupRef.current = cleanup;
+
+    return () => {
+      if (streamingCleanupRef.current) {
+        streamingCleanupRef.current();
+        streamingCleanupRef.current = null;
+      }
+    };
+  }, [loading, restaurantNameValue, addressValue]);
+
   // Show allergen popup on first visit to this restaurant
   useEffect(() => {
     if (!loading && menu && placeIdValue && shouldShowRestaurantPopup(placeIdValue)) {
@@ -1969,33 +2021,24 @@ export default function RestaurantScreen() {
       restaurant?.imageUrl ||
       undefined;
 
-    // Extract menu items from prefetch cache if available (for live discovery feed)
-    const prefetchedMenu = placeIdValue ? getPrefetchedMenu(placeIdValue) : null;
-    const discoveryItems: DiscoveryItem[] = [];
+    // Use streaming items from SSE as primary source (real-time discovery)
+    // Fall back to prefetch cache if streaming hasn't started yet
+    let discoveryItems: DiscoveryItem[] = streamingItems;
 
-    if (prefetchedMenu?.data?.sections) {
-      // Extract items from prefetched menu data
-      for (const section of prefetchedMenu.data.sections) {
-        const sectionName = section.name || 'Menu';
-        for (const item of section.items || []) {
-          if (item.name) {
-            discoveryItems.push({
-              name: item.name,
-              category: sectionName,
-            });
-          }
-        }
-      }
-    } else if (menu?.sections) {
-      // If menu data is partially loaded (edge case), use it
-      for (const section of menu.sections) {
-        const sectionName = section.name || 'Menu';
-        for (const item of section.items || []) {
-          if (item.name) {
-            discoveryItems.push({
-              name: item.name,
-              category: sectionName,
-            });
+    if (discoveryItems.length === 0) {
+      // Fall back to prefetch cache if available
+      const prefetchedMenu = placeIdValue ? getPrefetchedMenu(placeIdValue) : null;
+
+      if (prefetchedMenu?.data?.sections) {
+        for (const section of prefetchedMenu.data.sections) {
+          const sectionName = section.name || 'Menu';
+          for (const item of section.items || []) {
+            if (item.name) {
+              discoveryItems.push({
+                name: item.name,
+                category: sectionName,
+              });
+            }
           }
         }
       }

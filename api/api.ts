@@ -649,6 +649,143 @@ export async function fetchMenuFast(
   }
 }
 
+// Types for streaming menu items
+export interface StreamingMenuItem {
+  name: string;
+  section: string;
+  description?: string;
+  price?: string;
+}
+
+export interface StreamingCallbacks {
+  onStatus?: (phase: string, message: string) => void;
+  onRestaurant?: (restaurant: { name: string; url?: string }) => void;
+  onItem?: (item: StreamingMenuItem, index: number) => void;
+  onComplete?: (result: { ok: boolean; totalItems: number }) => void;
+  onError?: (error: string) => void;
+}
+
+/**
+ * Streaming menu fetch using Server-Sent Events
+ * Items are delivered progressively as they're discovered during scraping
+ */
+export function fetchMenuStreaming(
+  restaurantName: string,
+  address: string,
+  callbacks: StreamingCallbacks
+): () => void {
+  const params = new URLSearchParams({
+    query: restaurantName.trim(),
+    address: address.trim(),
+    maxRows: '100',
+  });
+
+  const url = `${RESTAURANT_API_BASE}/menu/uber-test/stream?${params.toString()}`;
+  console.log('TB fetchMenuStreaming connecting to:', url);
+
+  // Dynamic import for SSE (works in React Native with react-native-sse)
+  let eventSource: any = null;
+  let closed = false;
+
+  const connect = async () => {
+    try {
+      // Use dynamic import for react-native-sse
+      const EventSourceModule = await import('react-native-sse');
+      const EventSource = EventSourceModule.default;
+
+      if (closed) return;
+
+      eventSource = new EventSource(url);
+
+      eventSource.addEventListener('open', () => {
+        console.log('TB fetchMenuStreaming: connection opened');
+      });
+
+      eventSource.addEventListener('status', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('TB fetchMenuStreaming status:', data.phase, data.message);
+          callbacks.onStatus?.(data.phase, data.message);
+        } catch (e) {
+          console.error('TB fetchMenuStreaming: failed to parse status event', e);
+        }
+      });
+
+      eventSource.addEventListener('restaurant', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('TB fetchMenuStreaming restaurant:', data.name);
+          callbacks.onRestaurant?.(data);
+        } catch (e) {
+          console.error('TB fetchMenuStreaming: failed to parse restaurant event', e);
+        }
+      });
+
+      eventSource.addEventListener('item', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          callbacks.onItem?.(
+            {
+              name: data.item.name,
+              section: data.item.section,
+              description: data.item.description,
+              price: data.item.price,
+            },
+            data.index
+          );
+        } catch (e) {
+          console.error('TB fetchMenuStreaming: failed to parse item event', e);
+        }
+      });
+
+      eventSource.addEventListener('complete', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('TB fetchMenuStreaming complete:', data.totalItems, 'items');
+          callbacks.onComplete?.({
+            ok: data.ok,
+            totalItems: data.totalItems,
+          });
+        } catch (e) {
+          console.error('TB fetchMenuStreaming: failed to parse complete event', e);
+        } finally {
+          eventSource?.close();
+        }
+      });
+
+      eventSource.addEventListener('error', (event: any) => {
+        console.error('TB fetchMenuStreaming error event:', event);
+        try {
+          if (event.data) {
+            const data = JSON.parse(event.data);
+            callbacks.onError?.(data.message || 'Stream error');
+          } else {
+            callbacks.onError?.('Connection error');
+          }
+        } catch (e) {
+          callbacks.onError?.('Connection error');
+        }
+        eventSource?.close();
+      });
+    } catch (e: any) {
+      console.error('TB fetchMenuStreaming: failed to connect', e);
+      callbacks.onError?.(e?.message || 'Failed to connect to stream');
+    }
+  };
+
+  connect();
+
+  // Return cleanup function
+  return () => {
+    closed = true;
+    if (eventSource) {
+      console.log('TB fetchMenuStreaming: closing connection');
+      eventSource.close();
+      eventSource = null;
+    }
+  };
+}
+
 // Async menu fetch with polling for background job completion
 export async function fetchMenuWithRetry(
   placeId: string,
